@@ -1,4 +1,10 @@
 import { normalizeLegacyRole } from './permissions.js';
+import {
+  KPI_DEFINITIONS,
+  isPastMonth,
+  monthProgress,
+  calculateKpiCard,
+} from './kpi-engine.js';
 
 export const SCORE_FROM_DAY = process.env.SCORE_FROM_DAY
   ? parseInt(process.env.SCORE_FROM_DAY, 10)
@@ -6,96 +12,8 @@ export const SCORE_FROM_DAY = process.env.SCORE_FROM_DAY
 
 export const ATTAINMENT_DISPLAY_CAP = 3;
 
-export const SCORECARD_KPIS = [
-  {
-    key: 'opportunities_published',
-    metric: 'opportunitiesPublished',
-    label: 'Opportunities published',
-    unit: 'listings',
-    owners: ['opportunities_officer', 'desk_lead'],
-    kind: 'count',
-  },
-  {
-    key: 'programs_organised',
-    metric: 'programsDelivered',
-    label: 'Programs organised',
-    unit: 'programs',
-    owners: ['training_officer', 'desk_lead'],
-    kind: 'count',
-  },
-  {
-    key: 'active_ambassadors',
-    metric: 'ambassadorsActive',
-    label: 'Active ambassadors',
-    unit: 'ambassadors',
-    owners: ['country_lead', 'desk_lead'],
-    kind: 'running_total',
-  },
-  {
-    key: 'partners_onboarded',
-    metric: 'partnersClosed',
-    label: 'Partners onboarded',
-    unit: 'partners',
-    owners: ['partnerships_officer', 'desk_lead'],
-    kind: 'count',
-  },
-  {
-    key: 'beneficiaries_verified',
-    metric: 'beneficiariesVerified',
-    label: 'Beneficiaries verified',
-    unit: 'records',
-    owners: ['database_officer', 'desk_lead'],
-    kind: 'count',
-  },
-  {
-    key: 'social_reach',
-    metric: 'socialReach',
-    label: 'Social reach',
-    unit: 'people reached',
-    owners: ['social_media_manager', 'desk_lead'],
-    kind: 'count',
-  },
-  {
-    key: 'social_engagement',
-    metric: 'socialEngagement',
-    label: 'Social engagement',
-    unit: 'interactions',
-    owners: ['social_media_manager', 'desk_lead'],
-    kind: 'count',
-  },
-  {
-    key: 'posts_published',
-    metric: 'postsPublished',
-    label: 'Posts published',
-    unit: 'posts',
-    owners: ['social_media_manager', 'desk_lead'],
-    kind: 'count',
-  },
-  {
-    key: 'website_views',
-    metric: 'websiteViews',
-    label: 'Website views',
-    unit: 'views',
-    owners: ['communications_officer', 'desk_lead'],
-    kind: 'count',
-  },
-  {
-    key: 'monthly_reports',
-    metric: 'monthlyReports',
-    label: 'Monthly reports',
-    unit: 'reports',
-    owners: ['communications_officer', 'desk_lead'],
-    kind: 'count',
-  },
-];
-
-/**
- * True if month is strictly before the calendar month of today (UTC).
- */
-export function isPastMonth(month, today = new Date()) {
-  const nowMonth = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, '0')}`;
-  return month < nowMonth;
-}
+export const SCORECARD_KPIS = KPI_DEFINITIONS;
+export { isPastMonth, monthProgress };
 
 /**
  * True in the first days of the CURRENT month (before SCORE_FROM_DAY, UTC):
@@ -107,64 +25,22 @@ export function isTooEarly(month, today = new Date(), scoreFromDay = SCORE_FROM_
 }
 
 /**
- * Calculates dayOfMonth and daysInMonth progress for a given month.
- */
-export function monthProgress(month, today = new Date()) {
-  const year = parseInt(month.slice(0, 4), 10);
-  const monthIdx = parseInt(month.slice(5, 7), 10) - 1;
-  const daysInMonth = new Date(Date.UTC(year, monthIdx + 1, 0)).getUTCDate();
-
-  if (isPastMonth(month, today)) {
-    return { dayOfMonth: daysInMonth, daysInMonth };
-  }
-
-  const currentMonthStr = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, '0')}`;
-  if (month === currentMonthStr) {
-    const day = Math.max(1, Math.min(today.getUTCDate(), daysInMonth));
-    return { dayOfMonth: day, daysInMonth };
-  }
-
-  // Future month
-  return { dayOfMonth: 0, daysInMonth };
-}
-
-/**
  * Builds one MetricResult for a scorecard row.
  */
 export function buildMetricResult(kpiDef, rawValue, target, month, today = new Date(), thresholds = { greenRatio: 0.95, amberRatio: 0.7 }) {
-  const { dayOfMonth, daysInMonth } = monthProgress(month, today);
-  const isPast = isPastMonth(month, today);
-  const isRunningTotal = kpiDef.kind === 'running_total';
-
-  const pace = isRunningTotal || isPast ? 1 : dayOfMonth / daysInMonth;
-  const proratedTarget = isRunningTotal || isPast ? target : target * pace;
-
-  let attainment = null;
-  if (target > 0) {
-    attainment = proratedTarget > 0 ? rawValue / proratedTarget : 0;
-  }
-
-  let status = null;
-  if (target > 0 && attainment !== null) {
-    status = attainment >= thresholds.greenRatio
-      ? 'green'
-      : attainment >= thresholds.amberRatio
-        ? 'amber'
-        : 'red';
-  }
-
+  const card = calculateKpiCard(kpiDef, rawValue, target, month, today, thresholds);
   return {
-    key: kpiDef.key,
-    label: kpiDef.label,
-    unit: kpiDef.unit,
-    value: rawValue,
-    target,
-    pace,
-    proratedTarget,
-    attainment,
-    status,
-    isPast,
-    prorated: !isRunningTotal,
+    key: card.key,
+    label: card.label,
+    unit: card.unit,
+    value: card.value,
+    target: card.target,
+    pace: card.pace,
+    proratedTarget: card.proratedTarget,
+    attainment: card.paceAttainment,
+    status: card.status,
+    isPast: card.isPast,
+    prorated: card.prorated,
   };
 }
 
