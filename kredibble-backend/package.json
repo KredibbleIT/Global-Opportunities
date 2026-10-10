@@ -21,6 +21,7 @@
         "retention:cleanup": "node -e \"import('./src/lib/data-retention.js').then(m => m.runDataRetentionSweep())\",",
         "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest",
         "lint": "eslint .",
+        "docs:generate": "node scripts/generate-docs.js",
         "e2e:server": "node --import ./src/instrument.js scripts/e2e-server.js"
     },
     "dependencies": {

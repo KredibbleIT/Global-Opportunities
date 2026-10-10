@@ -17,6 +17,7 @@
         "required": [
           "name",
           "email",
+          "emailNormalized",
           "role"
         ],
         "properties": {
@@ -26,12 +27,16 @@
           "email": {
             "type": "string"
           },
+          "emailNormalized": {
+            "type": "string"
+          },
           "role": {
             "type": "string",
             "enum": [
               "seeker",
               "hirer",
-              "admin"
+              "admin",
+              "deleted"
             ]
           },
           "passwordHash": {
@@ -39,6 +44,59 @@
           },
           "avatarUrl": {
             "type": "string"
+          },
+          "tokenVersion": {
+            "type": "number"
+          },
+          "refreshTokenHash": {
+            "type": "string"
+          },
+          "emailVerified": {
+            "type": "boolean"
+          },
+          "failedLoginAttempts": {
+            "type": "number"
+          },
+          "lockUntil": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastFailedLogin": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "pushToken": {
+            "type": "string"
+          },
+          "pushPlatform": {
+            "type": "string",
+            "enum": [
+              "ios",
+              "android",
+              "web",
+              "other"
+            ]
+          },
+          "pushTokenUpdatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "notificationPreferences": {
+            "type": "object",
+            "properties": {
+              "digest": {
+                "type": "boolean"
+              },
+              "verifications": {
+                "type": "boolean"
+              },
+              "reports": {
+                "type": "boolean"
+              },
+              "testimonials": {
+                "type": "boolean"
+              }
+            }
           },
           "_id": {
             "type": "string"
@@ -58,18 +116,24 @@
         "required": [
           "userId",
           "name",
-          "email",
-          "role"
+          "email"
         ],
         "properties": {
           "userId": {
-            "type": "schemaobjectid"
+            "type": "string",
+            "format": "objectId"
           },
           "name": {
             "type": "string"
           },
           "email": {
             "type": "string"
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "role": {
             "type": "string"
@@ -101,7 +165,8 @@
         ],
         "properties": {
           "userId": {
-            "type": "schemaobjectid"
+            "type": "string",
+            "format": "objectId"
           },
           "profession": {
             "type": "string"
@@ -175,12 +240,12 @@
         "required": [
           "companyName",
           "industry",
-          "location",
-          "companyEmail"
+          "location"
         ],
         "properties": {
           "userId": {
-            "type": "schemaobjectid"
+            "type": "string",
+            "format": "objectId"
           },
           "companyName": {
             "type": "string"
@@ -269,15 +334,45 @@
         ],
         "properties": {
           "hirerId": {
-            "type": "schemaobjectid"
+            "type": "string",
+            "format": "objectId"
+          },
+          "createdBy": {
+            "type": "string",
+            "format": "objectId"
           },
           "title": {
             "type": "string"
           },
           "type": {
-            "type": "string"
+            "type": "string",
+            "enum": [
+              "job",
+              "jobs",
+              "internship",
+              "internships",
+              "scholarship",
+              "scholarships",
+              "fellowship",
+              "fellowships",
+              "competition",
+              "competitions",
+              "training-workshop",
+              "training",
+              "trainings",
+              "grant",
+              "grants",
+              "event",
+              "events"
+            ]
           },
           "company": {
+            "type": "string"
+          },
+          "offeringOrganization": {
+            "type": "string"
+          },
+          "organizationLogo": {
             "type": "string"
           },
           "location": {
@@ -292,6 +387,17 @@
           "date": {
             "type": "string"
           },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "published",
+              "pending",
+              "approved",
+              "rejected",
+              "archived"
+            ]
+          },
           "moderationStatus": {
             "type": "string"
           },
@@ -302,6 +408,177 @@
             "type": "string"
           },
           "experienceLevels": {
+            "type": "string"
+          },
+          "applicationUrl": {
+            "type": "string"
+          },
+          "applicationLink": {
+            "type": "string"
+          },
+          "applyUrl": {
+            "type": "string"
+          },
+          "costLabel": {
+            "type": "string"
+          },
+          "durationLabel": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "online",
+              "in-person",
+              "hybrid"
+            ]
+          },
+          "country": {
+            "type": "string"
+          },
+          "deadline": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "closesAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "eligibility": {
+            "type": "string"
+          },
+          "benefits": {
+            "type": "string"
+          },
+          "organizer": {
+            "type": "string"
+          },
+          "coverImage": {
+            "type": "string"
+          },
+          "logoUrl": {
+            "type": "string"
+          },
+          "imageUrl": {
+            "type": "string"
+          },
+          "images": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "externalReferenceUrl": {
+            "type": "string"
+          },
+          "writerId": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "assignedWriterId": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "referralOnApply": {
+            "type": "boolean"
+          },
+          "referralCodeOnApply": {
+            "type": "boolean"
+          },
+          "vetted": {
+            "type": "boolean"
+          },
+          "vettedBy": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "vettedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "vettedOn": {
+            "type": "string"
+          },
+          "publishedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "views": {
+            "type": "object",
+            "properties": {
+              "website": {
+                "type": "number"
+              },
+              "app": {
+                "type": "number"
+              }
+            }
+          },
+          "applications": {
+            "type": "object",
+            "properties": {
+              "website": {
+                "type": "number"
+              },
+              "app": {
+                "type": "number"
+              }
+            }
+          },
+          "wordpressSync": {
+            "type": "object",
+            "properties": {
+              "wordpressId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "synced",
+                  "failed"
+                ]
+              },
+              "lastAttemptAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "lastError": {
+                "type": "string"
+              }
+            }
+          },
+          "competitionCategory": {
+            "type": "string"
+          },
+          "prizeDetails": {
+            "type": "string"
+          },
+          "submissionRequirements": {
+            "type": "string"
+          },
+          "fellowshipDuration": {
+            "type": "string"
+          },
+          "fellowshipFormat": {
+            "type": "string"
+          },
+          "stipendDetails": {
+            "type": "string"
+          },
+          "trainingFormat": {
+            "type": "string"
+          },
+          "trainingDuration": {
+            "type": "string"
+          },
+          "registrationFee": {
+            "type": "string"
+          },
+          "certificateOffered": {
+            "type": "boolean"
+          },
+          "eventAt": {
             "type": "string"
           },
           "eventDateTime": {
@@ -339,10 +616,12 @@
         ],
         "properties": {
           "opportunityId": {
-            "type": "schemaobjectid"
+            "type": "string",
+            "format": "objectId"
           },
           "seekerId": {
-            "type": "schemaobjectid"
+            "type": "string",
+            "format": "objectId"
           },
           "name": {
             "type": "string"
@@ -355,6 +634,13 @@
           },
           "resumeUrl": {
             "type": "string"
+          },
+          "referralCode": {
+            "type": "string"
+          },
+          "ambassadorId": {
+            "type": "string",
+            "format": "objectId"
           },
           "_id": {
             "type": "string"
@@ -384,6 +670,10 @@
           },
           "hirer": {
             "type": "string"
+          },
+          "createdBy": {
+            "type": "string",
+            "format": "objectId"
           },
           "location": {
             "type": "string"
@@ -462,7 +752,12 @@
         ],
         "properties": {
           "grantId": {
-            "type": "schemaobjectid"
+            "type": "string",
+            "format": "objectId"
+          },
+          "applicantUserId": {
+            "type": "string",
+            "format": "objectId"
           },
           "applicantName": {
             "type": "string"
@@ -493,7 +788,8 @@
         ],
         "properties": {
           "hirerId": {
-            "type": "schemaobjectid"
+            "type": "string",
+            "format": "objectId"
           },
           "name": {
             "type": "string"
@@ -549,10 +845,12 @@
         ],
         "properties": {
           "companyId": {
-            "type": "schemaobjectid"
+            "type": "string",
+            "format": "objectId"
           },
           "verificationCaseId": {
-            "type": "schemaobjectid"
+            "type": "string",
+            "format": "objectId"
           },
           "key": {
             "type": "string"
@@ -568,6 +866,14 @@
           },
           "_id": {
             "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -579,7 +885,12 @@
         ],
         "properties": {
           "hirerId": {
-            "type": "schemaobjectid"
+            "type": "string",
+            "format": "objectId"
+          },
+          "createdBy": {
+            "type": "string",
+            "format": "objectId"
           },
           "name": {
             "type": "string"
@@ -605,6 +916,27 @@
           "bio": {
             "type": "string"
           },
+          "visibility": {
+            "type": "string",
+            "enum": [
+              "public",
+              "private"
+            ]
+          },
+          "requiresApproval": {
+            "type": "boolean"
+          },
+          "memberIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "objectId"
+            }
+          },
+          "pinnedPostId": {
+            "type": "string",
+            "format": "objectId"
+          },
           "_id": {
             "type": "string"
           },
@@ -627,10 +959,15 @@
         ],
         "properties": {
           "channelId": {
-            "type": "schemaobjectid"
+            "type": "string",
+            "format": "objectId"
           },
           "authorName": {
             "type": "string"
+          },
+          "authorId": {
+            "type": "string",
+            "format": "objectId"
           },
           "body": {
             "type": "string"
@@ -659,6 +996,14 @@
           },
           "flagged": {
             "type": "boolean"
+          },
+          "pinnedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "pinnedBy": {
+            "type": "string",
+            "format": "objectId"
           },
           "_id": {
             "type": "string"
@@ -702,7 +1047,8 @@
             "type": "string"
           },
           "linkedChannelId": {
-            "type": "schemaobjectid"
+            "type": "string",
+            "format": "objectId"
           },
           "_id": {
             "type": "string"
@@ -777,8 +1123,42 @@
           "audience": {
             "type": "string"
           },
-          "sentAt": {
+          "type": {
             "type": "string"
+          },
+          "priority": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "sent",
+              "scheduled",
+              "cancelled"
+            ]
+          },
+          "scheduledFor": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "sentAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "userId": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "createdBy": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "readAt": {
+            "type": "string",
+            "format": "date-time"
           },
           "_id": {
             "type": "string"
@@ -802,10 +1182,12 @@
         ],
         "properties": {
           "userId": {
-            "type": "schemaobjectid"
+            "type": "string",
+            "format": "objectId"
           },
           "itemId": {
-            "type": "schemaobjectid"
+            "type": "string",
+            "format": "objectId"
           },
           "itemType": {
             "type": "string",
@@ -815,6 +1197,1174 @@
               "grants",
               "internships"
             ]
+          },
+          "_id": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Program": {
+        "title": "Program",
+        "required": [
+          "title",
+          "programType",
+          "status"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "programType": {
+            "type": "string",
+            "enum": [
+              "training",
+              "bootcamp",
+              "webinar",
+              "outreach",
+              "project",
+              "mentorship",
+              "event"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "planned",
+              "running",
+              "delivered",
+              "cancelled"
+            ]
+          },
+          "format": {
+            "type": "string"
+          },
+          "partnerId": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "country": {
+            "type": "string"
+          },
+          "location": {
+            "type": "string"
+          },
+          "participantCount": {
+            "type": "number"
+          },
+          "participantTarget": {
+            "type": "number"
+          },
+          "facilitators": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "notes": {
+            "type": "string"
+          },
+          "startAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "endAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deliveredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdBy": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "wordpressSync": {
+            "type": "object",
+            "properties": {
+              "wordpressId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "synced",
+                  "failed"
+                ]
+              },
+              "lastAttemptAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "lastError": {
+                "type": "string"
+              }
+            }
+          },
+          "_id": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Partner": {
+        "title": "Partner",
+        "required": [
+          "organizationName",
+          "partnerType",
+          "stage"
+        ],
+        "properties": {
+          "organizationName": {
+            "type": "string"
+          },
+          "partnerType": {
+            "type": "string",
+            "enum": [
+              "corporate",
+              "university",
+              "foundation",
+              "NGO",
+              "ngo",
+              "government",
+              "media",
+              "tech",
+              "media_tech"
+            ]
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "prospect",
+              "outreach",
+              "proposal",
+              "MOU",
+              "mou",
+              "onboard",
+              "renew"
+            ]
+          },
+          "closed": {
+            "type": "boolean"
+          },
+          "assignedOwnerId": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "country": {
+            "type": "string"
+          },
+          "sector": {
+            "type": "string"
+          },
+          "contactName": {
+            "type": "string"
+          },
+          "contactEmail": {
+            "type": "string"
+          },
+          "contactPhone": {
+            "type": "string"
+          },
+          "provides": {
+            "type": "string"
+          },
+          "sourcedBy": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "stageHistory": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "stage": {
+                  "type": "string",
+                  "enum": [
+                    "prospect",
+                    "outreach",
+                    "proposal",
+                    "MOU",
+                    "mou",
+                    "onboard",
+                    "renew"
+                  ]
+                },
+                "at": {
+                  "type": "string"
+                },
+                "from": {
+                  "type": "string",
+                  "enum": [
+                    "prospect",
+                    "outreach",
+                    "proposal",
+                    "MOU",
+                    "mou",
+                    "onboard",
+                    "renew"
+                  ]
+                },
+                "by": {
+                  "type": "string",
+                  "format": "objectId"
+                },
+                "byName": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "stage"
+              ]
+            }
+          },
+          "createdBy": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "wordpressSync": {
+            "type": "object",
+            "properties": {
+              "wordpressId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "synced",
+                  "failed"
+                ]
+              },
+              "lastAttemptAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "lastError": {
+                "type": "string"
+              }
+            }
+          },
+          "_id": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Ambassador": {
+        "title": "Ambassador",
+        "required": [
+          "fullName",
+          "email"
+        ],
+        "properties": {
+          "fullName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "profilePhoto": {
+            "type": "string"
+          },
+          "memberType": {
+            "type": "string",
+            "enum": [
+              "student",
+              "graduate",
+              "staff",
+              "volunteer"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "roleTitle": {
+            "type": "string"
+          },
+          "campus": {
+            "type": "string"
+          },
+          "tier": {
+            "type": "string",
+            "enum": [
+              "ambassador",
+              "senior",
+              "lead",
+              "Ambassador",
+              "Senior Ambassador",
+              "Campus Lead",
+              "Regional Lead"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "applicant",
+              "onboarding",
+              "active",
+              "dormant"
+            ]
+          },
+          "assignedLeadId": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "trained": {
+            "type": "boolean"
+          },
+          "linkedUserId": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "referralCode": {
+            "type": "string"
+          },
+          "joinedAt": {
+            "type": "string"
+          },
+          "dormantSince": {
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "wordpressSync": {
+            "type": "object",
+            "properties": {
+              "wordpressId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "synced",
+                  "failed"
+                ]
+              },
+              "lastAttemptAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "lastError": {
+                "type": "string"
+              }
+            }
+          },
+          "_id": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Beneficiary": {
+        "title": "Beneficiary",
+        "required": [
+          "fullName"
+        ],
+        "properties": {
+          "fullName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "phoneNormalized": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "institution": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "organic",
+              "ambassador",
+              "event",
+              "partner",
+              "import",
+              "ambassador-referral",
+              "partner-channel",
+              "bulk-import"
+            ]
+          },
+          "sourceType": {
+            "type": "string",
+            "enum": [
+              "organic",
+              "ambassador",
+              "event",
+              "partner",
+              "import",
+              "ambassador-referral",
+              "partner-channel",
+              "bulk-import"
+            ]
+          },
+          "ambassadorId": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "opportunityId": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "listingId": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "verified": {
+            "type": "boolean"
+          },
+          "verifiedAt": {
+            "type": "string"
+          },
+          "createdAtDate": {
+            "type": "string"
+          },
+          "addedBy": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "wordpressSync": {
+            "type": "object",
+            "properties": {
+              "wordpressId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "synced",
+                  "failed"
+                ]
+              },
+              "lastAttemptAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "lastError": {
+                "type": "string"
+              }
+            }
+          },
+          "_id": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "SocialPost": {
+        "title": "SocialPost",
+        "required": [
+          "platform",
+          "title",
+          "postedAt"
+        ],
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": [
+              "facebook",
+              "instagram",
+              "x",
+              "linkedin",
+              "tiktok",
+              "youtube",
+              "whatsapp",
+              "other"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "reach": {
+            "type": "number"
+          },
+          "engagement": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "scheduled",
+              "published"
+            ]
+          },
+          "listingId": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "opportunityId": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "postedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "postedAtDate": {
+            "type": "string"
+          },
+          "authorId": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "createdBy": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "wordpressSync": {
+            "type": "object",
+            "properties": {
+              "wordpressId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "pending",
+                  "synced",
+                  "failed"
+                ]
+              },
+              "lastAttemptAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "lastError": {
+                "type": "string"
+              }
+            }
+          },
+          "_id": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "MonthlyTarget": {
+        "title": "MonthlyTarget",
+        "required": [
+          "month",
+          "metric",
+          "target"
+        ],
+        "properties": {
+          "month": {
+            "type": "string"
+          },
+          "metric": {
+            "type": "string"
+          },
+          "target": {
+            "type": "number"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          },
+          "greenThreshold": {
+            "type": "number"
+          },
+          "amberThreshold": {
+            "type": "number"
+          },
+          "updatedBy": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "_id": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Testimonial": {
+        "title": "Testimonial",
+        "required": [
+          "name",
+          "email",
+          "comment"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "comment": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string"
+          },
+          "photo": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "unpublished",
+              "rejected"
+            ]
+          },
+          "submittedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "submittedAtDate": {
+            "type": "string"
+          },
+          "decidedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "decidedBy": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "moderatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "moderatedBy": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "rejectionReason": {
+            "type": "string"
+          },
+          "_id": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "TargetChange": {
+        "title": "TargetChange",
+        "required": [
+          "kpi",
+          "value",
+          "effectiveFrom",
+          "seq"
+        ],
+        "properties": {
+          "kpi": {
+            "type": "string"
+          },
+          "value": {
+            "type": "number"
+          },
+          "effectiveFrom": {
+            "type": "string"
+          },
+          "previous": {
+            "type": "number"
+          },
+          "changedBy": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "changedByName": {
+            "type": "string"
+          },
+          "changedAt": {
+            "type": "string"
+          },
+          "seq": {
+            "type": "number"
+          },
+          "_id": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ThresholdChange": {
+        "title": "ThresholdChange",
+        "required": [
+          "green",
+          "amber",
+          "effectiveFrom",
+          "seq"
+        ],
+        "properties": {
+          "green": {
+            "type": "number"
+          },
+          "amber": {
+            "type": "number"
+          },
+          "effectiveFrom": {
+            "type": "string"
+          },
+          "previous": {
+            "type": "object",
+            "properties": {
+              "green": {
+                "type": "number"
+              },
+              "amber": {
+                "type": "number"
+              }
+            }
+          },
+          "changedBy": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "changedByName": {
+            "type": "string"
+          },
+          "changedAt": {
+            "type": "string"
+          },
+          "seq": {
+            "type": "number"
+          },
+          "_id": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "WebsiteMonth": {
+        "title": "WebsiteMonth",
+        "required": [
+          "month",
+          "views",
+          "dailyFirstVisits",
+          "dailyVisitors"
+        ],
+        "properties": {
+          "month": {
+            "type": "string"
+          },
+          "views": {
+            "type": "number"
+          },
+          "dailyFirstVisits": {
+            "type": "number"
+          },
+          "dailyVisitors": {
+            "type": "number"
+          },
+          "channels": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "channel": {
+                  "type": "string"
+                },
+                "views": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "channel",
+                "views"
+              ]
+            }
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "ga4"
+            ]
+          },
+          "updatedBy": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "updatedByName": {
+            "type": "string"
+          },
+          "rawGa4Data": {
+            "type": "object",
+            "properties": {}
+          },
+          "_id": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "MonthlyReport": {
+        "title": "MonthlyReport",
+        "required": [
+          "reportMonth",
+          "view",
+          "generatedBy"
+        ],
+        "properties": {
+          "reportMonth": {
+            "type": "string"
+          },
+          "view": {
+            "type": "string",
+            "enum": [
+              "partner",
+              "team"
+            ]
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "generatedBy": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "generatedByName": {
+            "type": "string"
+          },
+          "_id": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ReferenceDataList": {
+        "title": "ReferenceDataList",
+        "required": [
+          "group",
+          "key",
+          "label",
+          "singular"
+        ],
+        "properties": {
+          "group": {
+            "type": "string",
+            "enum": [
+              "seeker",
+              "hirer",
+              "grants"
+            ]
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "singular": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "updatedBy": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "_id": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "IntegrationConfig": {
+        "title": "IntegrationConfig",
+        "required": [
+          "key"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "identifier": {
+            "type": "string"
+          },
+          "encryptedSecret": {
+            "type": "string"
+          },
+          "secretTail": {
+            "type": "string"
+          },
+          "updatedBy": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "updatedByName": {
+            "type": "string"
+          },
+          "_id": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "AmbassadorRequest": {
+        "title": "AmbassadorRequest",
+        "required": [
+          "userId",
+          "role",
+          "name",
+          "email"
+        ],
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "seeker",
+              "hirer"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "country": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "profession": {
+            "type": "string"
+          },
+          "organisation": {
+            "type": "string"
+          },
+          "motivation": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected"
+            ]
+          },
+          "reviewNote": {
+            "type": "string"
+          },
+          "reviewedBy": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "reviewedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "channelId": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "ambassadorId": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "_id": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "AuditLog": {
+        "title": "AuditLog",
+        "required": [
+          "action",
+          "outcome"
+        ],
+        "properties": {
+          "actorId": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "actorRole": {
+            "type": "string",
+            "enum": [
+              "seeker",
+              "hirer",
+              "admin",
+              "anonymous"
+            ]
+          },
+          "action": {
+            "type": "string"
+          },
+          "resourceType": {
+            "type": "string"
+          },
+          "resourceId": {
+            "type": "string",
+            "format": "objectId"
+          },
+          "ip": {
+            "type": "string"
+          },
+          "userAgent": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "success",
+              "failure"
+            ]
+          },
+          "metadata": {
+            "type": "object",
+            "properties": {}
           },
           "_id": {
             "type": "string"
@@ -850,15 +2400,62 @@
         "tags": [
           "User"
         ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "A list of records",
+            "description": "A paginated list of records",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/User"
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/User"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -967,15 +2564,62 @@
         "tags": [
           "StaffMember"
         ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "A list of records",
+            "description": "A paginated list of records",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/StaffMember"
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/StaffMember"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -1084,15 +2728,62 @@
         "tags": [
           "SeekerProfile"
         ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "A list of records",
+            "description": "A paginated list of records",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/SeekerProfile"
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SeekerProfile"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -1201,15 +2892,62 @@
         "tags": [
           "HirerAccount"
         ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "A list of records",
+            "description": "A paginated list of records",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/HirerAccount"
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/HirerAccount"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -1318,15 +3056,62 @@
         "tags": [
           "Opportunity"
         ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "A list of records",
+            "description": "A paginated list of records",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Opportunity"
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Opportunity"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -1435,15 +3220,62 @@
         "tags": [
           "Applicant"
         ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "A list of records",
+            "description": "A paginated list of records",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Applicant"
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Applicant"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -1552,15 +3384,62 @@
         "tags": [
           "Event"
         ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "A list of records",
+            "description": "A paginated list of records",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Event"
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Event"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -1669,15 +3548,62 @@
         "tags": [
           "Grant"
         ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "A list of records",
+            "description": "A paginated list of records",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Grant"
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Grant"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -1786,15 +3712,62 @@
         "tags": [
           "GrantApplication"
         ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "A list of records",
+            "description": "A paginated list of records",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/GrantApplication"
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/GrantApplication"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -1903,15 +3876,62 @@
         "tags": [
           "CompanyVerification"
         ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "A list of records",
+            "description": "A paginated list of records",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/CompanyVerification"
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CompanyVerification"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -2020,15 +4040,62 @@
         "tags": [
           "VerificationDoc"
         ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "A list of records",
+            "description": "A paginated list of records",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/VerificationDoc"
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/VerificationDoc"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -2137,15 +4204,62 @@
         "tags": [
           "Channel"
         ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "A list of records",
+            "description": "A paginated list of records",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Channel"
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Channel"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -2254,15 +4368,62 @@
         "tags": [
           "ChannelPost"
         ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "A list of records",
+            "description": "A paginated list of records",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ChannelPost"
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ChannelPost"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -2371,15 +4532,62 @@
         "tags": [
           "Report"
         ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "A list of records",
+            "description": "A paginated list of records",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Report"
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Report"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -2488,15 +4696,62 @@
         "tags": [
           "Article"
         ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "A list of records",
+            "description": "A paginated list of records",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Article"
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Article"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -2605,15 +4860,62 @@
         "tags": [
           "Notification"
         ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "A list of records",
+            "description": "A paginated list of records",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/Notification"
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Notification"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -2722,15 +5024,62 @@
         "tags": [
           "SavedItem"
         ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
-            "description": "A list of records",
+            "description": "A paginated list of records",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/SavedItem"
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SavedItem"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -2829,6 +5178,3179 @@
         "responses": {
           "200": {
             "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/admin/programs": {
+      "get": {
+        "summary": "List Programs",
+        "tags": [
+          "Program"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A paginated list of records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Program"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a Program",
+        "tags": [
+          "Program"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Program"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/admin/programs/{id}": {
+      "get": {
+        "summary": "Get a Program",
+        "tags": [
+          "Program"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Record found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update a Program",
+        "tags": [
+          "Program"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Program"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a Program",
+        "tags": [
+          "Program"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/admin/partners": {
+      "get": {
+        "summary": "List Partners",
+        "tags": [
+          "Partner"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A paginated list of records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Partner"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a Partner",
+        "tags": [
+          "Partner"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Partner"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/admin/partners/{id}": {
+      "get": {
+        "summary": "Get a Partner",
+        "tags": [
+          "Partner"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Record found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update a Partner",
+        "tags": [
+          "Partner"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Partner"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a Partner",
+        "tags": [
+          "Partner"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/admin/ambassadors": {
+      "get": {
+        "summary": "List Ambassadors",
+        "tags": [
+          "Ambassador"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A paginated list of records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Ambassador"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a Ambassador",
+        "tags": [
+          "Ambassador"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Ambassador"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/admin/ambassadors/{id}": {
+      "get": {
+        "summary": "Get a Ambassador",
+        "tags": [
+          "Ambassador"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Record found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update a Ambassador",
+        "tags": [
+          "Ambassador"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Ambassador"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a Ambassador",
+        "tags": [
+          "Ambassador"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/admin/beneficiaries": {
+      "get": {
+        "summary": "List Beneficiarys",
+        "tags": [
+          "Beneficiary"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A paginated list of records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Beneficiary"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a Beneficiary",
+        "tags": [
+          "Beneficiary"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Beneficiary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/admin/beneficiaries/{id}": {
+      "get": {
+        "summary": "Get a Beneficiary",
+        "tags": [
+          "Beneficiary"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Record found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update a Beneficiary",
+        "tags": [
+          "Beneficiary"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Beneficiary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a Beneficiary",
+        "tags": [
+          "Beneficiary"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/admin/social-posts": {
+      "get": {
+        "summary": "List SocialPosts",
+        "tags": [
+          "SocialPost"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A paginated list of records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SocialPost"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a SocialPost",
+        "tags": [
+          "SocialPost"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SocialPost"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/admin/social-posts/{id}": {
+      "get": {
+        "summary": "Get a SocialPost",
+        "tags": [
+          "SocialPost"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Record found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update a SocialPost",
+        "tags": [
+          "SocialPost"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SocialPost"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a SocialPost",
+        "tags": [
+          "SocialPost"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/admin/monthly-targets": {
+      "get": {
+        "summary": "List MonthlyTargets",
+        "tags": [
+          "MonthlyTarget"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A paginated list of records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MonthlyTarget"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a MonthlyTarget",
+        "tags": [
+          "MonthlyTarget"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MonthlyTarget"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/admin/monthly-targets/{id}": {
+      "get": {
+        "summary": "Get a MonthlyTarget",
+        "tags": [
+          "MonthlyTarget"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Record found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update a MonthlyTarget",
+        "tags": [
+          "MonthlyTarget"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MonthlyTarget"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a MonthlyTarget",
+        "tags": [
+          "MonthlyTarget"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/admin/testimonials": {
+      "get": {
+        "summary": "List Testimonials",
+        "tags": [
+          "Testimonial"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A paginated list of records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Testimonial"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a Testimonial",
+        "tags": [
+          "Testimonial"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Testimonial"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/admin/testimonials/{id}": {
+      "get": {
+        "summary": "Get a Testimonial",
+        "tags": [
+          "Testimonial"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Record found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update a Testimonial",
+        "tags": [
+          "Testimonial"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Testimonial"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a Testimonial",
+        "tags": [
+          "Testimonial"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/admin/targets": {
+      "get": {
+        "summary": "List TargetChanges",
+        "tags": [
+          "TargetChange"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A paginated list of records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/TargetChange"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a TargetChange",
+        "tags": [
+          "TargetChange"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TargetChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/admin/targets/{id}": {
+      "get": {
+        "summary": "Get a TargetChange",
+        "tags": [
+          "TargetChange"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Record found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update a TargetChange",
+        "tags": [
+          "TargetChange"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TargetChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a TargetChange",
+        "tags": [
+          "TargetChange"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/admin/thresholds": {
+      "get": {
+        "summary": "List ThresholdChanges",
+        "tags": [
+          "ThresholdChange"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A paginated list of records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ThresholdChange"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a ThresholdChange",
+        "tags": [
+          "ThresholdChange"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThresholdChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/admin/thresholds/{id}": {
+      "get": {
+        "summary": "Get a ThresholdChange",
+        "tags": [
+          "ThresholdChange"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Record found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update a ThresholdChange",
+        "tags": [
+          "ThresholdChange"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ThresholdChange"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a ThresholdChange",
+        "tags": [
+          "ThresholdChange"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/admin/website-audience": {
+      "get": {
+        "summary": "List WebsiteMonths",
+        "tags": [
+          "WebsiteMonth"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A paginated list of records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/WebsiteMonth"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a WebsiteMonth",
+        "tags": [
+          "WebsiteMonth"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebsiteMonth"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/admin/website-audience/{id}": {
+      "get": {
+        "summary": "Get a WebsiteMonth",
+        "tags": [
+          "WebsiteMonth"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Record found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update a WebsiteMonth",
+        "tags": [
+          "WebsiteMonth"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebsiteMonth"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a WebsiteMonth",
+        "tags": [
+          "WebsiteMonth"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/admin/reports/monthly": {
+      "get": {
+        "summary": "List MonthlyReports",
+        "tags": [
+          "MonthlyReport"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A paginated list of records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MonthlyReport"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a MonthlyReport",
+        "tags": [
+          "MonthlyReport"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MonthlyReport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/admin/reports/monthly/{id}": {
+      "get": {
+        "summary": "Get a MonthlyReport",
+        "tags": [
+          "MonthlyReport"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Record found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update a MonthlyReport",
+        "tags": [
+          "MonthlyReport"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MonthlyReport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a MonthlyReport",
+        "tags": [
+          "MonthlyReport"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/admin/reference-data": {
+      "get": {
+        "summary": "List ReferenceDataLists",
+        "tags": [
+          "ReferenceDataList"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A paginated list of records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ReferenceDataList"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a ReferenceDataList",
+        "tags": [
+          "ReferenceDataList"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReferenceDataList"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/admin/reference-data/{id}": {
+      "get": {
+        "summary": "Get a ReferenceDataList",
+        "tags": [
+          "ReferenceDataList"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Record found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update a ReferenceDataList",
+        "tags": [
+          "ReferenceDataList"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReferenceDataList"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a ReferenceDataList",
+        "tags": [
+          "ReferenceDataList"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/admin/settings/integrations": {
+      "get": {
+        "summary": "List IntegrationConfigs",
+        "tags": [
+          "IntegrationConfig"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A paginated list of records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/IntegrationConfig"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a IntegrationConfig",
+        "tags": [
+          "IntegrationConfig"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntegrationConfig"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/admin/settings/integrations/{id}": {
+      "get": {
+        "summary": "Get a IntegrationConfig",
+        "tags": [
+          "IntegrationConfig"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Record found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update a IntegrationConfig",
+        "tags": [
+          "IntegrationConfig"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IntegrationConfig"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a IntegrationConfig",
+        "tags": [
+          "IntegrationConfig"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/admin/ambassador-requests": {
+      "get": {
+        "summary": "List AmbassadorRequests",
+        "tags": [
+          "AmbassadorRequest"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A paginated list of records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AmbassadorRequest"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a AmbassadorRequest",
+        "tags": [
+          "AmbassadorRequest"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AmbassadorRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/admin/ambassador-requests/{id}": {
+      "get": {
+        "summary": "Get a AmbassadorRequest",
+        "tags": [
+          "AmbassadorRequest"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Record found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update a AmbassadorRequest",
+        "tags": [
+          "AmbassadorRequest"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AmbassadorRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a AmbassadorRequest",
+        "tags": [
+          "AmbassadorRequest"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/admin/audit-logs": {
+      "get": {
+        "summary": "List AuditLogs",
+        "tags": [
+          "AuditLog"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "A paginated list of records",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AuditLog"
+                      }
+                    },
+                    "meta": {
+                      "type": "object",
+                      "properties": {
+                        "page": {
+                          "type": "integer"
+                        },
+                        "limit": {
+                          "type": "integer"
+                        },
+                        "total": {
+                          "type": "integer"
+                        },
+                        "pages": {
+                          "type": "integer"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a AuditLog",
+        "tags": [
+          "AuditLog"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuditLog"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/admin/audit-logs/{id}": {
+      "get": {
+        "summary": "Get a AuditLog",
+        "tags": [
+          "AuditLog"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Record found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update a AuditLog",
+        "tags": [
+          "AuditLog"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuditLog"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete a AuditLog",
+        "tags": [
+          "AuditLog"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/admin/kpis": {
+      "get": {
+        "summary": "Get monthly KPI cards and attainments",
+        "tags": [
+          "Admin KPIs"
+        ],
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "example": "2026-10"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "KPI attainment summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/kpis/priorities": {
+      "get": {
+        "summary": "Get prioritized KPIs ranked by attainment ascending",
+        "tags": [
+          "Admin KPIs"
+        ],
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "example": "2026-10"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 3
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Prioritized KPIs list"
+          }
+        }
+      }
+    },
+    "/admin/kpis/trend": {
+      "get": {
+        "summary": "Get 6-month historical trend series for a KPI",
+        "tags": [
+          "Admin KPIs"
+        ],
+        "parameters": [
+          {
+            "name": "metric",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "example": "2026-10"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trend series"
+          }
+        }
+      }
+    },
+    "/admin/overview/activity": {
+      "get": {
+        "summary": "Get bounded mixed activity feed across operational entities",
+        "tags": [
+          "Admin Overview"
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 10
+            }
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recent activity feed items"
+          }
+        }
+      }
+    },
+    "/admin/overview/attention": {
+      "get": {
+        "summary": "Get counts of items needing staff attention",
+        "tags": [
+          "Admin Overview"
+        ],
+        "responses": {
+          "200": {
+            "description": "Attention counters"
+          }
+        }
+      }
+    },
+    "/admin/scorecards/me": {
+      "get": {
+        "summary": "Get personal scorecard for caller with historical trend",
+        "tags": [
+          "Admin Scorecards"
+        ],
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "example": "2026-10"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Personal scorecard"
+          }
+        }
+      }
+    },
+    "/admin/scorecards/team": {
+      "get": {
+        "summary": "Get team-wide scorecards (Desk Lead & Super Admin)",
+        "tags": [
+          "Admin Scorecards"
+        ],
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "example": "2026-10"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Team scorecards"
+          }
+        }
+      }
+    },
+    "/admin/settings/integrations/{kind}/test": {
+      "post": {
+        "summary": "Test connectivity for a third-party integration probe",
+        "tags": [
+          "Admin Settings"
+        ],
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Probe result"
+          }
+        }
+      }
+    },
+    "/admin/settings/account": {
+      "get": {
+        "summary": "Get caller account profile and notification preferences",
+        "tags": [
+          "Admin Settings"
+        ],
+        "responses": {
+          "200": {
+            "description": "Caller profile"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update caller account profile and notification preferences",
+        "tags": [
+          "Admin Settings"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated profile"
+          }
+        }
+      }
+    },
+    "/admin/settings/password": {
+      "post": {
+        "summary": "Change password with re-authentication and tokenVersion increment",
+        "tags": [
+          "Admin Settings"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "currentPassword",
+                  "newPassword"
+                ],
+                "properties": {
+                  "currentPassword": {
+                    "type": "string"
+                  },
+                  "newPassword": {
+                    "type": "string",
+                    "minLength": 8
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Password changed successfully"
+          }
+        }
+      }
+    },
+    "/admin/staff/invite": {
+      "post": {
+        "summary": "Invite staff member with up to 2 roles and auto-provision User",
+        "tags": [
+          "Admin Staff"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email",
+                  "roles"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "roles": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "maxItems": 2
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Staff invited successfully"
+          }
+        }
+      }
+    },
+    "/admin/reference-data/{group}/{key}": {
+      "get": {
+        "summary": "Get reference data list items for a specific group and key",
+        "tags": [
+          "Reference Data"
+        ],
+        "parameters": [
+          {
+            "name": "group",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 50
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reference data items"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update reference data list items",
+        "tags": [
+          "Reference Data"
+        ],
+        "parameters": [
+          {
+            "name": "group",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "items"
+                ],
+                "properties": {
+                  "items": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "label": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated reference data list"
+          }
+        }
+      }
+    },
+    "/reference-data": {
+      "get": {
+        "summary": "Public list of all reference data groups and lists",
+        "tags": [
+          "Reference Data"
+        ],
+        "responses": {
+          "200": {
+            "description": "All reference data groups"
+          }
+        }
+      }
+    },
+    "/reference-data/{group}/{key}": {
+      "get": {
+        "summary": "Public reference data list items for dropdowns and forms",
+        "tags": [
+          "Reference Data"
+        ],
+        "parameters": [
+          {
+            "name": "group",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reference data items"
+          }
+        }
+      }
+    },
+    "/admin/community/channels": {
+      "get": {
+        "summary": "List community channels with moderation status",
+        "tags": [
+          "Community Moderation"
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "active",
+                "flagged",
+                "removed"
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Channels list"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a community channel",
+        "tags": [
+          "Community Moderation"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Channel created"
+          }
+        }
+      }
+    },
+    "/admin/community/channels/{id}": {
+      "get": {
+        "summary": "Get channel detail with moderation status",
+        "tags": [
+          "Community Moderation"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Channel detail"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Moderate channel status (active, flagged, removed)",
+        "tags": [
+          "Community Moderation"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Channel updated"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Remove channel",
+        "tags": [
+          "Community Moderation"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Channel removed"
+          }
+        }
+      }
+    },
+    "/admin/community/channels/{channelId}/posts/{postId}": {
+      "delete": {
+        "summary": "Remove post and atomically decrement channel postsCount",
+        "tags": [
+          "Community Moderation"
+        ],
+        "parameters": [
+          {
+            "name": "channelId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "postId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Post removed"
+          }
+        }
+      }
+    },
+    "/admin/community/posts/{id}": {
+      "patch": {
+        "summary": "Flag offending post with moderation reason",
+        "tags": [
+          "Community Moderation"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "flagged": {
+                    "type": "boolean"
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Post flagged"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete offending post",
+        "tags": [
+          "Community Moderation"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Post deleted"
           }
         }
       }
