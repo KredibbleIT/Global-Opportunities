@@ -19,10 +19,13 @@ const notificationSchema = new mongoose.Schema({
   audience: { type: String, required: true, index: true }, // e.g. seekers, hirers, all, both
   type: { type: String, default: 'general' },
   priority: { type: String, default: 'normal' },
+  status: { type: String, enum: ['sent', 'scheduled', 'cancelled'], default: 'sent', index: true },
+  scheduledFor: { type: Date, index: true },
   isActive: { type: Boolean, default: true, index: true },
-  sentAt: String,
+  sentAt: { type: Date, default: Date.now, index: true },
   // Per-user notifications (for example an ambassador decision). Broadcasts leave this empty.
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
   readAt: Date,
 }, { timestamps: true });
 

@@ -849,3 +849,43 @@ const monthlyReportSchema = new mongoose.Schema(
 monthlyReportSchema.index({ reportMonth: 1, view: 1, generatedAt: 1 });
 
 export const MonthlyReport = mongoose.model('MonthlyReport', monthlyReportSchema);
+
+const referenceDataListSchema = new mongoose.Schema(
+  {
+    group: {
+      type: String,
+      required: true,
+      enum: ['seeker', 'hirer', 'grants'],
+      index: true,
+    },
+    key: {
+      type: String,
+      required: true,
+      trim: true,
+      index: true,
+    },
+    label: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    singular: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    items: {
+      type: [String],
+      default: [],
+    },
+    updatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+  },
+  { timestamps: true }
+);
+
+referenceDataListSchema.index({ group: 1, key: 1 }, { unique: true });
+
+export const ReferenceDataList = mongoose.model('ReferenceDataList', referenceDataListSchema);

@@ -1,10 +1,12 @@
 /**
  * Client-side store for admin-sent broadcast notifications.
- * Mirrors the class-store pattern used throughout kredibble-app
- * (authStore, communityStore, profileStore) — in-memory only, no backend.
+ * In mock mode (or offline) it uses the in-memory history.
+ * In live mode, it reads and persists to the backend API (/admin/notifications).
  */
 
 import { BRAND } from '@/config/brand';
+import { isMockMode } from '@/lib/services/mock-mode';
+import { getAdminNotifications, sendAdminNotification } from '@/lib/api';
 
 export type Audience = 'seekers' | 'hirers' | 'both';
 
@@ -37,8 +39,34 @@ const initialHistory: SentNotification[] = [
 class NotificationBroadcastStore {
   // Newest first, like every entry added later.
   history: SentNotification[] = [...initialHistory].sort((a, b) => b.sentAt.localeCompare(a.sentAt));
-
+  private initialized = false;
   private listeners: (() => void)[] = [];
+
+  constructor() {
+    if (typeof window !== 'undefined') {
+      this.init();
+    }
+  }
+
+  async init() {
+    if (this.initialized || isMockMode()) return;
+    this.initialized = true;
+    try {
+      const res = await getAdminNotifications({ limit: 50 });
+      if (res.data && res.data.length > 0) {
+        this.history = res.data.map((item) => ({
+          id: item.id,
+          title: item.title,
+          message: item.message,
+          audience: (item.audience === 'seekers' || item.audience === 'hirers' ? item.audience : 'both') as Audience,
+          sentAt: item.sentAt || item.createdAt || new Date().toISOString(),
+        }));
+        this.notify();
+      }
+    } catch {
+      // Fallback stays in memory
+    }
+  }
 
   subscribe(listener: () => void) {
     this.listeners.push(listener);
@@ -51,16 +79,22 @@ class NotificationBroadcastStore {
     this.listeners.forEach((l) => l());
   }
 
-  send(title: string, message: string, audience: Audience) {
+  send(title: string, message: string, audience: Audience, scheduledFor?: string) {
     const entry: SentNotification = {
       id: `sent-${Date.now()}`,
       title,
       message,
       audience,
-      sentAt: new Date().toISOString(),
+      sentAt: scheduledFor || new Date().toISOString(),
     };
     this.history = [entry, ...this.history];
     this.notify();
+
+    if (!isMockMode()) {
+      sendAdminNotification({ title, message, audience, scheduledFor }).catch(() => {
+        // Fallback remains in local store
+      });
+    }
   }
 }
 

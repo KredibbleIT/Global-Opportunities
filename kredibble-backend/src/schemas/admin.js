@@ -2,9 +2,10 @@ import { z } from 'zod';
 import { ROLE_IDS } from '../lib/permissions.js';
 import { KPI_KEYS } from '../lib/targets.js';
 
-// SEC-077, BE-001: add an existing Kredibble account to the admin staff list with 1 or 2 roles.
+// SEC-077, BE-001, BE-017: add an existing or invited person to the admin staff list with 1 or 2 roles.
 export const staffInviteSchema = z.object({
   body: z.object({
+    name: z.string().trim().min(1, 'Name is required').max(120).optional(),
     email: z.string().email('Invalid email format'),
     role: z.string().trim().min(2, 'Role is too short').max(80, 'Role is too long').optional(),
     roles: z.array(z.enum(ROLE_IDS)).min(1, 'At least 1 role required').max(2, 'At most 2 roles allowed').optional(),
@@ -697,6 +698,69 @@ export const kpiTrendQuerySchema = z.object({
     months: z.coerce.number().int().min(1).max(36).default(6).optional(),
     today: z.string().optional(),
   }).optional(),
+});
+
+// BE-017: Staff update schema
+export const staffUpdateSchema = z.object({
+  body: z.object({
+    name: z.string().trim().min(1).max(120).optional(),
+    status: z.enum(['active', 'suspended']).optional(),
+    role: z.string().trim().min(2).max(80).optional(),
+    roles: z.array(z.enum(ROLE_IDS)).min(1, 'At least 1 role required').max(2, 'At most 2 roles allowed').optional(),
+  }).refine((data) => Object.keys(data).length > 0, {
+    message: 'At least one field to update must be provided',
+  }),
+});
+
+// BE-017: Notification broadcast schemas
+export const notificationBroadcastSchema = z.object({
+  body: z.object({
+    title: z.string().trim().min(1, 'Title is required').max(200, 'Title is too long'),
+    message: z.string().trim().min(1, 'Message is required').max(5000, 'Message is too long'),
+    audience: z.enum(['seekers', 'hirers', 'both', 'all'], { errorMap: () => ({ message: 'Audience must be seekers, hirers, or both' }) }),
+    type: z.string().trim().max(50).optional(),
+    priority: z.enum(['low', 'normal', 'high', 'urgent']).optional(),
+    scheduledFor: z.string().optional(),
+  }),
+});
+
+export const notificationQuerySchema = z.object({
+  query: z.object({
+    page: z.coerce.number().int().min(1).default(1).optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(20).optional(),
+    q: z.string().trim().max(100).optional(),
+    audience: z.enum(['seekers', 'hirers', 'both', 'all']).optional(),
+    status: z.enum(['sent', 'scheduled', 'cancelled']).optional(),
+  }).optional(),
+});
+
+// BE-017: Reference data list schema
+export const referenceListUpdateSchema = z.object({
+  body: z.object({
+    items: z.array(z.string().trim().min(1, 'Item cannot be empty').max(200, 'Item is too long'))
+      .min(1, 'At least one item is required')
+      .max(1000, 'At most 1000 items allowed'),
+    label: z.string().trim().max(100).optional(),
+    singular: z.string().trim().max(100).optional(),
+  }),
+});
+
+// BE-017: Community channels and posts moderation schemas
+export const channelModerateSchema = z.object({
+  body: z.object({
+    status: z.enum(['active', 'flagged', 'removed']).optional(),
+    name: z.string().trim().min(1).max(100).optional(),
+    bio: z.string().trim().max(500).optional(),
+    category: z.string().trim().max(50).optional(),
+  }).refine((data) => Object.keys(data).length > 0, {
+    message: 'At least one field to update must be provided',
+  }),
+});
+
+export const postModerateSchema = z.object({
+  body: z.object({
+    flagged: z.boolean().optional(),
+  }),
 });
 
 

@@ -132,6 +132,7 @@ export type StaffMember = {
   name: string;
   email: string;
   role: string;
+  roles?: string[];
   status: string;
   joinedDate?: string;
   createdAt: string;
@@ -780,7 +781,7 @@ export const deleteCommunityPost = async (id: string) => {
 };
 
 // Staff
-export const inviteStaff = async (data: { email: string; role: string }) => {
+export const inviteStaff = async (data: { email: string; role?: string; roles?: string[]; name?: string }) => {
   return request<StaffMember>(`/admin/staff/invite`, { method: "POST", body: JSON.stringify(data) });
 };
 
@@ -2003,6 +2004,127 @@ export const changePasswordApi = async (data: {
     body: JSON.stringify(data),
   });
 };
+
+// --- BE-017: Community Posts Moderation -------------------------------------
+
+export const deleteCommunityChannelPost = async (channelId: string, postId: string) => {
+  return request<{ data: { id: string; removed: boolean } }>(`/admin/community/channels/${channelId}/posts/${postId}`, {
+    method: "DELETE",
+  });
+};
+
+export const moderateCommunityPost = async (postId: string, data: { flagged: boolean }) => {
+  return request<ChannelPost>(`/admin/community/posts/${postId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+};
+
+// --- BE-017: Notifications Broadcasts ---------------------------------------
+
+export interface SentNotificationRecord {
+  id: string;
+  title: string;
+  message: string;
+  audience: "seekers" | "hirers" | "both" | "all";
+  type?: string;
+  priority?: string;
+  status: "sent" | "scheduled" | "cancelled";
+  scheduledFor?: string | null;
+  sentAt: string;
+  createdAt: string;
+}
+
+export const getAdminNotifications = async (params?: {
+  page?: number;
+  limit?: number;
+  q?: string;
+  audience?: string;
+  status?: string;
+}) => {
+  const query = new URLSearchParams();
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.q) query.set("q", params.q);
+  if (params?.audience) query.set("audience", params.audience);
+  if (params?.status) query.set("status", params.status);
+  const queryString = query.toString() ? `?${query.toString()}` : "";
+  return requestPage<SentNotificationRecord>(`/admin/notifications${queryString}`);
+};
+
+export const sendAdminNotification = async (data: {
+  title: string;
+  message: string;
+  audience: "seekers" | "hirers" | "both" | "all";
+  scheduledFor?: string;
+  type?: string;
+  priority?: string;
+}) => {
+  return request<SentNotificationRecord>(`/admin/notifications`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+export const deleteAdminNotification = async (id: string) => {
+  return request<{ data: { id: string; removed: boolean } }>(`/admin/notifications/${id}`, {
+    method: "DELETE",
+  });
+};
+
+// --- BE-017: Reference Data Lists -------------------------------------------
+
+export interface ReferenceListApi {
+  key: string;
+  label: string;
+  singular: string;
+  items: string[];
+  updatedAt?: string | null;
+}
+
+export interface ReferenceGroupApi {
+  key: "seeker" | "hirer" | "grants";
+  label: string;
+  description: string;
+  lists: ReferenceListApi[];
+}
+
+export const getAdminReferenceData = async (group?: string): Promise<ReferenceGroupApi[]> => {
+  const query = group ? `?group=${encodeURIComponent(group)}` : "";
+  return request<ReferenceGroupApi[]>(`/admin/reference-data${query}`);
+};
+
+export const getAdminReferenceList = async (
+  group: string,
+  key: string,
+  params?: { q?: string; page?: number; limit?: number }
+): Promise<{
+  group: string;
+  key: string;
+  label: string;
+  singular: string;
+  items: string[];
+  total: number;
+}> => {
+  const query = new URLSearchParams();
+  if (params?.q) query.set("q", params.q);
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  const queryString = query.toString() ? `?${query.toString()}` : "";
+  return request(`/admin/reference-data/${group}/${key}${queryString}`);
+};
+
+export const updateAdminReferenceList = async (
+  group: string,
+  key: string,
+  data: { items: string[]; label?: string; singular?: string }
+): Promise<ReferenceListApi> => {
+  return request<ReferenceListApi>(`/admin/reference-data/${group}/${key}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+};
+
 
 
 

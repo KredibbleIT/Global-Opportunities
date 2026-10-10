@@ -1879,6 +1879,7 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
 - 2026-10-10 — BE-015 completed on branch feature/BE-015-scorecard: implemented scorecard calculation module (`kredibble-backend/src/lib/scorecards.js`), composite calculation capped at 100% per metric (`min(attainment, 1.0)`), pro-rated targets for `count` metrics in open current months (`target * dayOfMonth / daysInMonth`) and full targets for past months/running totals (`active_ambassadors`), grace period suppression before day 5 of current month (`SCORE_FROM_DAY = 5`, `isTooEarly: true`, `composite: null`), role-to-metric ownership engine with multi-role union support, caller-isolated scorecard endpoint (`GET /api/v1/admin/scorecards/me`) with 6-month historical trend series and strict PII protection (zero colleague data leakage), desk-wide team scorecard endpoint (`GET /api/v1/admin/scorecards/team` and alias `/scorecards`) restricted via RBAC to Desk Lead and Super Admin (`requireScreen('team_scorecard', 'view')`), and wired admin frontend `getMyScorecardApi` and `getTeamScorecardApi` in `kredibble-admin/src/lib/api.ts` and `services/scorecard.ts`. All 21 tests in `tests/be-015-scorecard.test.js`, contract tests (2/2 passing), full regression sweep (55/55 tests passing across be-013, be-014, be-015, contract), clean backend/admin lint, TypeScript clean, UTF-8 clean.
 - 2026-10-10 — BE-016 completed on branch feature/BE-016-settings-and-account: implemented write-only integration credentials with AES-256-GCM encryption at rest, masked secret tails (`••••3f9a`), connection testing (`POST /admin/settings/integrations/:kind/test`), account profile and notification preferences synchronization across User and StaffMember, session-bound password change with bcrypt cost 12, tokenVersion invalidation, and reauth rate limiting. Wired admin frontend services in `kredibble-admin/src/lib/services/settings.ts` and `src/lib/api.ts`. All 17 tests in `tests/be-016-settings.test.js` and contract tests pass cleanly.
 - 2026-10-10 — BE-004 completed on branch feature/BE-004-kpi-engine: implemented unified KPI engine module (`kredibble-backend/src/lib/kpi-engine.js`) with 10 canonical KPIs, pro-rated targets for `count` KPIs in open current months (`target * dayOfMonth / daysInMonth`) and full targets for past months/running totals (`active_ambassadors` with `pace = 1`), dynamic targets via TargetChange (BE-002) and thresholds via ThresholdChange (BE-003), standard status vocabulary (`green` / `"On track"`, `amber` / `"Behind"`, `red` / `"Off track"`, `null` when target = 0), deterministic priority ranking (lowest pro-rated attainment first, ties preserving definition order), historical trend series generation, mounted `GET /api/v1/admin/kpis`, `GET /api/v1/admin/kpis/priorities`, `GET /api/v1/admin/kpis/trend` with `requireScreen('overview', 'view')` and Zod schemas, refactored `/admin/dashboard` and `/admin/scorecards` to eliminate disparate logic and guarantee metric coherence, and wired admin frontend api methods (`getKpiCardsApi`, `getKpiPrioritiesApi`, `getKpiTrendApi`) and real overview service in `kredibble-admin`. All 17 tests in `tests/be-004-kpi-engine.test.js` pass cleanly; regression sweep with `be-015-scorecard.test.js` and `admin-api-contract.test.js` passes 40/40; admin and backend lint/typecheck clean; UTF-8 check clean.
+- 2026-10-10 — BE-017 completed on branch feature/BE-017-remaining-collections: implemented the four remaining operational collections (Team & Staff management, Notifications compose/schedule/history, Reference Data lists, Community Channels moderation). Added ReferenceDataList model with bootstrap seeding on startup (`seedReferenceDataIfNeeded`), public cached endpoints for app/web consumption, and admin editing with audit logs; extended Notification schema with scheduled/sent statuses and audit logging; implemented staff invite endpoint (`POST /admin/staff/invite`) with auto-provisioning of User accounts and assignment of up to 2 roles (`MAX_STAFF_ROLES`), staff patch/toggle status (active/suspended) and deletion; implemented channels and posts moderation with atomic counter decrements and audit logs; added Zod schemas and screen permission guards for `team`, `notifications`, `reference_data`, and `channels`. Wired admin services in `staff.ts`, `notification-store.ts`, reference-data page, and community channel page. All 26 tests in `tests/be-017-collections.test.js` and contract tests in `tests/admin-api-contract.test.js` pass (28/28 total); admin/backend lint clean (0 errors), TypeScript clean (`npx tsc --noEmit`), UTF-8 encoding clean (650 files checked).
 
 ---
 
@@ -1922,7 +1923,7 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
 | BE-014 | Overview: activity feed, attention counts, the same numbers as the nav pills | P1 | BE-005 to BE-011 | [x] Done |
 | BE-015 | Scorecard: composite, grace period, team view, who did what | P2 | BE-004, BE-001 | [x] Done |
 | BE-016 | Settings: integrations (write-only credentials), my account, password | P1 | BE-001 | [x] Done |
-| BE-017 | Remaining collections: notifications, reference data, team, invitations | P3 | BE-001 | [ ] Open |
+| BE-017 | Remaining collections: notifications, reference data, team, invitations | P3 | BE-001 | [x] Done |
 | BE-018 | Audit trail for every settings and role change | P1 | – | [x] Done |
 | BE-019 | Performance, indexes, pagination, OpenAPI, tests | P1 | all | [ ] Open |
 | BE-020 | Demo seed for the real-mode test run | P3 | BE-001 to BE-011 | [ ] Open |
@@ -2119,7 +2120,40 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
 - **Verify:** Tests in `tests/be-016-settings.test.js` (17/17 passing), contract tests in `tests/admin-api-contract.test.js` (2/2 passing, 0 missing paths), backend/admin lint clean (0 errors, 0 warnings), TypeScript clean (`npx tsc --noEmit`), UTF-8 clean (`npm run check:encoding`).
 
 #### BE-017 — Remaining collections
-- Notifications (compose, schedule, history), reference data lists (universities, countries and so on), team invitations by email (`POST /admin/staff/invite` exists: add the two roles), staff status and removal, channels moderation. Each with pagination, search and the roles from BE-001.
+- [x] **Team & Staff Management:**
+  - `GET /api/v1/admin/staff`: paginated list with search (`q` on name/email) and filters (`role`, `status`), guarded by `requireScreen('team', 'view')`.
+  - `GET /api/v1/admin/staff/:id`: detail lookup by Mongo ObjectId, email, or linked `userId`.
+  - `POST /api/v1/admin/staff/invite`: accepts email, optional name, and 1–2 roles (`MAX_STAFF_ROLES`); auto-provisions `User` record if missing with secure random hash and email verified; assigns roles and creates `StaffMember`; records `AuditLog` entry; rejects duplicate staff with 409 and caps roles at 2; guarded by `requireScreen('team', 'edit')`.
+  - `PATCH /api/v1/admin/staff/:id` and `PUT /api/v1/admin/staff/:id`: updates status (`active` | `suspended`), name, and roles (1–2); synchronizes with `User.name`; guarded by `requireScreen('team', 'edit')`.
+  - `DELETE /api/v1/admin/staff/:id`: removes staff member document and creates audit log; guarded by `requireScreen('team', 'edit')`.
+- [x] **Notifications (Compose, Schedule, History):**
+  - Extended `Notification` model with `status: 'sent' | 'scheduled' | 'cancelled'`, `scheduledFor` (Date), `sentAt` (Date), `createdBy` (User ref).
+  - `POST /api/v1/admin/notifications`: creates notification; sends immediately (sets `sentAt` and status `sent`) or schedules for future (`status: 'scheduled'`); broadcasts via WebSockets for immediate sends; audits via `AUDIT_ACTIONS.NOTIFICATION`; guarded by `requireScreen('notifications', 'edit')`.
+  - `GET /api/v1/admin/notifications`: paginated broadcast history with search (`q` on title/message) and filters (`status`, `targetRole`); guarded by `requireScreen('notifications', 'view')`.
+  - `GET /api/v1/admin/notifications/:id` & `DELETE /api/v1/admin/notifications/:id`: view detail and cancel/delete; guarded by `requireScreen('notifications', 'edit')`.
+- [x] **Reference Data Lists:**
+  - `ReferenceDataList` model in `AdminPortal.js` with `{ group, key, label, singular, items, updatedBy }` and compound unique index `{ group: 1, key: 1 }`.
+  - `seedReferenceDataIfNeeded()` boots default taxonomy lists (universities, country codes, opportunity types, partner industries, stages) on startup.
+  - `GET /api/v1/admin/reference-data`: returns all reference groups and item counts; guarded by `requireScreen('reference_data', 'view')`.
+  - `GET /api/v1/admin/reference-data/:group/:key`: returns specific list items with search and pagination.
+  - `PUT /api/v1/admin/reference-data/:group/:key`: updates item labels and codes, records `AuditLog` (`SETTINGS_UPDATE`), guarded by `requireScreen('reference_data', 'edit')`.
+  - `GET /api/v1/reference-data` and `GET /api/v1/reference-data/:group/:key`: public endpoints mounted in `src/routes/index.js` for mobile/web app consumption.
+- [x] **Community Channels & Moderation:**
+  - `GET /api/v1/admin/community/channels`: lists channels with search, status filters, and postsCount/membersCount tallies; guarded by `requireScreen('channels', 'view')`.
+  - `GET /api/v1/admin/community/channels/:id`: channel detail with moderation metadata.
+  - `POST /api/v1/admin/community/channels`: creates channel with audit log (`COMMUNITY_CHANNEL`).
+  - `PATCH /api/v1/admin/community/channels/:id`: moderates channel status (`active` | `flagged` | `removed`), updates flag notes; guarded by `requireScreen('channels', 'edit')`.
+  - `DELETE /api/v1/admin/community/channels/:id`: soft-deletes / marks channel as removed with audit log.
+  - `GET /api/v1/admin/community/channels/:channelId/posts`: lists posts in channel with search and pagination.
+  - `PATCH /api/v1/admin/community/posts/:id`: flags post for moderation with reason; guarded by `requireScreen('channels', 'edit')`.
+  - `DELETE /api/v1/admin/community/channels/:channelId/posts/:postId` and `DELETE /api/v1/admin/community/posts/:id`: deletes post, atomically decrements channel `postsCount`, and audits (`COMMUNITY_POST`).
+- [x] **Admin Frontend Integration:**
+  - `kredibble-admin/src/lib/api.ts`: typed methods for staff, notifications, reference data, and community post/channel moderation.
+  - `kredibble-admin/src/lib/services/staff.ts`: wired `loadStaffRows`, `loadStaffMember`, `inviteStaff`, `setStaffRoles`, `toggleStaffStatus`, and `removeStaffMember` to live API in real mode.
+  - `kredibble-admin/src/lib/notification-store.ts`: wired to `getAdminNotifications` and `sendAdminNotification` in real mode.
+  - `kredibble-admin/src/app/(dashboard)/reference-data/page.tsx`: wired to `getAdminReferenceData` and `updateAdminReferenceList` in real mode.
+  - `kredibble-admin/src/app/(dashboard)/community/[id]/page.tsx`: wired post deletion and channel status toggles to live API in real mode.
+- **Verify:** `tests/be-017-collections.test.js` (26/26 passing), `tests/admin-api-contract.test.js` (2/2 passing, 0 missing endpoints), backend lint clean (0 errors), admin lint clean (0 errors), TypeScript clean (`npx tsc --noEmit`), UTF-8 encoding clean (`npm run check:encoding`).
 
 #### BE-018 — Audit trail
 - Every change to a target, a threshold, a role, a permission, a stage name, an integration or a report is written to `AuditLog` with who, when, the previous value and the new one. The Change history screen reads from it. Nothing in the audit log is editable.

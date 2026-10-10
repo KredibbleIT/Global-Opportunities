@@ -37,6 +37,7 @@ import { normalizeLegacyRole } from '../lib/permissions.js';
 import { postChannelMessage, listChannelMessages, getThread, findPost } from '../lib/chat.js';
 import { evictFromChannelRoom } from '../socket.js';
 import { chatMessageSchema } from '../schemas/ambassador.js';
+import { getReferenceDataGroups, getReferenceDataList } from '../lib/reference-data.js';
 
 const parseJson = (value, fallback = []) => {
   if (!value) return fallback;
@@ -863,6 +864,17 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
   router.use('/ambassador-requests', ambassadorRouter);
   // After the staff-portal router, so its paths (e.g. /admin/reports/monthly) match first.
   mountAdminDataRoutes(router);
+
+  router.get('/reference-data', asyncHandler(async (req, res) => {
+    const groups = await getReferenceDataGroups(req.query.group || null);
+    itemResponse(res, groups);
+  }));
+
+  router.get('/reference-data/:group/:key', asyncHandler(async (req, res) => {
+    const list = await getReferenceDataList(req.params.group, req.params.key);
+    if (!list) throw notFound('Reference list');
+    itemResponse(res, list);
+  }));
 
   router.get('/health', (req, res) => {
     const dbStatus = mongoose.connection.readyState;

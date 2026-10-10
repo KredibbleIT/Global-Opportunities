@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { AuditLog } from '../models/User.js';
+export { AuditLog };
 import logger from './logger.js';
 import crypto from 'node:crypto';
 
