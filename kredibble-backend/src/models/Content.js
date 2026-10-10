@@ -31,6 +31,9 @@ const notificationSchema = new mongoose.Schema({
 
 // SEC-031: Compound index for notifications
 notificationSchema.index({ createdAt: -1 });
+notificationSchema.index({ userId: 1, readAt: 1, createdAt: -1 });
+notificationSchema.index({ status: 1, scheduledFor: 1 });
+notificationSchema.index({ audience: 1, status: 1, sentAt: -1 });
 
 export const Article = mongoose.model('Article', articleSchema);
 export const Notification = mongoose.model('Notification', notificationSchema);

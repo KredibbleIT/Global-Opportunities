@@ -88,6 +88,13 @@ partnerSchema.pre('save', function() {
   }
 });
 
+programSchema.index({ status: 1, deliveredAt: -1 });
+programSchema.index({ deliveredAt: -1 });
+
+partnerSchema.index({ 'stageHistory.stage': 1, 'stageHistory.at': 1 });
+partnerSchema.index({ stage: 1, closed: 1 });
+partnerSchema.index({ assignedOwnerId: 1, closed: 1 });
+
 export const CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 
 export function generateReferralCode() {
@@ -182,6 +189,11 @@ ambassadorSchema.pre('save', async function () {
     this.dormantSince = undefined;
   }
 });
+
+ambassadorSchema.index({ status: 1, joinedAt: -1 });
+ambassadorSchema.index({ joinedAt: -1 });
+ambassadorSchema.index({ status: 1, dormantSince: 1 });
+ambassadorSchema.index({ linkedUserId: 1 });
 
 const ambassadorAmplificationSchema = new mongoose.Schema({
   ambassadorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Ambassador', required: true, index: true },
@@ -318,6 +330,9 @@ beneficiarySchema.pre('save', function () {
 
 beneficiarySchema.index({ ambassadorId: 1, verified: 1, verifiedAt: 1 });
 beneficiarySchema.index({ verified: 1, verifiedAt: 1 });
+beneficiarySchema.index({ source: 1, verified: 1 });
+beneficiarySchema.index({ createdAtDate: -1 });
+beneficiarySchema.index({ verifiedAt: -1 });
 
 export const CANONICAL_SOCIAL_PLATFORMS = [
   'facebook',
@@ -847,6 +862,7 @@ const monthlyReportSchema = new mongoose.Schema(
 );
 
 monthlyReportSchema.index({ reportMonth: 1, view: 1, generatedAt: 1 });
+monthlyReportSchema.index({ generatedAt: -1 });
 
 export const MonthlyReport = mongoose.model('MonthlyReport', monthlyReportSchema);
 

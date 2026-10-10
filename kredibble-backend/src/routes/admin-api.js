@@ -293,11 +293,14 @@ const addManagedRoutes = ({
     if (req.query.q) {
       filter.$or = ['title', 'organizationName', 'fullName', 'email', 'country'].map((field) => ({ [field]: { $regex: escapedRegex(req.query.q), $options: 'i' } }));
     }
-    const { skip, limit } = pageOptions(req.query);
+    const { skip, limit, page } = pageOptions(req.query);
     let query = Model.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit);
     if (populate) query = query.populate(populate);
-    const records = await query;
-    listResponse(res, records.map(transform));
+    const [records, total] = await Promise.all([
+      query,
+      Model.countDocuments(filter),
+    ]);
+    listResponse(res, records.map(transform), total, page, limit);
   }));
 
   adminApiRouter.get(`${path}/:id`, ...viewAuth, asyncHandler(async (req, res) => {

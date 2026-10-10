@@ -105,6 +105,10 @@ opportunitySchema.index({ title: 'text', company: 'text', location: 'text' });
 opportunitySchema.index({ status: 1, publishedAt: -1 });
 opportunitySchema.index({ vetted: 1, publishedAt: -1 });
 opportunitySchema.index({ status: 1, vetted: 1 });
+opportunitySchema.index({ status: 1, vetted: 1, publishedAt: -1 });
+opportunitySchema.index({ status: 1, vetted: 1, type: 1, publishedAt: -1 });
+opportunitySchema.index({ status: 1, closesAt: 1 });
+opportunitySchema.index({ status: 1, eventAt: 1 });
 
 opportunitySchema.virtual('organisation')
   .get(function () { return this.offeringOrganization || this.company; })
