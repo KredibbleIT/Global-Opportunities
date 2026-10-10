@@ -75,12 +75,21 @@ import {
   monthlyReportQuerySchema,
   overviewActivityQuerySchema,
   scorecardQuerySchema,
+  kpiQuerySchema,
+  kpiTrendQuerySchema,
   integrationUpdateSchema,
   accountProfileUpdateSchema,
   passwordChangeSchema,
 } from '../schemas/admin.js';
 import bcrypt from 'bcryptjs';
 import { reauthLimiter } from '../lib/rate-limiters.js';
+import {
+  getKpiCardsForMonth,
+  getKpiPrioritiesForMonth,
+  getKpiTrend,
+  rankPriorities,
+  fetchRawKpiMetrics,
+} from '../lib/kpi-engine.js';
 import {
   getAllIntegrationsStatus,
   saveIntegrationSettings,
@@ -2691,114 +2700,7 @@ const metricStatus = (value, target, thresholds = {}) => {
   return ratio >= green ? 'green' : ratio >= amber ? 'amber' : 'red';
 };
 
-const dashboardMetrics = async (month) => {
-  const { start, end } = monthBounds(month);
-  const [opportunitiesPublished, programsActive, programsDelivered, partnersClosed, ambassadorsActive, beneficiariesVerified, beneficiariesAdded, social, applications, websiteAudienceDoc, monthlyReportsDocCount] = await Promise.all([
-    Opportunity.countDocuments({
-      vetted: true,
-      $or: [
-        { status: 'published' },
-        { moderationStatus: { $in: ['published', 'approved'] } },
-      ],
-      $and: [
-        {
-          $or: [
-            { publishedAt: { $gte: start, $lt: end } },
-            { publishedAt: { $exists: false }, createdAt: { $gte: start, $lt: end } },
-            { publishedAt: null, createdAt: { $gte: start, $lt: end } },
-          ],
-        },
-      ],
-    }),
-    Program.countDocuments({ status: { $in: ['planned', 'running'] } }),
-    Program.countDocuments({
-      status: 'delivered',
-      $or: [
-        { deliveredAt: { $gte: start, $lt: end } },
-        { deliveredAt: { $exists: false }, endAt: { $gte: start, $lt: end } },
-        { deliveredAt: null, endAt: { $gte: start, $lt: end } },
-      ],
-    }),
-    Partner.countDocuments({
-      $or: [
-        {
-          stageHistory: {
-            $elemMatch: {
-              stage: { $in: ['onboard', 'renew', 'Onboard', 'Renew'] },
-              at: { $gte: start.toISOString().slice(0, 10), $lt: end.toISOString().slice(0, 10) },
-            },
-          },
-        },
-        {
-          $and: [
-            { stageHistory: { $size: 0 } },
-            { closed: true, updatedAt: { $gte: start, $lt: end } },
-          ],
-        },
-      ],
-    }),
-    (async () => {
-      const summary = await calculateNetworkSummary(month);
-      return summary.active;
-    })(),
-    Beneficiary.countDocuments({
-      verified: true,
-      $or: [
-        { verifiedAt: { $gte: start.toISOString().slice(0, 10), $lt: end.toISOString().slice(0, 10) } },
-        { verifiedAt: { $exists: false }, createdAt: { $gte: start, $lt: end } },
-        { verifiedAt: null, createdAt: { $gte: start, $lt: end } },
-      ],
-    }),
-    Beneficiary.countDocuments({
-      $or: [
-        { createdAtDate: { $gte: start.toISOString().slice(0, 10), $lt: end.toISOString().slice(0, 10) } },
-        { createdAt: { $gte: start, $lt: end } },
-      ],
-    }),
-    SocialPost.aggregate([
-      {
-        $match: {
-          status: 'published',
-          $or: [
-            { postedAt: { $gte: start, $lt: end } },
-            { postedAtDate: { $gte: start.toISOString().slice(0, 10), $lt: end.toISOString().slice(0, 10) } },
-          ],
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          posts: { $sum: 1 },
-          reach: { $sum: '$reach' },
-          engagement: { $sum: '$engagement' },
-        },
-      },
-    ]),
-    OpportunityEngagement.countDocuments({ event: 'application', createdAt: { $gte: start, $lt: end } }),
-    WebsiteMonth.findOne({ month }),
-    MonthlyReport.countDocuments({ generatedAt: { $gte: start, $lt: end } }),
-  ]);
-  const publishedPosts = social[0]?.posts || 0;
-  const reachVal = social[0]?.reach || 0;
-  const engagementVal = social[0]?.engagement || 0;
-  const websiteViews = websiteAudienceDoc?.views || 0;
-  const monthlyReportsCount = monthlyReportsDocCount || 0;
-  return {
-    opportunitiesPublished, programsActive, programsDelivered, partnersClosed, ambassadorsActive, beneficiariesVerified,
-    beneficiariesAdded,
-    postsPublished: publishedPosts,
-    posts_published: publishedPosts,
-    socialReach: reachVal,
-    social_reach: reachVal,
-    socialEngagement: engagementVal,
-    social_engagement: engagementVal,
-    opportunityApplications: applications,
-    websiteViews,
-    website_views: websiteViews,
-    monthlyReports: monthlyReportsCount,
-    monthly_reports: monthlyReportsCount,
-  };
-};
+const dashboardMetrics = async (month) => fetchRawKpiMetrics(month);
 
 const partnerPipelineHealth = (month) => calculatePipelineHealth(month);
 
@@ -3004,18 +2906,67 @@ adminApiRouter.get(
 );
 
 
+// BE-004: KPI Engine endpoints
+adminApiRouter.get(
+  '/kpis',
+  requireAdminOrStaffAuth,
+  requireScreen('overview', 'view'),
+  validate(kpiQuerySchema),
+  asyncHandler(async (req, res) => {
+    const today = req.query.today ? new Date(req.query.today) : new Date();
+    const result = await getKpiCardsForMonth(req.query.month, today);
+    itemResponse(res, result);
+  })
+);
+
+adminApiRouter.get(
+  '/kpis/priorities',
+  requireAdminOrStaffAuth,
+  requireScreen('overview', 'view'),
+  validate(kpiQuerySchema),
+  asyncHandler(async (req, res) => {
+    const today = req.query.today ? new Date(req.query.today) : new Date();
+    const count = req.query.count ? parseInt(req.query.count, 10) : undefined;
+    const result = await getKpiPrioritiesForMonth(req.query.month, today, count);
+    itemResponse(res, result);
+  })
+);
+
+adminApiRouter.get(
+  '/kpis/trend',
+  requireAdminOrStaffAuth,
+  requireScreen('overview', 'view'),
+  validate(kpiTrendQuerySchema),
+  asyncHandler(async (req, res) => {
+    const today = req.query.today ? new Date(req.query.today) : new Date();
+    const result = await getKpiTrend(req.query.month, req.query.months, req.query.kpi, today);
+    itemResponse(res, result);
+  })
+);
+
 adminApiRouter.get('/dashboard', requireAdminOrStaffAuth, requirePortalRoles(...ALL_PORTAL_ROLES), asyncHandler(async (req, res) => {
   const { month, start } = monthBounds(req.query.month);
-  const [values, targets, pipeline, upcomingPrograms, activities, trend] = await Promise.all([
+  const today = req.query.today ? new Date(req.query.today) : new Date();
+  const [values, kpiCardsResult, pipeline, upcomingPrograms, activities, trend] = await Promise.all([
     dashboardMetrics(month),
-    MonthlyTarget.find({ month }),
+    getKpiCardsForMonth(month, today),
     partnerPipelineHealth(month),
     Program.find({ status: { $in: ['planned', 'running'] }, startAt: { $gte: start } }).sort({ startAt: 1 }).limit(10),
     AdminActivity.find().sort({ createdAt: -1 }).limit(10),
     sixMonthTrend(month),
   ]);
-  const kpis = targetProgress(values, targets);
-  itemResponse(res, { month, values, kpis, priorities: kpis.filter((kpi) => kpi.target > 0), trend, pipeline, upcomingPrograms: upcomingPrograms.map(toClientObject), recentActivity: activities.map(toClientObject) });
+  const kpis = kpiCardsResult.kpis;
+  const priorities = rankPriorities(kpis);
+  itemResponse(res, {
+    month,
+    values,
+    kpis,
+    priorities,
+    trend,
+    pipeline,
+    upcomingPrograms: upcomingPrograms.map(toClientObject),
+    recentActivity: activities.map(toClientObject),
+  });
 }));
 
 adminApiRouter.get('/settings/pipeline-stages', requireAdminOrStaffAuth, requireScreen('settings_admin', 'view'), asyncHandler(async (req, res) => {

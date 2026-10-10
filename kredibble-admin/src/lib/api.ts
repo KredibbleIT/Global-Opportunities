@@ -449,8 +449,39 @@ export const getDashboardSummary = async <T = Record<string, unknown>>() => {
 };
 
 /** The desk dashboard: month KPIs against targets, priorities, trend and pipeline (GET /admin/dashboard). */
-export const getAdminDashboard = async <T = Record<string, unknown>>() => {
-  return request<T>("/admin/dashboard");
+export const getAdminDashboard = async <T = Record<string, unknown>>(month?: string) => {
+  const query = month ? `?month=${month}` : "";
+  return request<T>(`/admin/dashboard${query}`);
+};
+
+/** BE-004: The 10 KPI cards for a month with value, target, pro-rated target, pace, and status (GET /admin/kpis). */
+export const getKpiCardsApi = async <T = Record<string, unknown>>(month?: string, today?: string) => {
+  const params = new URLSearchParams();
+  if (month) params.set("month", month);
+  if (today) params.set("today", today);
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return request<T>(`/admin/kpis${query}`);
+};
+
+/** BE-004: Ranked priority KPIs sorted by lowest attainment against pro-rated target (GET /admin/kpis/priorities). */
+export const getKpiPrioritiesApi = async <T = Record<string, unknown>>(month?: string, count?: number, today?: string) => {
+  const params = new URLSearchParams();
+  if (month) params.set("month", month);
+  if (count) params.set("count", String(count));
+  if (today) params.set("today", today);
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return request<T>(`/admin/kpis/priorities${query}`);
+};
+
+/** BE-004: 6-month historical trend series across KPIs (GET /admin/kpis/trend). */
+export const getKpiTrendApi = async <T = Record<string, unknown>>(params?: { month?: string; kpi?: string; months?: number; today?: string }) => {
+  const search = new URLSearchParams();
+  if (params?.month) search.set("month", params.month);
+  if (params?.kpi) search.set("kpi", params.kpi);
+  if (params?.months) search.set("months", String(params.months));
+  if (params?.today) search.set("today", params.today);
+  const query = search.toString() ? `?${search.toString()}` : "";
+  return request<T>(`/admin/kpis/trend${query}`);
 };
 
 export const getVerifications = async <T = Record<string, unknown>>(status?: string) => {

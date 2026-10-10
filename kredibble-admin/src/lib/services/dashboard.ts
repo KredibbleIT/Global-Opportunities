@@ -17,7 +17,15 @@
  * - A PAST month is a read-only snapshot: the value reached against the target and thresholds that applied THEN (the final status).
  */
 import { KPI_KEYS, isRunningTotal } from "@/config/kpis";
-import { ApiError, getDashboardSummary, getOverviewAttentionApi, getOverviewActivityApi } from "@/lib/api";
+import {
+  ApiError,
+  getDashboardSummary,
+  getOverviewAttentionApi,
+  getOverviewActivityApi,
+  getKpiCardsApi,
+  getKpiTrendApi,
+  getUpcomingPrograms,
+} from "@/lib/api";
 import { formatDate, formatMonth } from "@/lib/format";
 import { attainment, currentMonth, isPastMonth, kpiStatus, kpiTarget, kpiMonthProgress, kpiThresholds, kpiValue, monthsBefore, storeData, type KpiData } from "@/lib/kpi";
 import { getMockCollection, getPartnerStageLabels } from "@/lib/mock-store";
@@ -247,10 +255,13 @@ function buildForcedMockOverview(state: Exclude<ForcedState, "loading">, month: 
 // ---- real API ----------------------------------------------------------------------------------------------------------
 
 async function fetchRealOverview(month: MonthKey): Promise<OverviewResult> {
-  const [attentionRes, activityRes, summaryRes] = await Promise.allSettled([
+  const [attentionRes, activityRes, summaryRes, kpisRes, trendRes, upcomingRes] = await Promise.allSettled([
     getOverviewAttentionApi(),
     getOverviewActivityApi(),
     getDashboardSummary() as Promise<unknown> as Promise<Record<string, number>>,
+    getKpiCardsApi<{ month: string; isPast: boolean; kpis: KpiCardData[]; cards: KpiCardData[] }>(month),
+    getKpiTrendApi<{ trend: Record<KpiKey, TrendPoint[]> }>({ month, months: TREND_MONTHS }),
+    getUpcomingPrograms(),
   ]);
 
   const summary = summaryRes.status === "fulfilled" ? summaryRes.value : null;
@@ -276,15 +287,53 @@ async function fetchRealOverview(month: MonthKey): Promise<OverviewResult> {
 
   const activity = activityRes.status === "fulfilled" ? activityRes.value : null;
 
+  let kpis: KpiCardData[] | null = null;
+  let isPast = isPastMonth(month);
+  if (kpisRes.status === "fulfilled") {
+    const val = kpisRes.value;
+    kpis = val.kpis || val.cards || null;
+    if (typeof val.isPast === "boolean") isPast = val.isPast;
+  }
+
+  let trend: Record<KpiKey, TrendPoint[]> | null = null;
+  if (trendRes.status === "fulfilled") {
+    trend = trendRes.value.trend || null;
+  }
+
+  let programs: UpcomingProgram[] | null = null;
+  if (upcomingRes.status === "fulfilled" && Array.isArray(upcomingRes.value)) {
+    programs = (upcomingRes.value as unknown as Array<Record<string, unknown>>).map((p) => ({
+      id: String(p.id || p._id || ""),
+      title: String(p.title || p.name || ""),
+      type: (p.type || p.programType || "training") as UpcomingProgram["type"],
+      startAt: String(p.startAt || ""),
+      participants: Number(p.participants || p.participantCount || 0),
+      target: Number(p.target || p.participantTarget || 0),
+      partner: p.partner ? String(p.partner) : (p.partnerName ? String(p.partnerName) : null),
+      status: (p.status === "running" ? "running" : "planned") as UpcomingProgram["status"],
+    }));
+  }
+
+  const notConnected = kpis === null;
+
   const data: OverviewData = {
-    ...unavailable(month),
     source: "api",
-    notConnected: true,
-    attention,
+    month,
+    notConnected,
+    isPast,
+    kpis,
+    trend,
+    programs,
     activity,
+    attention,
   };
 
-  const primaryFailure = attentionRes.status === "rejected" ? attentionRes : (activityRes.status === "rejected" ? activityRes : summaryRes);
+  const primaryFailure = attentionRes.status === "rejected"
+    ? attentionRes
+    : (activityRes.status === "rejected"
+      ? activityRes
+      : (kpisRes.status === "rejected" ? kpisRes : summaryRes));
+
   return { data, issue: classifyIssue(primaryFailure) };
 }
 

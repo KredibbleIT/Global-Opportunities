@@ -681,6 +681,25 @@ export const passwordChangeSchema = z.object({
   }),
 });
 
+// BE-004: KPI Engine schemas
+export const kpiQuerySchema = z.object({
+  query: z.object({
+    month: z.string().regex(/^\d{4}-\d{2}$/, 'month must be YYYY-MM format').optional(),
+    today: z.string().optional(),
+    count: z.coerce.number().int().min(1).max(10).optional(),
+  }).optional(),
+});
+
+export const kpiTrendQuerySchema = z.object({
+  query: z.object({
+    month: z.string().regex(/^\d{4}-\d{2}$/, 'month must be YYYY-MM format').optional(),
+    kpi: z.string().optional(),
+    months: z.coerce.number().int().min(1).max(36).default(6).optional(),
+    today: z.string().optional(),
+  }).optional(),
+});
+
+
 
 
 
