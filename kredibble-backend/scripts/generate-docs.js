@@ -14,7 +14,7 @@ import {
   VerificationDoc,
 } from '../src/models/Platform.js';
 import { Channel, ChannelPost, Report } from '../src/models/Community.js';
-import { Article, Notification } from '../src/models/Content.js';
+import { Article, Notification, NewsItem } from '../src/models/Content.js';
 import {
   Program,
   Partner,
@@ -65,6 +65,8 @@ const models = [
   { name: 'IntegrationConfig', model: IntegrationConfig, path: 'admin/settings/integrations' },
   { name: 'AmbassadorRequest', model: AmbassadorRequest, path: 'admin/ambassador-requests' },
   { name: 'AuditLog', model: AuditLog, path: 'admin/audit-logs' },
+  { name: 'NewsItem', model: NewsItem, path: 'admin/news' },
+  { name: 'NewsItemPublic', model: NewsItem, path: 'news' },
 ];
 
 function sanitizeSchema(obj) {
