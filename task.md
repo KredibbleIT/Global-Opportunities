@@ -308,6 +308,7 @@ Note: the audit's own text reached the same conclusion on #10 ("Actually this on
 | SEC-127 | Hirer postings and managed channels rely on mock in-memory authStore data | P2 | Mobile hirer | Open |
 >>>>>>> origin/main
 | SEC-128 | Mobile test coverage: 0 screen/UI component tests; 116 ESLint warnings across screens | P2 | Mobile tests | Open |
+| SEC-129 | SEC-002 manifest red on main: BE-017 public `GET /reference-data` routes not in PUBLIC_ROUTES | P1 | Backend tests | Open |
 
 ---
 
@@ -1534,6 +1535,14 @@ Found while planning the move to the company infrastructure platform (`Company_I
 - [ ] `npm run lint` passes with 0 errors and 0 warnings
 - [ ] All test suites pass in CI
 
+### SEC-129 — SEC-002 manifest red on main (BE-017 reference-data routes)
+**Priority:** P1
+**Evidence:** `GET /api/v1/reference-data` (and the legacy `/api` alias) answers 200 anonymously by design (BE-017 public taxonomy), but neither is in `PUBLIC_ROUTES` in `tests/security.p0.test.js`, so the manifest sweep fails on clean `main` (verified 2026-10-11 by stashing all work and re-running only the manifest test). The parameterised `GET /reference-data/:group/:key` answers 404 to the sweep's dummy ids, which also counts as a leak. Found while verifying BE-026.
+**Risk:** CI gate is red; every subsequent PR trains the team to ignore a red security suite.
+**Fix:** Decide public-by-design (reference taxonomy is non-sensitive) and add both routes to `PUBLIC_ROUTES` + reachable check, or put them behind auth. Either way the sweep must be green.
+**Acceptance criteria:**
+- [ ] `npx jest tests/security.p0.test.js` is green on `main` (with and without a local `.env` AI key)
+
 # Execution Order
 
 Phases run in sequence per `AGENTS.md`. Within a phase, respect this dependency chain:
@@ -1882,6 +1891,7 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
 - 2026-10-10 — BE-017 completed on branch feature/BE-017-remaining-collections: implemented the four remaining operational collections (Team & Staff management, Notifications compose/schedule/history, Reference Data lists, Community Channels moderation). Added ReferenceDataList model with bootstrap seeding on startup (`seedReferenceDataIfNeeded`), public cached endpoints for app/web consumption, and admin editing with audit logs; extended Notification schema with scheduled/sent statuses and audit logging; implemented staff invite endpoint (`POST /admin/staff/invite`) with auto-provisioning of User accounts and assignment of up to 2 roles (`MAX_STAFF_ROLES`), staff patch/toggle status (active/suspended) and deletion; implemented channels and posts moderation with atomic counter decrements and audit logs; added Zod schemas and screen permission guards for `team`, `notifications`, `reference_data`, and `channels`. Wired admin services in `staff.ts`, `notification-store.ts`, reference-data page, and community channel page. All 26 tests in `tests/be-017-collections.test.js` and contract tests in `tests/admin-api-contract.test.js` pass (28/28 total); admin/backend lint clean (0 errors), TypeScript clean (`npx tsc --noEmit`), UTF-8 encoding clean (650 files checked).
 - 2026-10-10 — BE-019 completed on branch feature/BE-019-performance-indexes-openapi: added compound and single-field indexes across all analytical date and filter fields in Mongoose models (`Program`, `Partner`, `Ambassador`, `Beneficiary`, `SocialPost`, `MonthlyReport`, `Opportunity`, `Notification`, `Channel`, `ChannelPost`, `StaffMember`, `AuditLog`); hardened pagination using `parsePagination` (clamped limit <= 100, page >= 1) and implemented dual `meta` / `pagination` keys in `paginatedResponse` with real collection counts via `countDocuments`; enhanced `scripts/generate-docs.js` with schema type sanitization (converting Mongoose `schemaobjectid` to `{ type: 'string', format: 'objectId' }`) and registered all 13 AdminPortal models and dedicated admin routes; regenerated `src/swagger.json` and `kredibble-postman-collection.json`; enforced append-only mutation guards on `TargetChange` and `ThresholdChange` models preventing updates or deletions; implemented new integration test suite (`tests/be-019-performance-indexes.test.js`, 15/15 passing) verifying index definitions, pagination clamping, dual metadata, append-only guards, and OpenAPI 3.0 validity. All contract tests (`tests/admin-api-contract.test.js`, 2/2) pass; KPI engine and scorecard coverage verified at 97.58% and 100%; backend/admin lint clean (0 errors/warnings), TypeScript clean (`tsc --noEmit`), UTF-8 encoding clean (652 files checked, 0 failing).
 - 2026-10-10 — BE-020 completed on branch feature/BE-020-demo-seed: implemented deterministic demo seed generator (`kredibble-backend/src/lib/demo-seed.js`) providing parity with admin mock seed (`mock-seed.ts`). Generates 13 staff across all 12 roles with active User accounts and bcrypt cost 12 hashes; 14 vetted and published opportunities/listings; 12 programs across 4 states; 18 partners across the 6-stage pipeline with dated stage histories; 40 ambassadors with unique referral codes, tiers, and amplification logs; 120 verified beneficiaries across 5 sources; 60 social posts across canonical platforms; 9 testimonials; 6 months of website audience traffic rollups with channel sums matching views; TargetChange and ThresholdChange audit records for all 10 KPIs; 4 past monthly reports and bootstrap reference data taxonomies. Wired `scripts/e2e-server.js` with conditional `E2E_SEED=demo` flag preserving minimal single-admin default when unset; added `npm run e2e:server:demo` in backend and `npm run test:e2e:demo` in admin with playwright config env pass-through. Added comprehensive integration test suite (`tests/be-020-demo-seed.test.js`, 13/13 passing) verifying deterministic population, role coverage, schema invariants, KPI engine execution, and live scorecard endpoints. Contract tests (2/2 passing); ESLint and TypeScript clean across backend and admin; UTF-8 clean. Appended lesson to `SYSTEM_DESIGN_LESSONS.md`.
+- 2026-10-11 — BE-026 complete on branch feature/BE-026-website-inbound-sync: signed HMAC webhook (`POST /api/v1/sync/website-webhook`, 401-only failures, manifest-safe) + idempotent opportunity upserts (unvetted-draft invariant, app-owned counters/ownership preserved) + ambassador upserts keyed by referral code with email linking (activity/`linkedUserId`/lifecycle app-owned) + `SyncEvent` journal + admin failures list/retry + pull safety net (`npm run sync:website-pull`) + `docs/website-sync-mapping.md` + conflict rule resolved as proposed. News transport ready via `SYNC_HANDLERS` registry; store lands in BE-022. Tests `tests/be-026-website-sync.test.js` 10/10; backend lint + admin typecheck/lint clean; `check:encoding` 0 failing. Filed SEC-129 (manifest red on clean main from BE-017 public reference-data routes) found during verification. Remaining BE work: BE-021 (tally, unblocked by this), BE-022 (news ingest), BE-025 (AI hardening; stale partial branch `security/SEC-041-ai-prompt-injection` from 2026-09-30 exists — assess, do not merge as-is).
 
 ---
 
@@ -1934,7 +1944,7 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
 | BE-023 | Product item 4: stakeholder segments | P2 | – | [ ] Open |
 | BE-024 | Product item 5: ambassador registration (apply, review, approve) | P1 | BE-007 | [x] Done |
 | BE-025 | Product item 6: AI assistant hardening | P2 | – | [ ] Open |
-| BE-026 | Product item 7: website to app sync (inbound) | P1 | BE-011, BE-007 | [ ] Open |
+| BE-026 | Product item 7: website to app sync (inbound) | P1 | BE-011, BE-007 | [x] Done |
 | BE-027 | Product item 8: email verification screen support | P1 | – | [x] Done |
 
 (Product item 3, App Colours, is frontend only: no backend task.)
@@ -2196,6 +2206,15 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
 #### BE-026 — Product item 7: website to app sync
 - **Today:** the backend PUSHES to WordPress (`syncToWordpress`, `wordpressSync` status on records). Nothing flows back.
 - **To do:** an INBOUND path so website updates show in the app without a manual step: a signed webhook from the website (shared secret, replay protection) plus a scheduled pull as a safety net. Idempotent upserts keyed by an external id for opportunities, news, and ambassadors (including referral codes); a clear rule for who wins when both sides changed a record (proposal: the website is the source of truth for content, the app for ambassador activity); a sync status and last error per record; an admin screen or endpoint to see failures and retry. Field mapping documented in the repo.
+- **Implemented:**
+  - [x] Signed webhook `POST /api/v1/sync/website-webhook` (HMAC-SHA256 `v1=<hex>` over `<timestamp>.<raw-body>`, 5-min replay window, per-`eventId` dedupe → duplicate deliveries return 200 without touching data; every verification failure answers 401 with one message, so the SEC-002 manifest sweep stays green and sync-config is not oracleable).
+  - [x] Idempotent upserts: opportunities keyed by `wordpressSync.wordpressId` (content overwritten, but always land as unvetted `draft`/`pending` — website can never publish or vet — and ownership/counters never touched); ambassadors keyed by referral code with email fallback linking (profile content overwritten, referral activity/`linkedUserId`/status lifecycle app-owned; website code replaces placeholder codes, clashes fail visibly).
+  - [x] `SyncEvent` journal (`received`/`applied`/`failed`, stored attributes, source webhook|pull) + per-record `wordpressSync` status/lastError; `website_sync.event` audit rows on apply and failure.
+  - [x] Admin `GET /api/v1/admin/sync/events` (status/resource filters, paginated) + `POST /api/v1/admin/sync/events/:id/retry` (settings_admin screen; applied retry is a no-op).
+  - [x] Pull safety net `npm run sync:website-pull [-- --since=]` (same upserts, `pull-…` event ids, JSON summary, non-zero exit on failure).
+  - [x] Conflict rule resolved as proposed (website wins content, app wins activity/moderation); field mapping in `docs/website-sync-mapping.md`; env `WEBSITE_WEBHOOK_SECRET` (+ skew override), no new required vars; swagger + postman regenerated; admin client `getSyncEventsApi`/`retrySyncEventApi`.
+  - [x] News: transport is resource-agnostic (`SYNC_HANDLERS` registry); the store lands in BE-022.
+- **Verify:** Tests in `tests/be-026-website-sync.test.js` (10/10 passing: signature round-trip/tamper/stale/misconfig, 401s, draft invariant, counter/ownership preservation, duplicate + re-delivery, failure journaling, email linking, admin list/retry/no-op/404, lib-level retry-to-applied); manifest + contract suites unaffected (the two `security.p0` failures observed are pre-existing on clean `main` — SEC-129 filed for the reference-data one, the assistant-503 one is a local-`.env`-AI-key artifact); backend lint clean; admin typecheck + lint clean; `check:encoding` 0 failing.
 
 #### BE-027 — Product item 8: email verification
 - **Today:** `EmailVerificationCode` and the `requireEmailVerified` gate exist (HTTP 403 `EMAIL_VERIFICATION_REQUIRED`).
@@ -2215,7 +2234,7 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
 2. **Individual scorecards (BE-015):** keep desk-wide scores (people sharing a role share a score), or record who did each action so scores can be per person?
 3. **History (BE-006, BE-008):** reconstruct past pipeline and record counts from events, or only keep snapshots going forward? (Without either, a past month's pipeline gauge counts partners as they are now.)
 4. **Reports (BE-013):** should "Download PDF" store a real file, or only the log record plus the browser's print as now?
-5. **Website sync (BE-026):** which side wins when both changed the same record?
+5. **Website sync (BE-026):** which side wins when both changed the same record? — **RESOLVED 2026-10-11 as proposed:** website wins content, app wins activity/moderation (see `docs/website-sync-mapping.md`).
 6. **AI provider and budget (BE-025).**
 7. **Stakeholder segments (BE-023):** can a user be in both segments at once (proposal: an ambassador is also in the general community)?
 

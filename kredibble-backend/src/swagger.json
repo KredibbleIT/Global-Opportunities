@@ -7734,6 +7734,161 @@
         }
       }
     },
+    "/sync/website-webhook": {
+      "post": {
+        "summary": "Receive a signed website content event (HMAC, replay-protected)",
+        "tags": [
+          "Website Sync"
+        ],
+        "parameters": [
+          {
+            "name": "X-Kredibble-Signature",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Kredibble-Timestamp",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "eventId",
+                  "resource",
+                  "externalId"
+                ],
+                "properties": {
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "resource": {
+                    "type": "string",
+                    "enum": [
+                      "opportunity",
+                      "ambassador"
+                    ]
+                  },
+                  "externalId": {
+                    "type": "string"
+                  },
+                  "attributes": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Duplicate delivery ignored"
+          },
+          "201": {
+            "description": "Event applied"
+          },
+          "400": {
+            "description": "Invalid payload or unmappable content"
+          },
+          "401": {
+            "description": "Invalid webhook signature"
+          }
+        }
+      }
+    },
+    "/admin/sync/events": {
+      "get": {
+        "summary": "List inbound website-sync events (failures visible here)",
+        "tags": [
+          "Website Sync"
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "received",
+                "applied",
+                "failed"
+              ]
+            }
+          },
+          {
+            "name": "resource",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "opportunity",
+                "ambassador"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Paginated sync event log"
+          }
+        }
+      }
+    },
+    "/admin/sync/events/{id}/retry": {
+      "post": {
+        "summary": "Retry a failed website-sync event with its stored attributes",
+        "tags": [
+          "Website Sync"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Retried (or no-op when already applied)"
+          },
+          "400": {
+            "description": "Event still fails to apply"
+          },
+          "404": {
+            "description": "Sync event not found"
+          }
+        }
+      }
+    },
     "/admin/overview/activity": {
       "get": {
         "summary": "Get bounded mixed activity feed across operational entities",

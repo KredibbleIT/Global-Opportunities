@@ -19,6 +19,7 @@
         "user:create-admin": "node scripts/create-admin.js",
         "accounts:complete-deletions": "node scripts/complete-account-deletions.js",
         "retention:cleanup": "node -e \"import('./src/lib/data-retention.js').then(m => m.runDataRetentionSweep())\",",
+        "sync:website-pull": "node scripts/website-pull.js",
         "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest",
         "lint": "eslint .",
         "docs:generate": "node scripts/generate-docs.js",

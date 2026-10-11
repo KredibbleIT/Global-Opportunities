@@ -905,3 +905,29 @@ const referenceDataListSchema = new mongoose.Schema(
 referenceDataListSchema.index({ group: 1, key: 1 }, { unique: true });
 
 export const ReferenceDataList = mongoose.model('ReferenceDataList', referenceDataListSchema);
+
+// BE-026: inbound website-sync event log. Every webhook delivery and every
+// pulled record is journaled here first (keyed by the sender's event id for
+// webhook replay idempotency), so failures are visible and retryable from the
+// admin panel. `attributes` holds the sender payload the upsert ran with.
+export const SYNC_EVENT_RESOURCES = Object.freeze(['opportunity', 'ambassador']);
+export const SYNC_EVENT_STATUSES = Object.freeze(['received', 'applied', 'failed']);
+
+const syncEventSchema = new mongoose.Schema(
+  {
+    eventId: { type: String, required: true, unique: true, index: true },
+    resource: { type: String, required: true, enum: SYNC_EVENT_RESOURCES, index: true },
+    externalId: { type: String, required: true, trim: true, index: true },
+    status: { type: String, required: true, enum: SYNC_EVENT_STATUSES, default: 'received', index: true },
+    error: { type: String, default: null },
+    attributes: { type: mongoose.Schema.Types.Mixed, default: {} },
+    appliedAt: { type: Date, default: null },
+    source: { type: String, enum: ['webhook', 'pull'], default: 'webhook', index: true },
+  },
+  { timestamps: true }
+);
+
+syncEventSchema.index({ resource: 1, externalId: 1, createdAt: -1 });
+syncEventSchema.index({ status: 1, createdAt: -1 });
+
+export const SyncEvent = mongoose.model('SyncEvent', syncEventSchema);

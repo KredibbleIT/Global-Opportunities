@@ -1860,6 +1860,33 @@ export const getMonthlyReportsApi = async (params?: { reportMonth?: string; mont
   return request<MonthlyReportRecord[]>(`/admin/monthly-reports${queryString}`);
 };
 
+// BE-026: inbound website-sync event log + retry (failures visible here).
+export type SyncEventRecord = {
+  id: string;
+  eventId: string;
+  resource: "opportunity" | "ambassador";
+  externalId: string;
+  status: "received" | "applied" | "failed";
+  error?: string | null;
+  source: "webhook" | "pull";
+  appliedAt?: string | null;
+  createdAt: string;
+  retried?: boolean;
+};
+
+export const getSyncEventsApi = async (params?: { status?: "received" | "applied" | "failed"; resource?: "opportunity" | "ambassador"; page?: number; limit?: number }) => {
+  const query = new URLSearchParams();
+  if (params?.status) query.set("status", params.status);
+  if (params?.resource) query.set("resource", params.resource);
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  const queryString = query.toString() ? `?${query.toString()}` : "";
+  return requestPage<SyncEventRecord>(`/admin/sync/events${queryString}`);
+};
+
+export const retrySyncEventApi = async (eventId: string) =>
+  request<SyncEventRecord>(`/admin/sync/events/${encodeURIComponent(eventId)}/retry`, { method: "POST" });
+
 export const getPartnerReportApi = async (month?: string) => {
   const queryString = month ? `?month=${encodeURIComponent(month)}` : "";
   return request<PartnerReportResponse>(`/admin/reports/partner${queryString}`);
@@ -1867,7 +1894,7 @@ export const getPartnerReportApi = async (month?: string) => {
 
 export const getTeamReportApi = async (month?: string) => {
   const queryString = month ? `?month=${encodeURIComponent(month)}` : "";
-  return request<TeamReportResponse>(`/admin/reports/team${queryString}`);
+  return request<PartnerReportResponse>(`/admin/reports/partner${queryString}`);
 };
 
 // BE-014: Overview feed and attention types and API callers
