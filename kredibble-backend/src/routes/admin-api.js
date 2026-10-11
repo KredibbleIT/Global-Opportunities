@@ -36,6 +36,7 @@ import {
   TESTIMONIAL_ACTIONS_MAP,
   WebsiteMonth,
   MonthlyReport,
+  CategoryMap,
 } from '../models/AdminPortal.js';
 import { deleteFromWordpress, syncToWordpress } from '../lib/wordpress-sync.js';
 import { env } from '../config/env.js';
@@ -52,6 +53,8 @@ import {
   getReferenceDataList,
   updateReferenceDataList,
 } from '../lib/reference-data.js';
+import { buildTallyReport, fetchWebsiteSnapshot } from '../lib/website-tally.js';
+import { taxonomyUpsertSchema } from '../schemas/website-tally.js';
 import { auditReq, AUDIT_ACTIONS, AUDIT_RESOURCE_TYPES } from '../lib/audit.js';
 import { getTargetsForMonth, getTargetHistory, saveTargetBatch, KPI_KEYS } from '../lib/targets.js';
 import { getThresholdsInForce, getThresholdHistory, saveThresholdChange, getCombinedChangeHistory } from '../lib/thresholds.js';
@@ -4560,6 +4563,59 @@ adminApiRouter.put('/reference-data/:group/:key', requireAdminOrStaffAuth, requi
   });
 
   itemResponse(res, toClientObject(updated));
+}));
+
+// --- BE-021: website category taxonomy + live tally ---------------------------
+// The mapping table curates website category names onto app opportunity
+// types; the tally compares both sides live (502 when the website is
+// unreachable, mirroring the news feed pattern).
+
+adminApiRouter.get('/sync/taxonomy', requireAdminOrStaffAuth, requireScreen('settings_admin', 'view'), asyncHandler(async (req, res) => {
+  const rows = await CategoryMap.find({}).sort({ websiteCategory: 1 }).lean();
+  listResponse(res, rows.map(toClientObject));
+}));
+
+adminApiRouter.put('/sync/taxonomy', requireAdminOrStaffAuth, requireScreen('settings_admin', 'edit'), validate(taxonomyUpsertSchema), asyncHandler(async (req, res) => {
+  const websiteCategory = String(req.body.websiteCategory).trim();
+  const previous = await CategoryMap.findOne({ websiteCategory }).lean();
+  const row = await CategoryMap.findOneAndUpdate(
+    { websiteCategory },
+    {
+      $set: {
+        ...(req.body.appCategory !== undefined ? { appCategory: req.body.appCategory } : {}),
+        ...(req.body.note !== undefined ? { note: req.body.note } : {}),
+        updatedBy: req.auth.sub,
+      },
+    },
+    { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true },
+  );
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.SETTINGS_UPDATE,
+    resourceType: AUDIT_RESOURCE_TYPES.SETTINGS,
+    resourceId: row._id,
+    outcome: 'success',
+    metadata: {
+      setting: 'category_taxonomy',
+      websiteCategory,
+      previous: previous?.appCategory ?? null,
+      appCategory: row.appCategory ?? null,
+    },
+  });
+  itemResponse(res, toClientObject(row));
+}));
+
+adminApiRouter.get('/sync/tally', requireAdminOrStaffAuth, requireScreen('settings_admin', 'view'), asyncHandler(async (req, res) => {
+  const { opportunities: websiteOpportunities, categories: websiteCategories } = await fetchWebsiteSnapshot();
+  const [appOpportunities, mappings] = await Promise.all([
+    Opportunity.find({}).select('title type wordpressSync').lean(),
+    CategoryMap.find({}).lean(),
+  ]);
+  const report = buildTallyReport({ websiteOpportunities, websiteCategories, appOpportunities, mappings });
+  itemResponse(res, {
+    websiteOpportunities: websiteOpportunities.length,
+    appOpportunities: appOpportunities.length,
+    report,
+  });
 }));
 
 // --- 4. Community Channels Moderation ---------------------------------------

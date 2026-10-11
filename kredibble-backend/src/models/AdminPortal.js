@@ -905,3 +905,18 @@ const referenceDataListSchema = new mongoose.Schema(
 referenceDataListSchema.index({ group: 1, key: 1 }, { unique: true });
 
 export const ReferenceDataList = mongoose.model('ReferenceDataList', referenceDataListSchema);
+
+// BE-021: website-to-app category taxonomy. Each row maps one website
+// category name onto the app opportunity type it corresponds to.
+// `appCategory: null` means "seen on the website, awaiting curation".
+const categoryMapSchema = new mongoose.Schema(
+  {
+    websiteCategory: { type: String, required: true, trim: true, unique: true, index: true },
+    appCategory: { type: String, trim: true, default: null, index: true },
+    note: { type: String, trim: true, default: '' },
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  },
+  { timestamps: true }
+);
+
+export const CategoryMap = mongoose.model('CategoryMap', categoryMapSchema);

@@ -391,6 +391,47 @@ swaggerSpec.paths['/reference-data/{group}/{key}'] = {
   },
 };
 
+// BE-021: website category taxonomy + live tally
+swaggerSpec.paths['/admin/sync/taxonomy'] = {
+  get: {
+    summary: 'List website-to-app category mappings',
+    tags: ['Website Sync'],
+    responses: { 200: { description: 'Category mapping table' } },
+  },
+  put: {
+    summary: 'Create or update a website category mapping',
+    tags: ['Website Sync'],
+    requestBody: {
+      required: true,
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            required: ['websiteCategory'],
+            properties: {
+              websiteCategory: { type: 'string' },
+              appCategory: { type: 'string', nullable: true },
+              note: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+    responses: { 200: { description: 'Mapping saved' } },
+  },
+};
+
+swaggerSpec.paths['/admin/sync/tally'] = {
+  get: {
+    summary: 'Compare website opportunities and categories with the app',
+    tags: ['Website Sync'],
+    responses: {
+      200: { description: 'Tally report (in both, only website, only app, differing, unmapped)' },
+      502: { description: 'Website unreachable or unconfigured' },
+    },
+  },
+};
+
 swaggerSpec.paths['/admin/community/channels'] = {
   get: {
     summary: 'List community channels with moderation status',
