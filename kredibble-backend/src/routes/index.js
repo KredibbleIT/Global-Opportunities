@@ -38,6 +38,7 @@ import { postChannelMessage, listChannelMessages, getThread, findPost } from '..
 import { evictFromChannelRoom } from '../socket.js';
 import { chatMessageSchema } from '../schemas/ambassador.js';
 import { getReferenceDataGroups, getReferenceDataList } from '../lib/reference-data.js';
+import { callerSegments, channelSegments, normalizeSegments, resolveSegments, segmentsClause, sharesSegment, GENERAL_SEGMENT } from '../lib/segments.js';
 
 const parseJson = (value, fallback = []) => {
   if (!value) return fallback;
@@ -523,7 +524,18 @@ const isLegacyMember = (channel, userId) =>
   Boolean(userId) && (channel.memberIds || []).some((memberId) => Boolean(memberId) && toId(memberId) === String(userId));
 
 const canAccessChannel = async (channel, user) => {
-  if (channel.visibility === 'public' || user?.role === ADMIN || isChannelCreator(channel, user)) return true;
+  if (user?.role === ADMIN || isChannelCreator(channel, user)) return true;
+  // BE-023: ambassador-only channels are invisible to the general segment.
+  // Explicit membership still grants access (e.g. an admin added the caller),
+  // so the caller's segment is only loaded for segment-restricted channels.
+  if (!channelSegments(channel).includes(GENERAL_SEGMENT)) {
+    const caller = user?.sub ? await User.findById(user.sub).select('segment').lean() : null;
+    if (!sharesSegment(resolveSegments(caller), channel)) {
+      const membership = await getMembership(channel._id, user?.sub);
+      return membership?.status === 'active' || isLegacyMember(channel, user?.sub);
+    }
+  }
+  if (channel.visibility === 'public') return true;
   const membership = await getMembership(channel._id, user?.sub);
   return membership?.status === 'active' || isLegacyMember(channel, user?.sub);
 };
@@ -551,15 +563,18 @@ const communityPostsReadScope = async (req) => {
   if (req.auth?.role === ADMIN) return {};
   const userId = req.auth?.sub;
   if (!userId) {
-    const publicChannels = await Channel.find({ visibility: 'public', status: { $ne: 'removed' } }).select('_id').lean();
+    const publicChannels = await Channel.find({ visibility: 'public', status: { $ne: 'removed' }, ...segmentsClause([GENERAL_SEGMENT]) }).select('_id').lean();
     return { channelId: { $in: publicChannels.map((c) => c._id) } };
   }
 
+  // BE-023: ambassador-only channels are excluded unless the caller belongs
+  // to the ambassador segment; explicit membership still grants access.
+  const mine = await callerSegments(userId);
   const [accessibleChannels, activeMemberships] = await Promise.all([
     Channel.find({
       status: { $ne: 'removed' },
       $or: [
-        { visibility: 'public' },
+        { visibility: 'public', ...segmentsClause(mine) },
         { createdBy: userId },
         { memberIds: userId },
       ],
@@ -598,7 +613,8 @@ const submitJoinRequest = async (channel, userId, body = {}) => {
 };
 
 const CHANNEL_POST_FIELDS = ['body', 'title', 'bannerImage', 'link', 'linkText', 'hasRespondButton', 'reactions'];
-const CHANNEL_UPDATE_FIELDS = ['name', 'category', 'bio', 'avatar', 'visibility', 'status', 'requiresApproval'];
+const CHANNEL_UPDATE_FIELDS = ['name', 'category', 'bio', 'avatar',
+'visibility', 'status', 'requiresApproval', 'segments'];
 
 const publicTestimonial = (testimonial) => {
   if (!testimonial) return null;
@@ -1088,10 +1104,23 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
     const membershipChannelIds = req.auth
       ? await CommunityMembership.find({ userId: req.auth.sub, status: 'active' }).distinct('channelId')
       : [];
+    // BE-023: ambassador-only channels are listed only for the ambassador
+    // segment (admins see everything); creators and members always see
+    // their own channels. Legacy channels without `segments` count as general.
+    const segmentFilter = req.auth?.role === ADMIN
+      ? null
+      : req.auth
+        ? segmentsClause(await callerSegments(req.auth.sub), [
+          { createdBy: req.auth.sub },
+          { memberIds: req.auth.sub },
+          { _id: { $in: membershipChannelIds } },
+        ])
+        : segmentsClause([GENERAL_SEGMENT]);
     const visible = req.auth
       ? { $or: [{ visibility: 'public' }, { createdBy: req.auth.sub }, { memberIds: req.auth.sub }, { _id: { $in: membershipChannelIds } }] }
       : { visibility: 'public' };
     const clauses = [visible];
+    if (segmentFilter) clauses.push(segmentFilter);
     if (req.auth?.role !== ADMIN) clauses.push({ status: { $ne: 'removed' } });
     if (req.query.visibility) clauses.push({ visibility: String(req.query.visibility) });
     const pattern = searchPattern(req.query.q);
@@ -1122,10 +1151,14 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
     const category = String(req.body.category || '').trim();
     if (!name || !category) throw new ApiError(400, 'name and category are required');
     if (!['public', 'private'].includes(visibility)) throw new ApiError(400, 'visibility must be public or private');
+    // BE-023: optional audience segments (default general). Anyone may scope
+    // their own channel; the values are validated against the enum.
+    const segments = req.body.segments === undefined ? [GENERAL_SEGMENT] : normalizeSegments(req.body.segments);
     const channel = await Channel.create({
       name,
       category,
       visibility,
+      segments,
       bio,
       avatar,
       createdBy: req.auth.sub,
@@ -1156,6 +1189,8 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
     await requireChannelAdmin(channel, req.auth);
     const updates = Object.fromEntries(Object.entries(req.body).filter(([key]) => CHANNEL_UPDATE_FIELDS.includes(key)));
     if (updates.visibility && !['public', 'private'].includes(updates.visibility)) throw new ApiError(400, 'visibility must be public or private');
+    // BE-023: audience segments are validated against the enum (400 on unknown values).
+    if (updates.segments !== undefined) updates.segments = normalizeSegments(updates.segments);
     Object.assign(channel, updates);
     await channel.save();
     itemResponse(res, toClientObject(channel));

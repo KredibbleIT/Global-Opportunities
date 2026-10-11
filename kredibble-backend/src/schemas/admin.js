@@ -752,9 +752,21 @@ export const channelModerateSchema = z.object({
     name: z.string().trim().min(1).max(100).optional(),
     bio: z.string().trim().max(500).optional(),
     category: z.string().trim().max(50).optional(),
+    // BE-023: move a channel between stakeholder segments.
+    segments: z.array(z.enum(['general', 'ambassador'])).min(1).max(2).optional(),
   }).refine((data) => Object.keys(data).length > 0, {
     message: 'At least one field to update must be provided',
   }),
+});
+
+// BE-023: move a user between stakeholder segments (audited).
+export const userSegmentMoveSchema = z.object({
+  body: z.object({
+    segment: z.enum(['general', 'ambassador']),
+    reason: z.string().trim().max(500).optional(),
+  }).strict(),
+  query: z.any(),
+  params: z.object({ id: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid id') }),
 });
 
 export const postModerateSchema = z.object({

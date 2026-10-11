@@ -43,6 +43,8 @@ export const createAdminChannelSchema = z.object({
     category: z.string().trim().min(2).max(60).default('General'),
     bio: z.string().trim().max(500).optional(),
     visibility: z.enum(['public', 'private']).default('private'),
+    // BE-023: audience segments (default general).
+    segments: z.array(z.enum(['general', 'ambassador'])).min(1).max(2).optional(),
   }).strict(),
   query: z.any(),
   params: z.any(),

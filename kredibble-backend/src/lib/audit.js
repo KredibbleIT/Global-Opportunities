@@ -16,6 +16,7 @@ export const AUDIT_ACTIONS = {
   PASSWORD_RESET: 'auth.password.reset',
   ROLE_CHANGE: 'auth.role.change',
   EMAIL_VERIFY: 'auth.email.verify',
+  SEGMENT_CHANGE: 'user.segment.change',
 
   // Admin mutations
   ADMIN_VERIFICATION_DECISION: 'admin.verification.decision',

@@ -95,6 +95,7 @@ import {
   referenceListUpdateSchema,
   channelModerateSchema,
   postModerateSchema,
+  userSegmentMoveSchema,
 } from '../schemas/admin.js';
 import bcrypt from 'bcryptjs';
 import { reauthLimiter } from '../lib/rate-limiters.js';
@@ -126,6 +127,7 @@ import { postChannelMessage, listChannelMessages, getThread, findPost, setAllowR
 import { notifyUser } from '../lib/user-notify.js';
 import { evictFromChannelRoom } from '../socket.js';
 import { toRequestResponse } from './ambassador.js';
+import { moveUserSegment, normalizeSegments, GENERAL_SEGMENT } from '../lib/segments.js';
 import {
   approveAmbassadorRequestSchema, rejectAmbassadorRequestSchema, chatMessageSchema,
   createAdminChannelSchema, addChannelMemberSchema, allowRepliesSchema,
@@ -1818,6 +1820,10 @@ adminApiRouter.post('/ambassador-requests/:id/approve', requireAdminAuth, valida
   });
   await ambassador.save();
 
+  // BE-023: approval moves the user into the ambassador stakeholder segment
+  // (they keep their general-community access too). Audited as user.segment.change.
+  await moveUserSegment(user._id, 'ambassador', { req, reason: 'ambassador-approved' });
+
   if (channel) {
     await CommunityMembership.findOneAndUpdate(
       { channelId: channel._id, userId: user._id },
@@ -1911,6 +1917,9 @@ adminApiRouter.post('/ambassador-requests/:id/revoke', requireAdminAuth, validat
   request.reviewedAt = new Date();
   await request.save();
 
+  // BE-023: removal moves the user back to the general segment (audited).
+  await moveUserSegment(request.userId, 'general', { req, reason: 'ambassador-revoked' });
+
   await notifyUser(request.userId, {
     title: 'Ambassador status update',
     message: 'Thank you for your time as a Kredibble ambassador. Your ambassador status has now ended, and your access to the ambassador group has been removed. We appreciate your contribution and you are welcome to apply again in future.',
@@ -1935,6 +1944,7 @@ adminApiRouter.post('/channels', requireAdminAuth, validate(createAdminChannelSc
     category: req.body.category,
     bio: req.body.bio,
     visibility: req.body.visibility,
+    segments: req.body.segments === undefined ? [GENERAL_SEGMENT] : normalizeSegments(req.body.segments),
     requiresApproval: req.body.visibility === 'private',
     owner: 'Kredibble',
     createdBy: req.auth.sub,
@@ -4309,6 +4319,22 @@ adminApiRouter.post('/staff/invite', requireAdminOrStaffAuth, requireScreen('tea
   res.status(201).json({ data: toClientObject(staff) });
 }));
 
+// BE-023: move a user between stakeholder segments (audited as
+// user.segment.change). Used for manual corrections, e.g. an ambassador
+// added straight from the Network page without a request decision.
+adminApiRouter.patch('/users/:id/segment', requireAdminOrStaffAuth, requireScreen('team', 'edit'), validate(userSegmentMoveSchema), asyncHandler(async (req, res) => {
+  const moved = await moveUserSegment(req.params.id, req.body.segment, {
+    req,
+    reason: req.body.reason || 'admin-manual-move',
+  });
+  itemResponse(res, {
+    id: String(moved.user._id),
+    previous: moved.previous,
+    segment: moved.segment,
+    changed: moved.changed,
+  });
+}));
+
 adminApiRouter.patch('/staff/:id', requireAdminOrStaffAuth, requireScreen('team', 'edit'), validate(staffUpdateSchema), asyncHandler(async (req, res) => {
   let staff = null;
   if (mongoose.isValidObjectId(req.params.id)) {
@@ -4607,6 +4633,7 @@ adminApiRouter.post('/community/channels', requireAdminOrStaffAuth, requireScree
     category: req.body.category || 'General',
     bio: req.body.bio,
     visibility: req.body.visibility,
+    segments: req.body.segments === undefined ? [GENERAL_SEGMENT] : normalizeSegments(req.body.segments),
     requiresApproval: req.body.visibility === 'private',
     owner: 'Kredibble',
     createdBy: req.auth.sub,
@@ -4626,6 +4653,8 @@ adminApiRouter.patch('/community/channels/:id', requireAdminOrStaffAuth, require
   if (req.body.name) channel.name = req.body.name.trim();
   if (req.body.bio !== undefined) channel.bio = req.body.bio;
   if (req.body.category) channel.category = req.body.category.trim();
+  // BE-023: staff can move a channel between stakeholder segments.
+  if (req.body.segments !== undefined) channel.segments = normalizeSegments(req.body.segments);
 
   await channel.save();
 
@@ -4634,7 +4663,7 @@ adminApiRouter.patch('/community/channels/:id', requireAdminOrStaffAuth, require
     resourceType: 'Channel',
     resourceId: channel._id,
     outcome: 'success',
-    metadata: { previousStatus, newStatus: channel.status },
+    metadata: { previousStatus, newStatus: channel.status, segments: channel.segments },
   });
 
   itemResponse(res, toClientObject(channel));
