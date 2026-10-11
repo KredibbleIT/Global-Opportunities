@@ -237,7 +237,7 @@ if [[ "$NO_UPLOAD" != "1" ]]; then
   fi
 
   # Purge temporary local archive after successful upload
-  if [[ -n "${R2_ENDPOINT_URL}" || command -v aws >/dev/null 2>&1 || command -v rclone >/dev/null 2>&1 ]]; then
+  if [[ -n "${R2_ENDPOINT_URL}" ]] || command -v aws >/dev/null 2>&1 || command -v rclone >/dev/null 2>&1; then
     rm -f "$ARCHIVE_PATH"
     echo "god-backup: Local temporary archive purged."
   fi
