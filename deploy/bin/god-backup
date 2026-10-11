@@ -26,6 +26,15 @@ DRY_RUN="${DRY_RUN:-0}"
 NO_UPLOAD="${NO_UPLOAD:-0}"
 TEMP_CONFIG=""
 
+# Load R2/AWS credentials for manual runs (the systemd timer provides these
+# via EnvironmentFile instead). Only fills in when not already exported.
+if [[ -z "${AWS_ACCESS_KEY_ID:-}" && -f /opt/god/backup/backup.env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source /opt/god/backup/backup.env
+  set +a
+fi
+
 print_usage() {
   cat <<EOF
 Usage: god-backup [options]
@@ -237,7 +246,7 @@ if [[ "$NO_UPLOAD" != "1" ]]; then
   fi
 
   # Purge temporary local archive after successful upload
-  if [[ -n "${R2_ENDPOINT_URL}" || command -v aws >/dev/null 2>&1 || command -v rclone >/dev/null 2>&1 ]]; then
+  if [[ -n "${R2_ENDPOINT_URL}" ]] || command -v aws >/dev/null 2>&1 || command -v rclone >/dev/null 2>&1; then
     rm -f "$ARCHIVE_PATH"
     echo "god-backup: Local temporary archive purged."
   fi

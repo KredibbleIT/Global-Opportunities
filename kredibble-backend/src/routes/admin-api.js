@@ -8,6 +8,7 @@ import { Opportunity, CompanyVerification } from '../models/Platform.js';
 import { StaffMember, User } from '../models/User.js';
 import { Channel, CommunityMembership, Report, ChannelPost } from '../models/Community.js';
 import { Notification } from '../models/Content.js';
+import { NewsItem } from '../models/Content.js';
 import { SeekerProfile, HirerAccount } from '../models/Profiles.js';
 import {
   AdminActivity,
@@ -126,6 +127,7 @@ import { postChannelMessage, listChannelMessages, getThread, findPost, setAllowR
 import { notifyUser } from '../lib/user-notify.js';
 import { evictFromChannelRoom } from '../socket.js';
 import { toRequestResponse } from './ambassador.js';
+import { newsAdminQuerySchema, newsModerateSchema } from '../schemas/news.js';
 import {
   approveAmbassadorRequestSchema, rejectAmbassadorRequestSchema, chatMessageSchema,
   createAdminChannelSchema, addChannelMemberSchema, allowRepliesSchema,
@@ -3250,8 +3252,43 @@ export const resolveTestimonialTransition = (currentStatus, target) => {
   return targetStatus;
 };
 
-adminApiRouter.get('/testimonials/pending-count', requireAdminOrStaffAuth, requireScreen('testimonials', 'view'), requirePortalRoles(...TESTIMONIAL_VIEW_ROLES), asyncHandler(async (req, res) => {
-  const count = await Testimonial.countDocuments({ status: 'pending' });
+// BE-022: ingested news moderation. Staff can hide (or re-show) items;
+// ingest never flips `hidden`, so a hide decision always wins.
+adminApiRouter.get('/news', requireAdminOrStaffAuth, requireScreen('social', 'view'), requirePortalRoles(...SOCIAL_ROLES), validate(newsAdminQuerySchema), asyncHandler(async (req, res) => {
+  const filter = {};
+  if (req.query.source) filter.source = req.query.source;
+  if (req.query.hidden !== undefined) filter.hidden = req.query.hidden === 'true';
+  if (req.query.q) {
+    const regex = new RegExp(escapedRegex(req.query.q.trim()), 'i');
+    filter.$or = [{ title: regex }, { summary: regex }];
+  }
+  const { page, skip, limit } = pageOptions(req.query);
+  const [total, records] = await Promise.all([
+    NewsItem.countDocuments(filter),
+    NewsItem.find(filter).sort({ publishedAt: -1, _id: -1 }).skip(skip).limit(limit),
+  ]);
+  listResponse(res, records.map(toClientObject), total, page, limit);
+}));
+
+adminApiRouter.patch('/news/:id', requireAdminOrStaffAuth, requireScreen('social', 'edit'), requirePortalRoles(...SOCIAL_ROLES), validate(newsModerateSchema), asyncHandler(async (req, res) => {
+  const record = await NewsItem.findById(validId(req.params.id, 'News item'));
+  if (!record) throw notFound('News item');
+  const previous = record.hidden;
+  record.hidden = req.body.hidden;
+  record.hiddenBy = req.body.hidden ? req.auth.sub : null;
+  record.hiddenAt = req.body.hidden ? new Date() : null;
+  await record.save();
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.NEWS_UPDATE,
+    resourceType: AUDIT_RESOURCE_TYPES.NEWS_ITEM,
+    resourceId: record._id,
+    outcome: 'success',
+    metadata: { previous, hidden: record.hidden },
+  });
+  itemResponse(res, toClientObject(record));
+}));
+
+adminApiRouter.get('/testimonials/pending-count', requireAdminOrStaffAuth, requireScreen('testimonials', 'view'), requirePortalRoles(...TESTIMONIAL_VIEW_ROLES), asyncHandler(async (req, res) => { const count = await Testimonial.countDocuments({ status: 'pending' });
   itemResponse(res, { count });
 }));
 
