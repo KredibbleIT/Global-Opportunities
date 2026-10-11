@@ -36,14 +36,3 @@ api.globalopportunitydesk.com {
     header_up X-Forwarded-Proto {scheme}
   }
 }
-
-dev-api.globalopportunitydesk.com {
-  import cf_tls
-
-  reverse_proxy god-development-api:4000 {
-    header_up Host {host}
-    header_up X-Real-IP {client_ip}
-    header_up X-Forwarded-For {client_ip}
-    header_up X-Forwarded-Proto {scheme}
-  }
-}
