@@ -60,12 +60,13 @@ export default defineConfig({
     ? undefined
     : [
         {
-          command: 'npm run e2e:server',
+          command: process.env.E2E_SEED === 'demo' ? 'npm run e2e:server:demo' : 'npm run e2e:server',
           cwd: '../kredibble-backend',
           url: `${API_URL}/health`,
           reuseExistingServer: !process.env.CI,
           timeout: 120_000,
           stdout: 'pipe',
+          env: { E2E_SEED: process.env.E2E_SEED || '' },
         },
         {
           command: `npm run dev -- -p ${ADMIN_PORT}`,

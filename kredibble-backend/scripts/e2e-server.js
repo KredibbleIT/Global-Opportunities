@@ -42,7 +42,7 @@ const { User } = await import('../src/models/User.js');
 const { env } = await import('../src/config/env.js');
 
 await connectToDatabase();
-await User.create({
+const adminUser = await User.create({
   name: 'E2E Admin',
   email: process.env.E2E_ADMIN_EMAIL || 'test-admin@kredibble.com',
   role: 'admin',
@@ -158,6 +158,14 @@ await VerificationDoc.create([
   { companyId: reviewAccount._id, verificationCaseId: reviewCase._id, key: 'companyLogo', label: 'E2E Company Logo', fileName: 'logo.png' },
   { companyId: reviewAccount._id, verificationCaseId: reviewCase._id, key: 'proofOfOrg', label: 'E2E Proof of Organisation', fileName: 'tax-certificate.pdf' },
 ]);
+
+if (process.env.E2E_SEED === 'demo') {
+  const { seedDemoData } = await import('../src/lib/demo-seed.js');
+  const summary = await seedDemoData({ adminUser });
+  console.log(
+    `[e2e-server] Demo seed loaded (${summary.staffCount} staff, ${summary.listingCount} listings, ${summary.partnerCount} partners, ${summary.ambassadorCount} ambassadors, ${summary.beneficiaryCount} beneficiaries, ${summary.socialPostCount} social posts)`
+  );
+}
 
 const server = http.createServer(app).listen(env.port, () => {
   console.log(`e2e API listening on http://localhost:${env.port}/api`);

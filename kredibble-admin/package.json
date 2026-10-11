@@ -12,6 +12,7 @@
     "lint": "eslint",
     "test:e2e": "playwright test",
     "test:e2e:mock": "cross-env E2E_MOCKS=1 playwright test",
+    "test:e2e:demo": "cross-env E2E_SEED=demo playwright test",
     "check:https": "node ../scripts/check-https.js",
     "typecheck": "tsc --noEmit"
   },
