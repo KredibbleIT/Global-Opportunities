@@ -22,7 +22,8 @@
         "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest",
         "lint": "eslint .",
         "docs:generate": "node scripts/generate-docs.js",
-        "e2e:server": "node --import ./src/instrument.js scripts/e2e-server.js"
+        "e2e:server": "node --import ./src/instrument.js scripts/e2e-server.js",
+        "e2e:server:demo": "cross-env E2E_SEED=demo node --import ./src/instrument.js scripts/e2e-server.js"
     },
     "dependencies": {
         "@sentry/node": "^11.5.0",
