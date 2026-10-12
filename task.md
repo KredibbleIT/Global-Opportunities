@@ -286,7 +286,6 @@ Note: the audit's own text reached the same conclusion on #10 ("Actually this on
 | SEC-116 | No repo hygiene gates: file encoding, workflow lint, shell lint, secret scanning, automated dependency updates | P2 | CI/CD | ✅ Done (Plan 4a, PR #35; Repo hygiene green in CI run 37253915991; Dependabot updates merged in PRs #36, #37, #38, #39, #42, #44, #48) |
 | SEC-117 | Known-password test accounts may exist in real databases (`@test.com` seed accounts; a test admin was created against production; the e2e admin login is a public default) | P1 | Data / Access | Open — Plan 4 track M5 |
 | SEC-118 | EAS Update has never published: every CD App run fails at `expo export` for web (`react-native-css-interop/.cache/web.css` SHA-1 error), so the OTA path described in `AGENTS.md` doesn't work | P1 | Mobile CI/CD | ✅ Done (Plan 4c; platforms scoped to ios/android in app.json and cd-app.yml, single-level staging/dev hostnames in eas.json) |
-<<<<<<< HEAD
 | SEC-119 | Mobile registration blocked on native devices: CV & doc uploads use web DOM input | P0 | Mobile auth | ✅ Done |
 | SEC-120 | Native profile & verification document pickers are web-only (no-op on iOS/Android) | P0 | Mobile app | ✅ Done |
 | SEC-121 | Email verification flow missing in mobile app (blocks high-trust actions with 403) | P0 | Mobile auth | ✅ Done |
@@ -296,17 +295,6 @@ Note: the audit's own text reached the same conclusion on #10 ("Actually this on
 | SEC-125 | AI Assistant in mobile app is canned setTimeout demo disconnected from backend | P2 | Mobile assistant | ✅ Done |
 | SEC-126 | Mock data fallbacks in notifications, saved items, and hardcoded Wave job descriptions | P2 | Mobile app | ✅ Done |
 | SEC-127 | Hirer postings and managed channels rely on mock in-memory authStore data | P2 | Mobile hirer | ✅ Done |
-=======
-| SEC-119 | Mobile registration blocked on native devices: CV & doc uploads use web DOM input | P0 | Mobile auth | Open |
-| SEC-120 | Native profile & verification document pickers are web-only (no-op on iOS/Android) | P0 | Mobile app | Open |
-| SEC-121 | Email verification flow missing in mobile app (blocks high-trust actions with 403) | P0 | Mobile auth | Open |
-| SEC-122 | Community feed photo attachment and prompt dialogs crash or no-op on native mobile | P1 | Mobile community | Open |
-| SEC-123 | Event booking payment flow simulated: collects card numbers without payment gateway | P1 | Mobile events | Open |
-| SEC-124 | App Store & Google Play compliance gaps: policy links, push notifications, offline netinfo | P1 | Mobile store | Open |
-| SEC-125 | AI Assistant in mobile app is canned setTimeout demo disconnected from backend | P2 | Mobile assistant | Open |
-| SEC-126 | Mock data fallbacks in notifications, saved items, and hardcoded Wave job descriptions | P2 | Mobile app | Open |
-| SEC-127 | Hirer postings and managed channels rely on mock in-memory authStore data | P2 | Mobile hirer | Open |
->>>>>>> origin/main
 | SEC-128 | Mobile test coverage: 0 screen/UI component tests; 116 ESLint warnings across screens | P2 | Mobile tests | Open |
 
 ---
@@ -1883,6 +1871,7 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
 - 2026-10-10 — BE-019 completed on branch feature/BE-019-performance-indexes-openapi: added compound and single-field indexes across all analytical date and filter fields in Mongoose models (`Program`, `Partner`, `Ambassador`, `Beneficiary`, `SocialPost`, `MonthlyReport`, `Opportunity`, `Notification`, `Channel`, `ChannelPost`, `StaffMember`, `AuditLog`); hardened pagination using `parsePagination` (clamped limit <= 100, page >= 1) and implemented dual `meta` / `pagination` keys in `paginatedResponse` with real collection counts via `countDocuments`; enhanced `scripts/generate-docs.js` with schema type sanitization (converting Mongoose `schemaobjectid` to `{ type: 'string', format: 'objectId' }`) and registered all 13 AdminPortal models and dedicated admin routes; regenerated `src/swagger.json` and `kredibble-postman-collection.json`; enforced append-only mutation guards on `TargetChange` and `ThresholdChange` models preventing updates or deletions; implemented new integration test suite (`tests/be-019-performance-indexes.test.js`, 15/15 passing) verifying index definitions, pagination clamping, dual metadata, append-only guards, and OpenAPI 3.0 validity. All contract tests (`tests/admin-api-contract.test.js`, 2/2) pass; KPI engine and scorecard coverage verified at 97.58% and 100%; backend/admin lint clean (0 errors/warnings), TypeScript clean (`tsc --noEmit`), UTF-8 encoding clean (652 files checked, 0 failing).
 - 2026-10-10 — BE-020 completed on branch feature/BE-020-demo-seed: implemented deterministic demo seed generator (`kredibble-backend/src/lib/demo-seed.js`) providing parity with admin mock seed (`mock-seed.ts`). Generates 13 staff across all 12 roles with active User accounts and bcrypt cost 12 hashes; 14 vetted and published opportunities/listings; 12 programs across 4 states; 18 partners across the 6-stage pipeline with dated stage histories; 40 ambassadors with unique referral codes, tiers, and amplification logs; 120 verified beneficiaries across 5 sources; 60 social posts across canonical platforms; 9 testimonials; 6 months of website audience traffic rollups with channel sums matching views; TargetChange and ThresholdChange audit records for all 10 KPIs; 4 past monthly reports and bootstrap reference data taxonomies. Wired `scripts/e2e-server.js` with conditional `E2E_SEED=demo` flag preserving minimal single-admin default when unset; added `npm run e2e:server:demo` in backend and `npm run test:e2e:demo` in admin with playwright config env pass-through. Added comprehensive integration test suite (`tests/be-020-demo-seed.test.js`, 13/13 passing) verifying deterministic population, role coverage, schema invariants, KPI engine execution, and live scorecard endpoints. Contract tests (2/2 passing); ESLint and TypeScript clean across backend and admin; UTF-8 clean. Appended lesson to `SYSTEM_DESIGN_LESSONS.md`.
 - 2026-10-11 — BE-021 complete on branch feature/BE-021-website-tally: `CategoryMap` taxonomy collection + pure tally kernel (`src/lib/website-tally.js`, id/title matching, mapping resolution, differing/unmapped splits) + `npm run sync:website-tally [-- --write]` script + admin taxonomy/tally endpoints (audited) + admin client + swagger entries. Tests `tests/be-021-website-tally.test.js` 7/7; contract suite green; backend lint + admin typecheck clean. Remaining BE work: BE-022 (news ingest), BE-025 (AI hardening; stale partial branch `security/SEC-041-ai-prompt-injection` from 2026-09-30 exists — assess, do not merge as-is).
+- 2026-10-11 — BE-022 complete on branch feature/BE-022-news-ingest: `NewsItem` store (`<source>:<wordpressId>` stable ids, staff-only `hidden` never overwritten by ingest) + ingest kernel (`src/lib/news-ingest.js`, shared source config, `npm run sync:news-ingest`) + stored public feed (same contract shape as the old proxy, hidden excluded, new `:id` route) + admin list/hide endpoints (`news.update` audit) + admin client + swagger entries. Tests `tests/be-022-news-ingest.test.js` 6/6; contract suite green; backend lint + admin typecheck clean. Remaining BE work: BE-025 only (AI hardening; stale partial branch `security/SEC-041-ai-prompt-injection` from 2026-09-30 exists — assess, do not merge as-is).
 
 ---
 
@@ -1931,7 +1920,7 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
 | BE-019 | Performance, indexes, pagination, OpenAPI, tests | P1 | all | [x] Done |
 | BE-020 | Demo seed for the real-mode test run | P3 | BE-001 to BE-011 | [x] Done |
 | BE-021 | Product item 1: tally website opportunities and categories with the app | P1 | BE-026 | [x] Done |
-| BE-022 | Product item 2: News category (Insight Ghana, The African Journal) | P2 | BE-026 | [ ] Open |
+| BE-022 | Product item 2: News category (Insight Ghana, The African Journal) | P2 | BE-026 | [x] Done |
 | BE-023 | Product item 4: stakeholder segments | P2 | – | [ ] Open |
 | BE-024 | Product item 5: ambassador registration (apply, review, approve) | P1 | BE-007 | [x] Done |
 | BE-025 | Product item 6: AI assistant hardening | P2 | – | [ ] Open |
@@ -2190,6 +2179,12 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
 
 #### BE-022 — Product item 2: News category
 - Add `News` as a content category with a `source` of `insight_ghana` or `african_journal`. Ingest each source (RSS or WordPress REST) on a schedule with a stable external id (no duplicates), store title, summary, link, image, published date and source. `GET /api/v1/news?source=&page=`. Admin can hide an item. The existing `/api/v1/news` is the base.
+- **Implemented:**
+  - [x] `NewsItem` store (`externalId` `<source>:<wordpressId>` unique, source enum, title/summary/content/link/image/publishedAt, staff-only `hidden` + `hiddenBy`/`hiddenAt`, `lastSeenAt`; source/date indexes).
+  - [x] Ingest kernel (`src/lib/news-ingest.js`): shared source config, pure `mapWordPressPost` (HTML stripped, safe defaults), per-source fetch (unconfigured sources skip without failing the run), `storePosts` upsert that refreshes content but never unhides; `npm run sync:news-ingest` script.
+  - [x] Public `GET /api/v1/news` now reads the store (same `source`/`page`/`perPage` contract and item shape as the old live proxy: `id/source/sourceName/title/summary/content/publishedAt/url/imageUrl`); hidden items excluded; new `GET /api/v1/news/:id` (404 when hidden/missing).
+  - [x] Admin `GET /api/v1/admin/news` (all incl. hidden, source/hidden/search filters, paginated) + `PATCH /api/v1/admin/news/:id` (hide/show with `news.update` audit); admin client `getAdminNewsApi`/`moderateNewsItemApi`; swagger entries.
+- **Verify:** Tests in `tests/be-022-news-ingest.test.js` (6/6 passing: mapping, dedupe + hide preservation, contract shape, feed filters/pagination, :id 404s, admin list/hide/show/audit/auth); contract suite green; backend lint + admin typecheck clean.
 
 #### BE-023 — Product item 4: stakeholder segments
 - A `segment` on each user (`general` or `ambassador`; an ambassador also belongs to the general community). Channels, feeds and content carry the segment(s) they are visible to; list endpoints filter by the caller's segment; moving a user between segments is audited. Migration: everyone starts as `general`.
