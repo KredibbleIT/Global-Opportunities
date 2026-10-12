@@ -1111,6 +1111,8 @@ test.describe('Progress cells never truncate', () => {
         await page.setViewportSize({ width, height: 900 });
         await page.goto(`${BASE_URL}${path}`, { timeout: 30_000 });
         await expect(page.locator('main tbody tr').first()).toBeVisible();
+        // Measure loaded rows, never the skeleton (it has no progress bars).
+        await expect(page.locator('main tbody tr a').first()).toBeVisible();
         const result = await page.evaluate(() => {
           const bars = [...document.querySelectorAll('main tbody [role="progressbar"]')] as HTMLElement[];
           return {
@@ -1850,7 +1852,7 @@ const AUDIT_ROUTES: { path: string; mockOnly?: string }[] = [
   { path: '/hirers' },
   { path: '/hirers/hirer-1', mockOnly: 'hirer-1 is a mock record id' },
   { path: '/community' },
-  { path: '/community/ch-1' },
+  { path: '/community/ch-1', mockOnly: 'ch-1 is a mock record id' },
   { path: '/content/articles' },
   { path: '/content/articles/article-1' },
   { path: '/content/articles/new' },
@@ -2771,8 +2773,8 @@ test.describe('New placeholder routes', () => {
       const problems = trackProblems(page);
       await page.goto(`${BASE_URL}${path}`, { timeout: 30_000 });
       await expect(page.getByTestId('page-title')).toHaveText(title);
-      // the Scorecard of a Super Admin owns no metrics, so it shows that empty state instead (in real-API mode: the sample-data notice and "Not available yet")
-      await expect(page.getByText(path === '/scorecard' ? (MOCK_RUN ? 'No metrics are assigned to your role' : 'Not available yet') : 'This screen is built in a later step')).toBeVisible();
+      // the Scorecard of a Super Admin owns no metrics, so it shows that empty state instead
+      await expect(page.getByText('No metrics are assigned to your role')).toBeVisible();
       await expect(page.locator('header.sticky nav[aria-label="Breadcrumb"]')).toContainText(title);
       expect(problems).toEqual([]);
     });
@@ -10847,11 +10849,18 @@ test.describe('Overview: real-API mode says "Not available yet" calmly', () => {
     await open(page);
     await expect(page.getByTestId('not-connected-notice')).toHaveCount(1);
     await expect(page.getByTestId('not-connected-notice')).toHaveText(NOTICE);
-    for (const name of ['Trend', 'Priorities', 'Programs in progress and upcoming', 'Recent activity']) {
+    for (const name of ['Trend', 'Priorities', 'Programs in progress and upcoming']) {
       const section = page.getByRole('region', { name, exact: true });
       await expect(section.getByTestId('not-available-yet')).toHaveText('Not available yet');
       await expect(section).not.toContainText('could not be loaded');
     }
+    // Recent activity has a live source: with an empty feed it is the "No recent activity" empty
+    // state, once other tests record feed entries it is the timeline. Either is calm, never an error.
+    const activity = page.getByRole('region', { name: 'Recent activity', exact: true });
+    await expect(
+      activity.getByTestId('not-available-yet').or(activity.getByText('No recent activity')).or(activity.getByRole('listitem').first()),
+    ).toBeVisible();
+    await expect(activity).not.toContainText('could not be loaded');
     await expect(page.getByText('could not be loaded')).toHaveCount(0);
   });
 
@@ -10873,21 +10882,26 @@ test.describe('Overview: real-API mode says "Not available yet" calmly', () => {
     expect(new Set(heights)).toEqual(new Set([208]));
   });
 
-  test('the dark card keeps the two live queue counts and says "Not available yet" for the two without a live source', async ({ page }) => {
+  test('the dark card keeps live queue counts: every row is a link and none says "Not available yet"', async ({ page }) => {
     await open(page);
     const attention = page.getByRole('region', { name: 'Needs your attention' });
     await expect(attention).toBeVisible();
-    await expect(attention.getByTestId('attention-pendingTestimonials')).toContainText('Not available yet');
-    await expect(attention.getByTestId('attention-draftListings')).toContainText('Not available yet');
-    await expect(attention.getByTestId('attention-pendingVerifications')).not.toContainText('Not available yet');
-    await expect(attention.getByTestId('attention-openReports')).not.toContainText('Not available yet');
+    // Every queue has a live backend source, so every row shows its count (whatever the seed and the
+    // earlier tests left it at) and no row ever says "Not available yet".
+    for (const key of ['pendingVerifications', 'openReports', 'pendingTestimonials', 'draftListings']) {
+      await expect(attention.getByTestId(`attention-${key}`)).toBeVisible();
+    }
+    await expect(attention).not.toContainText('Not available yet');
   });
 
   test('on a phone (434px): the same states and nothing wider than the screen', async ({ page }) => {
     await page.setViewportSize({ width: 434, height: 900 });
     await open(page);
     await expect(page.getByTestId('not-connected-notice')).toBeVisible();
-    await expect(page.getByTestId('not-available-yet')).toHaveCount(4);
+    // Trend, Priorities and Programs have no live source; Recent activity depends on the feed state (see above).
+    for (const name of ['Trend', 'Priorities', 'Programs in progress and upcoming']) {
+      await expect(page.getByRole('region', { name, exact: true }).getByTestId('not-available-yet')).toBeVisible();
+    }
     const report = await overflowing(page);
     expect(report.found, JSON.stringify(report)).toEqual([]);
     expect(report.scrollWidth).toBeLessThanOrEqual(report.innerWidth);
@@ -11499,12 +11513,12 @@ test.describe('Scorecard: My scorecard and Team (mock mode)', () => {
   });
 });
 
-test.describe('Scorecard: real-API mode says "Not available yet" calmly', () => {
+test.describe('Scorecard: real-API mode shows the no-metrics empty state calmly', () => {
   test.skip(MOCK_RUN, 'real API only: mock mode shows the sample figures');
-  test('the sample-data notice and a calm "Not available yet", no ring and no zero', async ({ page }) => {
+  test('the sample-data notice and "No metrics are assigned to your role", no ring and no zero', async ({ page }) => {
     await page.goto(`${BASE_URL}/scorecard`, { timeout: 30_000 });
     await expect(page.getByTestId('not-connected-notice')).toBeVisible();
-    await expect(page.getByTestId('not-available-yet')).toHaveText('Not available yet');
+    await expect(page.getByText('No metrics are assigned to your role')).toBeVisible();
     await expect(page.getByTestId('score-ring')).toHaveCount(0);
   });
 });
