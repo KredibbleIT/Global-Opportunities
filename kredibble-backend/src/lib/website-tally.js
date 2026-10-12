@@ -151,7 +151,7 @@ export async function fetchWebsiteSnapshot() {
     const payload = await response.json().catch(() => ({}));
     return Array.isArray(payload) ? payload : payload.items || payload.data || [];
   };
-  let categories = [];
+  let categories;
   try {
     categories = await get('/categories');
   } catch {
