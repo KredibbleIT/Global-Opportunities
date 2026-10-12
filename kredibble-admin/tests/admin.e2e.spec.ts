@@ -902,6 +902,7 @@ test.describe('Truncated cells', () => {
   test.use({ viewport: { width: 1024, height: 900 } });
 
   test('a cut-off title has a title attribute and shows the full text in the tooltip on hover and on focus', async ({ page }) => {
+    test.skip(!MOCK_RUN, 'needs the mock channels (Guaranteed Visa Sponsorship Jobs)');
     await page.context().addCookies([{ name: 'sidebar', value: 'expanded', url: BASE_URL }]);
     await signedIn(page);
     await page.goto(`${BASE_URL}/community`);
@@ -923,6 +924,7 @@ test.describe('Truncated cells', () => {
   });
 
   test('text that fits has no title, no tooltip and is not a tab stop', async ({ page }) => {
+    test.skip(!MOCK_RUN, 'needs the mock channels (Google Tech Circle)');
     await signedIn(page);
     await page.goto(`${BASE_URL}/community`);
     const short = page.getByRole('link', { name: 'Google Tech Circle' });
@@ -1184,8 +1186,10 @@ test.describe('Forms: article editor', () => {
   test('Read time is optional; the Publishing switch changes the save label', async ({ page }) => {
     await page.goto(`${BASE_URL}/content/articles/new`, { timeout: 30_000 });
     await expect(page.getByText('Optional').first()).toBeVisible();
-    await page.getByRole('switch').click();
-    await expect(page.getByRole('switch')).toHaveAttribute('aria-checked', 'true');
+    // Named: outside mock mode the banner adds a second switch ("Mock data"), so the bare role is ambiguous.
+    const publishing = page.getByRole('switch', { name: 'Published' });
+    await publishing.click();
+    await expect(publishing).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByRole('button', { name: 'Publish article' })).toBeVisible();
   });
 
