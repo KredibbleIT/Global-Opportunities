@@ -8713,6 +8713,8 @@ test.describe('Social: phones and the platform table and chart', () => {
     // seven platforms with posts this month: log the ones the seed does not have (the seed has Facebook, X and LinkedIn this month)
     const card = page.getByRole('region', { name: 'Log a post' });
     for (const [i, platform] of ['Instagram', 'TikTok', 'YouTube', 'WhatsApp', 'Other'].entries()) {
+      // the previous submit resets the form ~300ms after saving: wait for the reset before filling, or it wipes the new values
+      await expect(card.getByRole('combobox', { name: 'Platform' })).toContainText('Choose a platform');
       await card.getByRole('combobox', { name: 'Platform' }).click();
       await page.getByRole('option', { name: platform, exact: true }).click();
       await card.getByRole('textbox', { name: 'Post title' }).fill(`Fixture post ${i}`);
