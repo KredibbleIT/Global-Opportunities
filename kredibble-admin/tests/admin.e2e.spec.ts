@@ -1479,7 +1479,10 @@ test.describe('Team', () => {
   test('role descriptions follow the permissions without a reload', async ({ page }) => {
     await page.goto(`${BASE_URL}/team?tab=roles`, { timeout: 30_000 });
     const support = page.getByRole('region', { name: 'Support permissions' });
-    await support.getByRole('switch', { name: 'Send platform-wide notifications' }).click();
+    const broadcast = support.getByRole('switch', { name: 'Send platform-wide notifications' });
+    // Hermetic: an earlier run or test may have left this on; the test needs the off-to-on transition.
+    if ((await broadcast.getAttribute('aria-checked')) === 'true') await broadcast.click();
+    await broadcast.click();
     await page.getByRole('button', { name: 'Save changes' }).click();
     await page.getByRole('tab', { name: 'Members' }).click();
     await page.getByRole('link', { name: 'Invite Staff' }).click(); // client-side: the store survives
@@ -2578,7 +2581,7 @@ test.describe('Month selector', () => {
 const NAV_ORDER = [
   'Overview', 'Insights', 'Monthly report', 'Scorecard',
   'Opportunities Queue', 'Events', 'Grants', 'Programs',
-  'Partners', 'Network', 'Leaderboard',
+  'Partners', 'Network', 'Ambassadors', 'Leaderboard',
   'Seekers', 'Hirers', 'Channels', 'Database',
   'Verification Queue', 'Reports Queue',
   'Career Resources', 'Reference data', 'Social', 'Testimonials',
@@ -2593,13 +2596,13 @@ const EXPECTED_NAV: Record<string, string[]> = {
   desk_lead: NAV_ORDER,
   moderator: ['Overview', 'Scorecard', 'Seekers', 'Hirers', 'Channels', 'Verification Queue', 'Reports Queue', 'Opportunities Queue', 'Settings'],
   support: ['Overview', 'Scorecard', 'Seekers', 'Hirers', 'Settings'],
-  partnerships_officer: ['Overview', 'Monthly report', 'Scorecard', 'Partners', 'Network', 'Leaderboard', 'Settings'],
+  partnerships_officer: ['Overview', 'Monthly report', 'Scorecard', 'Partners', 'Network', 'Ambassadors', 'Leaderboard', 'Settings'],
   opportunities_officer: ['Overview', 'Scorecard', 'Opportunities Queue', 'Events', 'Grants', 'Career Resources', 'Settings'],
-  training_officer: ['Overview', 'Scorecard', 'Events', 'Programs', 'Network', 'Settings'],
-  database_officer: ['Overview', 'Scorecard', 'Network', 'Database', 'Settings'],
+  training_officer: ['Overview', 'Scorecard', 'Events', 'Programs', 'Network', 'Ambassadors', 'Settings'],
+  database_officer: ['Overview', 'Scorecard', 'Network', 'Ambassadors', 'Database', 'Settings'],
   communications_officer: ['Overview', 'Monthly report', 'Scorecard', 'Career Resources', 'Social', 'Testimonials', 'Notifications', 'Settings'],
   social_media_manager: ['Overview', 'Scorecard', 'Social', 'Testimonials', 'Settings'],
-  country_lead: ['Overview', 'Scorecard', 'Partners', 'Network', 'Leaderboard', 'Programs', 'Database', 'Settings'],
+  country_lead: ['Overview', 'Scorecard', 'Partners', 'Network', 'Ambassadors', 'Leaderboard', 'Programs', 'Database', 'Settings'],
   admin_support: ['Overview', 'Scorecard', 'Team', 'Settings'],
   'moderator,communications_officer': ['Overview', 'Monthly report', 'Scorecard', 'Seekers', 'Hirers', 'Channels', 'Verification Queue', 'Reports Queue', 'Career Resources', 'Social', 'Testimonials', 'Notifications', 'Settings', 'Opportunities Queue'],
 };
@@ -3720,7 +3723,10 @@ test.describe('Roles fix pass: Team > Roles & permissions access and the toggles
     await page.getByTestId('sidebar-toggle').waitFor();
     await page.waitForTimeout(500);
     const nav = page.locator('aside nav');
-    await page.getByRole('region', { name: 'Moderator permissions' }).getByRole('switch', { name: 'Moderate opportunities & community' }).click();
+    const moderate = page.getByRole('region', { name: 'Moderator permissions' }).getByRole('switch', { name: 'Moderate opportunities & community' });
+    // Hermetic: start from on, so turning it off removes the queues whatever earlier tests left behind.
+    if ((await moderate.getAttribute('aria-checked')) === 'false') await moderate.click();
+    await moderate.click();
     await page.getByRole('button', { name: 'Save changes' }).click();
     await expect(page.getByText('Role permissions were saved.')).toBeVisible();
     // switch to Moderator with the account menu (client side, so the saved matrix survives)
@@ -3743,9 +3749,15 @@ test.describe('Roles fix pass: Team > Roles & permissions access and the toggles
     await page.getByTestId('sidebar-toggle').waitFor();
     await page.waitForTimeout(500);
     const moderator = page.getByRole('region', { name: 'Moderator permissions' });
-    await expect(moderator.getByRole('switch', { name: 'Manage staff accounts' })).toHaveAttribute('aria-checked', 'false');
-    await moderator.getByRole('switch', { name: 'Manage staff accounts' }).click();
-    await moderator.getByRole('switch', { name: 'Manage reference data & content' }).click();
+    const staffSwitch = moderator.getByRole('switch', { name: 'Manage staff accounts' });
+    const contentSwitch = moderator.getByRole('switch', { name: 'Manage reference data & content' });
+    // Hermetic: earlier tests may have left these on; the test turns them on from a known off state.
+    for (const sw of [staffSwitch, contentSwitch]) {
+      if ((await sw.getAttribute('aria-checked')) === 'true') await sw.click();
+    }
+    await expect(staffSwitch).toHaveAttribute('aria-checked', 'false');
+    await staffSwitch.click();
+    await contentSwitch.click();
     await page.getByRole('button', { name: 'Save changes' }).click();
     await page.getByRole('button', { name: /Account menu/ }).click();
     const menu = page.getByRole('menu', { name: 'Account' });
@@ -3801,7 +3813,7 @@ test.describe('Roles fix pass: sidebar open state, direct rows, tagline, account
     expect(await openGroups(page)).toEqual(['nav-group-dashboard']);
   });
 
-  test('a group with one visible page is a direct row at the end: Partnerships Officer (Settings) and Database Officer (Network, Database, Settings)', async ({ page, context }) => {
+  test('a group with one visible page is a direct row at the end: Partnerships Officer (Settings) and Database Officer (Database, Settings)', async ({ page, context }) => {
     await asRoles(context, 'partnerships_officer');
     await page.goto(`${BASE_URL}/`, { timeout: 30_000 });
     const nav = page.locator('aside nav');
@@ -3812,9 +3824,10 @@ test.describe('Roles fix pass: sidebar open state, direct rows, tagline, account
     await asRoles(context, 'database_officer');
     await page.goto(`${BASE_URL}/database`);
     await expect(page.getByTestId('page-title')).toBeVisible();
-    expect(await nav.locator('[data-testid^="nav-group-"]').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')))).toEqual(['nav-group-dashboard']);
+    // Network and Ambassadors make Partners & network a real group; Database and Settings stay direct rows.
+    expect(await nav.locator('[data-testid^="nav-group-"]').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')))).toEqual(['nav-group-dashboard', 'nav-group-partners-network']);
     await expect(nav.getByTestId('nav-item-database')).toHaveAttribute('aria-current', 'page');
-    expect(await nav.locator('a[data-testid^="nav-item-"]').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')))).toEqual(['nav-item-network', 'nav-item-database', 'nav-item-settings']);
+    expect(await nav.locator('a[data-testid^="nav-item-"]').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')))).toEqual(['nav-item-database', 'nav-item-settings']);
     expect(await openGroups(page)).toEqual([]); // the active page is a direct row, so no group opens
   });
 
@@ -5091,8 +5104,8 @@ test.describe('Partners: the board', () => {
     for (const stage of ['prospect', 'outreach', 'proposal', 'mou']) await expect(page.getByTestId(`kanban-marker-${stage}`)).toHaveCount(0);
     const line = page.getByTestId('kanban-column-prospect').locator('.bg-purple-500').first();
     expect(Math.round((await line.boundingBox())!.height)).toBeLessThanOrEqual(3); // a thin line
-    // no manual closed switch anywhere on the board
-    await expect(page.getByRole('switch')).toHaveCount(0);
+    // no manual closed switch anywhere on the board (the top-bar Mock data switch is outside main)
+    await expect(page.locator('main').getByRole('switch')).toHaveCount(0);
     await expect(page.getByRole('checkbox', { name: /closed/i })).toHaveCount(0);
   });
 
@@ -5150,7 +5163,7 @@ test.describe('Partners: the board', () => {
     await expect(history).toContainText(formatDate(todayLocal()));
     await expect(history).toContainText('The deal closed.');
     await expect(history).toContainText('The deal is open again.');
-    await expect(page.getByRole('switch')).toHaveCount(0); // still no manual closed switch
+    await expect(page.locator('main').getByRole('switch')).toHaveCount(0); // still no manual closed switch
   });
 
   test('drag and drop with the pointer moves a card between columns', async ({ page }) => {
@@ -5242,9 +5255,9 @@ test.describe('Partners: form and detail', () => {
     await page.getByLabel('Contact email').fill('not-an-email');
     await page.getByLabel('Contact email').blur();
     await expect(page.getByText('Enter a full email address, like name@company.com.')).toBeVisible();
-    // there is no stage field and no closed switch on the form
+    // there is no stage field and no closed switch on the form (the top-bar Mock data switch is outside the form)
     await expect(page.getByRole('combobox', { name: /stage/i })).toHaveCount(0);
-    await expect(page.getByRole('switch')).toHaveCount(0);
+    await expect(page.locator('form').getByRole('switch')).toHaveCount(0);
   });
 
   test('creating a partner adds it at Prospect (5 there now), with the first history entry, and it can be edited', async ({ page }) => {
