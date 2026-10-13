@@ -3772,7 +3772,6 @@ test.describe('Roles fix pass: Team > Roles & permissions access and the toggles
       await rolesSave.click();
       await expect(page.getByText('Role permissions were saved.')).toBeVisible();
     }
-    await page.getByRole('button', { name: 'Save changes' }).click();
     await page.getByRole('button', { name: /Account menu/ }).click();
     const menu = page.getByRole('menu', { name: 'Account' });
     await menu.getByRole('menuitemcheckbox', { name: 'Super Admin', exact: true }).click();
