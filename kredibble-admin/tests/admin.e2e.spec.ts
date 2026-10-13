@@ -7549,14 +7549,13 @@ test.describe('Database: the pre-step additions', () => {
     // (in the same view: the first page of All has pending rows and verified rows)
     const done = page.getByTestId('table-row').filter({ hasNot: page.getByTestId('verify-button') }).filter({ has: page.getByTestId('status-badge').filter({ hasText: 'Verified' }) }).first();
     await expect(done).toBeVisible();
-    // measured together, after the layout has settled at this width; both cells are read in one frame
-    // so a layout shift between reads cannot falsify the comparison
-    const [pendingCellHandle, doneCellHandle] = await Promise.all([cell(pending).elementHandle(), cell(done).elementHandle()]);
-    const [pendingCellW, doneCellW] = await page.evaluate(
-      ([pendingEl, doneEl]) => [Math.round(pendingEl.getBoundingClientRect().width), Math.round(doneEl.getBoundingClientRect().width)],
-      [pendingCellHandle, doneCellHandle] as [Element, Element],
+    // the column keeps its width on every row: read all Verified cells in one frame, so a layout
+    // shift between reads cannot falsify the comparison (the column is table-fixed, content-independent)
+    const widths = await page.locator('main tbody td[data-label="Verified"]').evaluateAll((cells) =>
+      cells.map((cell) => Math.round(cell.getBoundingClientRect().width)),
     );
-    const widths = new Set<number>([pendingCellW, doneCellW]);
+    expect(widths.length).toBeGreaterThan(1);
+    expect(new Set(widths).size).toBe(1);
     // a verified row has the green badge and nothing else: no muted check text, no button
     await expect(done.getByTestId('verified-check')).toHaveCount(0);
     await expect(done.getByTestId('verify-button')).toHaveCount(0);
@@ -7564,7 +7563,7 @@ test.describe('Database: the pre-step additions', () => {
     expect((await cell(done).innerText()).trim()).toBe('Verified');
     expect(Math.abs((await badgeDX(done)) - pendingBadgeDX)).toBeLessThanOrEqual(1); // the badge is in the same place
     expect(pendingX).toBeGreaterThan((await cell(done).getByTestId('status-badge').boundingBox())!.x);
-    expect(widths.size).toBe(1);
+    expect(new Set(widths).size).toBe(1);
   });
 
   test('a truncated linked opportunity shows its full name in the Tooltip', async ({ page }) => {
