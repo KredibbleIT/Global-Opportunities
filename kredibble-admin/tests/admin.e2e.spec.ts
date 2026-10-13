@@ -1480,10 +1480,15 @@ test.describe('Team', () => {
     await page.goto(`${BASE_URL}/team?tab=roles`, { timeout: 30_000 });
     const support = page.getByRole('region', { name: 'Support permissions' });
     const broadcast = support.getByRole('switch', { name: 'Send platform-wide notifications' });
-    // Hermetic: an earlier run or test may have left this on; the test needs the off-to-on transition.
-    if ((await broadcast.getAttribute('aria-checked')) === 'true') await broadcast.click();
-    await broadcast.click();
-    await page.getByRole('button', { name: 'Save changes' }).click();
+    // Hermetic: end with it on and saved, whatever earlier tests left behind (no save button when nothing changed).
+    await broadcast.waitFor();
+    if ((await broadcast.getAttribute('aria-checked')) === 'false') await broadcast.click();
+    await expect.poll(async () => broadcast.getAttribute('aria-checked')).toBe('true');
+    const inviteSave = page.getByRole('button', { name: 'Save changes' });
+    if ((await inviteSave.count()) > 0) {
+      await inviteSave.click();
+      await expect(page.getByText('Role permissions were saved.')).toBeVisible();
+    }
     await page.getByRole('tab', { name: 'Members' }).click();
     await page.getByRole('link', { name: 'Invite Staff' }).click(); // client-side: the store survives
     await page.getByRole('combobox', { name: 'Role', exact: true }).click();
@@ -3724,11 +3729,15 @@ test.describe('Roles fix pass: Team > Roles & permissions access and the toggles
     await page.waitForTimeout(500);
     const nav = page.locator('aside nav');
     const moderate = page.getByRole('region', { name: 'Moderator permissions' }).getByRole('switch', { name: 'Moderate opportunities & community' });
-    // Hermetic: start from on, so turning it off removes the queues whatever earlier tests left behind.
-    if ((await moderate.getAttribute('aria-checked')) === 'false') await moderate.click();
-    await moderate.click();
-    await page.getByRole('button', { name: 'Save changes' }).click();
-    await expect(page.getByText('Role permissions were saved.')).toBeVisible();
+    // Hermetic: end with it off and saved, whatever earlier tests left behind (no save button when nothing changed).
+    await moderate.waitFor();
+    if ((await moderate.getAttribute('aria-checked')) === 'true') await moderate.click();
+    await expect.poll(async () => moderate.getAttribute('aria-checked')).toBe('false');
+    const moderateSave = page.getByRole('button', { name: 'Save changes' });
+    if ((await moderateSave.count()) > 0) {
+      await moderateSave.click();
+      await expect(page.getByText('Role permissions were saved.')).toBeVisible();
+    }
     // switch to Moderator with the account menu (client side, so the saved matrix survives)
     await page.getByRole('button', { name: /Account menu/ }).click();
     const menu = page.getByRole('menu', { name: 'Account' });
@@ -3751,13 +3760,18 @@ test.describe('Roles fix pass: Team > Roles & permissions access and the toggles
     const moderator = page.getByRole('region', { name: 'Moderator permissions' });
     const staffSwitch = moderator.getByRole('switch', { name: 'Manage staff accounts' });
     const contentSwitch = moderator.getByRole('switch', { name: 'Manage reference data & content' });
-    // Hermetic: earlier tests may have left these on; the test turns them on from a known off state.
+    // Hermetic: end with both on and saved, whatever earlier tests left behind (no save button when nothing changed).
     for (const sw of [staffSwitch, contentSwitch]) {
-      if ((await sw.getAttribute('aria-checked')) === 'true') await sw.click();
+      await sw.waitFor();
+      if ((await sw.getAttribute('aria-checked')) === 'false') await sw.click();
     }
-    await expect(staffSwitch).toHaveAttribute('aria-checked', 'false');
-    await staffSwitch.click();
-    await contentSwitch.click();
+    await expect.poll(async () => staffSwitch.getAttribute('aria-checked')).toBe('true');
+    await expect.poll(async () => contentSwitch.getAttribute('aria-checked')).toBe('true');
+    const rolesSave = page.getByRole('button', { name: 'Save changes' });
+    if ((await rolesSave.count()) > 0) {
+      await rolesSave.click();
+      await expect(page.getByText('Role permissions were saved.')).toBeVisible();
+    }
     await page.getByRole('button', { name: 'Save changes' }).click();
     await page.getByRole('button', { name: /Account menu/ }).click();
     const menu = page.getByRole('menu', { name: 'Account' });
