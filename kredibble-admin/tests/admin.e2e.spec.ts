@@ -8400,8 +8400,16 @@ test.describe('DatePicker: in the Log a post form', () => {
     await openCalendar(page);
     const dialog = calendar(page);
     // Keypresses apply through React state: poll instead of reading once, so a slow frame cannot skew the date.
-    const expectFocused = async (date: string) =>
-      await expect.poll(async () => dialog.locator('[data-focus="true"]').getAttribute('data-date')).toBe(date);
+    // A month change unmounts the focused day node, and the grid refocuses async (rAF): wait until the day node
+    // itself holds DOM focus, or the next keypress lands on <body> and is lost.
+    const expectFocused = async (date: string) => {
+      const day = dialog.locator('[data-focus="true"]');
+      await expect.poll(async () => day.getAttribute('data-date')).toBe(date);
+      await expect.poll(async () => page.evaluate((d) => {
+        const el = document.activeElement as HTMLElement | null;
+        return el?.dataset?.focus === 'true' && el?.dataset?.date === d ? d : null;
+      }, date)).toBe(date);
+    };
     await expectFocused('2026-09-16');
     await page.keyboard.press('ArrowLeft');
     await expectFocused('2026-09-15');
