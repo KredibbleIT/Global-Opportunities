@@ -8,9 +8,7 @@
  * - Mock mode: worked out from the shared in-memory store with the same functions as the Overview, so a card, a priority and a scorecard
  *   row always agree. The first load takes a moment (skeletons); later ones are instant.
  * - Dev only: ?state=loading|error|empty on the page URL forces that state (mock mode, never in production).
- * - Real-API mode: the monthly figures have no live source yet, so `notConnected` is true and nothing is calculated.
- *
- * TODO(backend): the scorecard needs monthly figures per KPI from the API.
+ * - Real-API mode: the figures come from the live scorecard API (BE-015); `notConnected` is false once it answers.
  */
 import type { Role } from "@/config/roles";
 import { currentMonth, isPastMonth } from "@/lib/kpi";

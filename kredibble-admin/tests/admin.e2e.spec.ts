@@ -686,7 +686,7 @@ test.describe('Overview error hygiene', () => {
     await page.goto(`${BASE_URL}/`);
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     // Exercise the interactive parts: the palette and the user menu (every mode), and in mock mode the chart (hover + keyboard), the KPI picker and "See all"
-    // (in real-API mode the monthly figures are "Not available yet": there is no chart or picker to use).
+    // (in real-API mode the monthly figures are live: the chart and picker exist too, but this test only needs the calm markers).
     if (MOCK_RUN) {
       const chart = page.getByRole('group', { name: /^Opportunities published, last six months/ });
       await chart.hover();
@@ -698,7 +698,10 @@ test.describe('Overview error hygiene', () => {
       await page.getByRole('button', { name: 'See all' }).click();
       await page.getByRole('button', { name: 'Show fewer' }).click();
     } else {
-      await expect(page.getByTestId('not-available-yet').first()).toBeVisible();
+      // Real-API mode: the live KPI cards render, with no "not connected" states anywhere.
+      await expect(page.getByTestId('kpi-card-social_reach')).toBeVisible();
+      await expect(page.getByTestId('not-available-yet')).toHaveCount(0);
+      await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
     }
     await page.keyboard.press('Control+k');
     await page.keyboard.press('Escape');
@@ -823,6 +826,7 @@ test.describe('List pages: template', () => {
   });
 
   test('a flagged channel shows a flag icon and the word "Flagged", never an emoji', async ({ page }) => {
+    test.skip(!MOCK_RUN, 'the real-API seed has no flagged channel; the mock store does');
     await page.goto(`${BASE_URL}/community`);
     const flagged = page.locator('main tbody tr').filter({ hasText: 'Flagged' });
     await expect(flagged).toHaveCount(1);
@@ -902,6 +906,7 @@ test.describe('Truncated cells', () => {
   test.use({ viewport: { width: 1024, height: 900 } });
 
   test('a cut-off title has a title attribute and shows the full text in the tooltip on hover and on focus', async ({ page }) => {
+    test.skip(!MOCK_RUN, 'asserts on mock channel names that the real-API seed does not have');
     await page.context().addCookies([{ name: 'sidebar', value: 'expanded', url: BASE_URL }]);
     await signedIn(page);
     await page.goto(`${BASE_URL}/community`);
@@ -923,6 +928,7 @@ test.describe('Truncated cells', () => {
   });
 
   test('text that fits has no title, no tooltip and is not a tab stop', async ({ page }) => {
+    test.skip(!MOCK_RUN, 'asserts on mock channel names that the real-API seed does not have');
     await signedIn(page);
     await page.goto(`${BASE_URL}/community`);
     const short = page.getByRole('link', { name: 'Google Tech Circle' });
@@ -1109,6 +1115,8 @@ test.describe('Progress cells never truncate', () => {
         await page.setViewportSize({ width, height: 900 });
         await page.goto(`${BASE_URL}${path}`, { timeout: 30_000 });
         await expect(page.locator('main tbody tr').first()).toBeVisible();
+        // Wait for loaded rows, not the skeleton: the bars only exist once the figures arrive.
+        await expect(page.locator('main tbody [role="progressbar"]').first()).toBeVisible();
         const result = await page.evaluate(() => {
           const bars = [...document.querySelectorAll('main tbody [role="progressbar"]')] as HTMLElement[];
           return {
@@ -1184,8 +1192,9 @@ test.describe('Forms: article editor', () => {
   test('Read time is optional; the Publishing switch changes the save label', async ({ page }) => {
     await page.goto(`${BASE_URL}/content/articles/new`, { timeout: 30_000 });
     await expect(page.getByText('Optional').first()).toBeVisible();
-    await page.getByRole('switch').click();
-    await expect(page.getByRole('switch')).toHaveAttribute('aria-checked', 'true');
+    const published = page.getByRole('switch', { name: 'Published' });
+    await published.click();
+    await expect(published).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByRole('button', { name: 'Publish article' })).toBeVisible();
   });
 
@@ -1623,6 +1632,7 @@ test.describe('Sidebar: only the active group stays open', () => {
 
 test.describe('Mock copy uses the brand', () => {
   test('history and staff data come from src/config/brand.ts', async ({ page }) => {
+    test.skip(!MOCK_RUN, 'mock copy (brand welcome text, brand staff emails) only exists in mock mode');
     await page.goto(`${BASE_URL}/notifications`, { timeout: 30_000 });
     await expect(page.getByText(`Welcome to ${BRAND.name}`)).toBeVisible();
     await expect(page.getByText(/Kredibble/i)).toHaveCount(0);
@@ -1665,18 +1675,26 @@ test.describe('Forms: wording and layout fixes', () => {
 
   test('every history timestamp uses the shared 12-hour format', async ({ page }) => {
     await page.goto(`${BASE_URL}/notifications`, { timeout: 30_000 });
+    const items = page.getByRole('region', { name: 'History' }).getByRole('listitem');
+    // Earlier tests may have sent notifications first (the history persists): measure before sending.
+    await expect(items.first()).toBeVisible();
+    const before = await items.count();
     await page.getByLabel('Title').fill('Time check');
     await page.getByRole('textbox', { name: 'Message' }).fill('Checking the clock format.');
     await page.getByRole('button', { name: 'Send notification' }).click();
     await page.getByRole('alertdialog').getByRole('button', { name: 'Send notification' }).click();
-    const items = page.getByRole('region', { name: 'History' }).getByRole('listitem');
-    await expect(items).toHaveCount(3);
+    await expect(items).toHaveCount(before + 1);
+    await expect(items.first()).toContainText('Time check');
     for (const item of await items.all()) {
       const stamp = (await item.locator('p.caption').innerText()).trim();
       expect(stamp).toMatch(/^\d{1,2} [A-Z][a-z]{2} \d{4}, \d{1,2}:\d{2} (AM|PM)$/);
     }
-    await expect(items.nth(1)).toContainText('10 Jul 2026, 2:30 PM');
-    await expect(items.nth(2)).toContainText('1 Jul 2026, 9:00 AM');
+    // The two seeded July entries live in the mock store: in real-API mode the history comes from the backend.
+    if (MOCK_RUN) {
+      const history = page.getByRole('region', { name: 'History' });
+      await expect(history.getByText('10 Jul 2026, 2:30 PM')).toBeVisible();
+      await expect(history.getByText('1 Jul 2026, 9:00 AM')).toBeVisible();
+    }
   });
 
   test('invite: the action bar sits under the form edge; the email field is empty with a neutral placeholder', async ({ page }) => {
@@ -1846,7 +1864,7 @@ const AUDIT_ROUTES: { path: string; mockOnly?: string }[] = [
   { path: '/hirers' },
   { path: '/hirers/hirer-1', mockOnly: 'hirer-1 is a mock record id' },
   { path: '/community' },
-  { path: '/community/ch-1' },
+  { path: '/community/ch-1', mockOnly: 'ch-1 is a mock record id' },
   { path: '/content/articles' },
   { path: '/content/articles/article-1' },
   { path: '/content/articles/new' },
@@ -2572,7 +2590,7 @@ test.describe('Month selector', () => {
 const NAV_ORDER = [
   'Overview', 'Insights', 'Monthly report', 'Scorecard',
   'Opportunities Queue', 'Events', 'Grants', 'Programs',
-  'Partners', 'Network', 'Leaderboard',
+  'Partners', 'Network', 'Ambassadors', 'Leaderboard',
   'Seekers', 'Hirers', 'Channels', 'Database',
   'Verification Queue', 'Reports Queue',
   'Career Resources', 'Reference data', 'Social', 'Testimonials',
@@ -2587,13 +2605,13 @@ const EXPECTED_NAV: Record<string, string[]> = {
   desk_lead: NAV_ORDER,
   moderator: ['Overview', 'Scorecard', 'Seekers', 'Hirers', 'Channels', 'Verification Queue', 'Reports Queue', 'Opportunities Queue', 'Settings'],
   support: ['Overview', 'Scorecard', 'Seekers', 'Hirers', 'Settings'],
-  partnerships_officer: ['Overview', 'Monthly report', 'Scorecard', 'Partners', 'Network', 'Leaderboard', 'Settings'],
+  partnerships_officer: ['Overview', 'Monthly report', 'Scorecard', 'Partners', 'Network', 'Ambassadors', 'Leaderboard', 'Settings'],
   opportunities_officer: ['Overview', 'Scorecard', 'Opportunities Queue', 'Events', 'Grants', 'Career Resources', 'Settings'],
-  training_officer: ['Overview', 'Scorecard', 'Events', 'Programs', 'Network', 'Settings'],
-  database_officer: ['Overview', 'Scorecard', 'Network', 'Database', 'Settings'],
+  training_officer: ['Overview', 'Scorecard', 'Events', 'Programs', 'Network', 'Ambassadors', 'Settings'],
+  database_officer: ['Overview', 'Scorecard', 'Network', 'Ambassadors', 'Database', 'Settings'],
   communications_officer: ['Overview', 'Monthly report', 'Scorecard', 'Career Resources', 'Social', 'Testimonials', 'Notifications', 'Settings'],
   social_media_manager: ['Overview', 'Scorecard', 'Social', 'Testimonials', 'Settings'],
-  country_lead: ['Overview', 'Scorecard', 'Partners', 'Network', 'Leaderboard', 'Programs', 'Database', 'Settings'],
+  country_lead: ['Overview', 'Scorecard', 'Partners', 'Network', 'Ambassadors', 'Leaderboard', 'Programs', 'Database', 'Settings'],
   admin_support: ['Overview', 'Scorecard', 'Team', 'Settings'],
   'moderator,communications_officer': ['Overview', 'Monthly report', 'Scorecard', 'Seekers', 'Hirers', 'Channels', 'Verification Queue', 'Reports Queue', 'Career Resources', 'Social', 'Testimonials', 'Notifications', 'Settings', 'Opportunities Queue'],
 };
@@ -2763,12 +2781,12 @@ test.describe('New placeholder routes', () => {
     ['/scorecard', 'Scorecard'], // (/monthly-report is built: it redirects to the Partner report; see the Monthly report tests)
   ];
   for (const [path, title] of STUBS) {
-    test(`${path}: header, breadcrumb group and the later-step state, no console errors`, async ({ page }) => {
+    test(`${path}: header, breadcrumb group and the empty-role state, no console errors`, async ({ page }) => {
       const problems = trackProblems(page);
       await page.goto(`${BASE_URL}${path}`, { timeout: 30_000 });
       await expect(page.getByTestId('page-title')).toHaveText(title);
-      // the Scorecard of a Super Admin owns no metrics, so it shows that empty state instead (in real-API mode: the sample-data notice and "Not available yet")
-      await expect(page.getByText(path === '/scorecard' ? (MOCK_RUN ? 'No metrics are assigned to your role' : 'Not available yet') : 'This screen is built in a later step')).toBeVisible();
+      // the Scorecard of a Super Admin owns no metrics, so it shows that empty state instead (in both modes: 'No metrics are assigned to your role')
+      await expect(page.getByText('No metrics are assigned to your role')).toBeVisible();
       await expect(page.locator('header.sticky nav[aria-label="Breadcrumb"]')).toContainText(title);
       expect(problems).toEqual([]);
     });
@@ -2790,7 +2808,7 @@ test.describe('Admin data API (real backend)', () => {
     expect(Array.isArray(data.data.kpis)).toBeTruthy();
     const metrics = data.data.kpis.map((kpi: { metric: string }) => kpi.metric);
     expect(metrics).toContain('opportunitiesPublished');
-    expect(metrics).toContain('programsActive');
+    expect(metrics).toContain('programsDelivered');
   });
 });
 
@@ -3733,6 +3751,17 @@ test.describe('Roles fix pass: Team > Roles & permissions access and the toggles
 
   test('turning "Manage reference data & content" and "Manage staff accounts" on adds Reference data and Team, never the Roles tab', async ({ page, context }) => {
     await asRoles(context, 'super_admin');
+    // Earlier tests in the run may have saved toggles to the shared backend: reset to the defaults first
+    // (backend DEFAULT_TOGGLE_GRANTS) so the switches start from a known state.
+    const reset = await page.request.put(`${API_URL}/admin/roles-permissions`, {
+      data: {
+        toggles: {
+          Moderator: { verifications: true, moderate: true, suspend: true, content: false, broadcast: false, staff: false },
+          Support: { verifications: false, moderate: false, suspend: true, content: false, broadcast: false, staff: false },
+        },
+      },
+    });
+    expect(reset.ok()).toBeTruthy();
     await page.goto(`${BASE_URL}/team?tab=roles`, { timeout: 30_000 });
     await page.getByTestId('sidebar-toggle').waitFor();
     await page.waitForTimeout(500);
@@ -3795,7 +3824,7 @@ test.describe('Roles fix pass: sidebar open state, direct rows, tagline, account
     expect(await openGroups(page)).toEqual(['nav-group-dashboard']);
   });
 
-  test('a group with one visible page is a direct row at the end: Partnerships Officer (Settings) and Database Officer (Network, Database, Settings)', async ({ page, context }) => {
+  test('a group with one visible page is a direct row at the end: Partnerships Officer (Settings) and Database Officer (Network, Ambassadors, Database, Settings)', async ({ page, context }) => {
     await asRoles(context, 'partnerships_officer');
     await page.goto(`${BASE_URL}/`, { timeout: 30_000 });
     const nav = page.locator('aside nav');
@@ -3806,10 +3835,15 @@ test.describe('Roles fix pass: sidebar open state, direct rows, tagline, account
     await asRoles(context, 'database_officer');
     await page.goto(`${BASE_URL}/database`);
     await expect(page.getByTestId('page-title')).toBeVisible();
-    expect(await nav.locator('[data-testid^="nav-group-"]').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')))).toEqual(['nav-group-dashboard']);
+    // Database Officer sees the Partners & network group (Network and Ambassadors share it) plus direct rows.
+    expect(await nav.locator('[data-testid^="nav-group-"]').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')))).toEqual(['nav-group-dashboard', 'nav-group-partners-network']);
     await expect(nav.getByTestId('nav-item-database')).toHaveAttribute('aria-current', 'page');
-    expect(await nav.locator('a[data-testid^="nav-item-"]').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')))).toEqual(['nav-item-network', 'nav-item-database', 'nav-item-settings']);
+    expect(await nav.locator('a[data-testid^="nav-item-"]').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')))).toEqual(['nav-item-database', 'nav-item-settings']);
     expect(await openGroups(page)).toEqual([]); // the active page is a direct row, so no group opens
+    // the two network pages sit in their (closed) group: open it to reach them
+    await nav.getByTestId('nav-group-partners-network').click();
+    await expect(nav.getByTestId('nav-item-network')).toBeVisible();
+    await expect(nav.getByTestId('nav-item-ambassadors')).toBeVisible();
   });
 
   test('the tagline is one line in the expanded desktop sidebar and the collapse button is visible', async ({ page }) => {
@@ -5085,8 +5119,8 @@ test.describe('Partners: the board', () => {
     for (const stage of ['prospect', 'outreach', 'proposal', 'mou']) await expect(page.getByTestId(`kanban-marker-${stage}`)).toHaveCount(0);
     const line = page.getByTestId('kanban-column-prospect').locator('.bg-purple-500').first();
     expect(Math.round((await line.boundingBox())!.height)).toBeLessThanOrEqual(3); // a thin line
-    // no manual closed switch anywhere on the board
-    await expect(page.getByRole('switch')).toHaveCount(0);
+    // no manual closed switch anywhere on the board (the Mock data switch in the header does not count)
+    await expect(page.getByRole('switch', { name: /closed/i })).toHaveCount(0);
     await expect(page.getByRole('checkbox', { name: /closed/i })).toHaveCount(0);
   });
 
@@ -5144,7 +5178,7 @@ test.describe('Partners: the board', () => {
     await expect(history).toContainText(formatDate(todayLocal()));
     await expect(history).toContainText('The deal closed.');
     await expect(history).toContainText('The deal is open again.');
-    await expect(page.getByRole('switch')).toHaveCount(0); // still no manual closed switch
+    await expect(page.getByRole('switch', { name: /closed/i })).toHaveCount(0); // still no manual closed switch
   });
 
   test('drag and drop with the pointer moves a card between columns', async ({ page }) => {
@@ -5236,9 +5270,9 @@ test.describe('Partners: form and detail', () => {
     await page.getByLabel('Contact email').fill('not-an-email');
     await page.getByLabel('Contact email').blur();
     await expect(page.getByText('Enter a full email address, like name@company.com.')).toBeVisible();
-    // there is no stage field and no closed switch on the form
+    // there is no stage field and no closed switch on the form (the Mock data switch in the header does not count)
     await expect(page.getByRole('combobox', { name: /stage/i })).toHaveCount(0);
-    await expect(page.getByRole('switch')).toHaveCount(0);
+    await expect(page.getByRole('switch', { name: /closed/i })).toHaveCount(0);
   });
 
   test('creating a partner adds it at Prospect (5 there now), with the first history entry, and it can be edited', async ({ page }) => {
@@ -7503,23 +7537,33 @@ test.describe('Database: the pre-step additions', () => {
     const cell = (row: import('@playwright/test').Locator) => row.locator('td[data-label="Verified"]');
     const pending = page.getByTestId('table-row').filter({ has: page.getByTestId('verify-button') }).first();
     await expect(pending.getByTestId('verify-button')).toContainText('Verify');
-    const widths = new Set<number>();
     const pendingX = (await pending.getByTestId('verify-button').boundingBox())!.x;
-    const pendingBadgeX = (await cell(pending).getByTestId('status-badge').boundingBox())!.x;
+    // the badge sits at the same offset inside its cell on both rows; each row is measured atomically
+    // (one frame) so page-level shifts between reads cannot falsify the comparison
+    const badgeDX = (row: import('@playwright/test').Locator) => row.evaluate((el) => {
+      const cell = el.querySelector('td[data-label="Verified"]')!;
+      const badge = cell.querySelector('[data-testid="status-badge"]')!;
+      return badge.getBoundingClientRect().x - cell.getBoundingClientRect().x;
+    });
+    const pendingBadgeDX = await badgeDX(pending);
     // (in the same view: the first page of All has pending rows and verified rows)
     const done = page.getByTestId('table-row').filter({ hasNot: page.getByTestId('verify-button') }).filter({ has: page.getByTestId('status-badge').filter({ hasText: 'Verified' }) }).first();
     await expect(done).toBeVisible();
-    // measured together, after the layout has settled at this width
-    widths.add(Math.round((await cell(pending).boundingBox())!.width));
-    widths.add(Math.round((await cell(done).boundingBox())!.width));
+    // the column keeps its width on every row: read all Verified cells in one frame, so a layout
+    // shift between reads cannot falsify the comparison (the column is table-fixed, content-independent)
+    const widths = await page.locator('main tbody td[data-label="Verified"]').evaluateAll((cells) =>
+      cells.map((cell) => Math.round(cell.getBoundingClientRect().width)),
+    );
+    expect(widths.length).toBeGreaterThan(1);
+    expect(new Set(widths).size).toBe(1);
     // a verified row has the green badge and nothing else: no muted check text, no button
     await expect(done.getByTestId('verified-check')).toHaveCount(0);
     await expect(done.getByTestId('verify-button')).toHaveCount(0);
     await expect(cell(done).getByTestId('status-badge')).toHaveText('Verified');
     expect((await cell(done).innerText()).trim()).toBe('Verified');
-    expect(Math.abs((await cell(done).getByTestId('status-badge').boundingBox())!.x - pendingBadgeX)).toBeLessThanOrEqual(1); // the badge is in the same place
+    expect(Math.abs((await badgeDX(done)) - pendingBadgeDX)).toBeLessThanOrEqual(1); // the badge is in the same place
     expect(pendingX).toBeGreaterThan((await cell(done).getByTestId('status-badge').boundingBox())!.x);
-    expect(widths.size).toBe(1);
+    expect(new Set(widths).size).toBe(1);
   });
 
   test('a truncated linked opportunity shows its full name in the Tooltip', async ({ page }) => {
@@ -8355,27 +8399,37 @@ test.describe('DatePicker: in the Log a post form', () => {
     await field(page).blur();
     await openCalendar(page);
     const dialog = calendar(page);
-    const focused = () => dialog.locator('[data-focus="true"]').getAttribute('data-date');
-    expect(await focused()).toBe('2026-09-16');
+    // Keypresses apply through React state: poll instead of reading once, so a slow frame cannot skew the date.
+    // A month change unmounts the focused day node, and the grid refocuses async (rAF): wait until the day node
+    // itself holds DOM focus, or the next keypress lands on <body> and is lost.
+    const expectFocused = async (date: string) => {
+      const day = dialog.locator('[data-focus="true"]');
+      await expect.poll(async () => day.getAttribute('data-date')).toBe(date);
+      await expect.poll(async () => page.evaluate((d) => {
+        const el = document.activeElement as HTMLElement | null;
+        return el?.dataset?.focus === 'true' && el?.dataset?.date === d ? d : null;
+      }, date)).toBe(date);
+    };
+    await expectFocused('2026-09-16');
     await page.keyboard.press('ArrowLeft');
-    expect(await focused()).toBe('2026-09-15');
+    await expectFocused('2026-09-15');
     await page.keyboard.press('ArrowRight');
     await page.keyboard.press('ArrowRight');
-    expect(await focused()).toBe('2026-09-17');
+    await expectFocused('2026-09-17');
     await page.keyboard.press('ArrowUp');
-    expect(await focused()).toBe('2026-09-10');
+    await expectFocused('2026-09-10');
     await page.keyboard.press('ArrowDown');
-    expect(await focused()).toBe('2026-09-17');
+    await expectFocused('2026-09-17');
     await page.keyboard.press('Home');
-    expect(await focused()).toBe('2026-09-14'); // the Monday
+    await expectFocused('2026-09-14'); // the Monday
     await page.keyboard.press('End');
-    expect(await focused()).toBe('2026-09-20'); // the Sunday
+    await expectFocused('2026-09-20'); // the Sunday
     await page.keyboard.press('PageUp');
-    expect(await focused()).toBe('2026-08-20');
+    await expectFocused('2026-08-20');
     await expect(monthLabel(page)).toHaveText('August 2026');
     await page.keyboard.press('PageDown');
     await page.keyboard.press('PageDown');
-    expect(await focused()).toBe(clampDate(addMonths('2026-09-20', 1), undefined, today())); // a month ahead, held at today (the maximum)
+    await expectFocused(clampDate(addMonths('2026-09-20', 1), undefined, today())); // a month ahead, held at today (the maximum)
     await page.keyboard.press('PageUp');
     await page.keyboard.press('Enter');
     await expect(dialog).toHaveCount(0);
@@ -8661,6 +8715,8 @@ test.describe('Social: phones and the platform table and chart', () => {
       await card.getByRole('textbox', { name: 'Reach' }).fill(String(100 + i * 150));
       await card.getByRole('textbox', { name: 'Engagement' }).fill(String(10 + i));
       await card.getByRole('button', { name: 'Log post' }).click();
+      // The save completes async (300ms): the newest toast proves the post landed before the row is asserted.
+      await expect(page.getByTestId('toast').last()).toContainText(`A ${platform} post was logged`);
       await expect(page.getByTestId(`platform-row-${platform.toLowerCase()}`)).toBeVisible();
     }
   };
@@ -9615,7 +9671,16 @@ const goViaSidebar = async (page: import('@playwright/test').Page, group: string
   const aside = page.locator('aside');
   const toggle = aside.getByRole('button', { name: group });
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
-  await aside.getByRole('link', { name: new RegExp(`^${link}\\b`) }).click(); // (a pill after the name, like "Database 32 pending", is fine)
+  // The sidebar re-renders while counts load: re-resolve and retry so a detached node cannot fail the run.
+  const re = new RegExp(`^${link}\\b`); // (a pill after the name, like "Database 32 pending", is fine)
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await aside.getByRole('link', { name: re }).click({ timeout: 10_000 });
+      return;
+    } catch (error) {
+      if (attempt >= 4) throw error;
+    }
+  }
 };
 
 test.describe('Settings: roles', () => {
@@ -9701,14 +9766,15 @@ test.describe('Settings: My account', () => {
       const box = (await eye.boundingBox())!;
       expect([Math.round(box.width), Math.round(box.height)]).toEqual([40, 40]);
       await eye.click();
-      expect(await field.getAttribute('type')).toBe('text');
+      // React flushes the toggle async: poll instead of reading once.
+      await expect.poll(async () => field.getAttribute('type')).toBe('text');
       await expect(card.getByRole('button', { name: `Hide ${word}` })).toHaveAttribute('aria-pressed', 'true');
       await page.evaluate(() => {
         Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
         document.dispatchEvent(new Event('visibilitychange'));
         Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
       });
-      expect(await field.getAttribute('type')).toBe('password'); // hidden again
+      await expect.poll(async () => field.getAttribute('type')).toBe('password'); // hidden again
     }
   });
 
@@ -10826,64 +10892,70 @@ test.describe('Overview: the ten KPI cards and the sections below them', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// Overview in real-API mode: the monthly figures have no live source yet, so the page says so calmly ("Not available yet"),
-// once at the top and once in each section. It is NOT an error. In mock mode none of this shows, and a forced error keeps its error state.
+// Overview in real-API mode: the monthly figures come from the live KPI APIs (BE-004/BE-015), so the page shows
+// live figures against the seeded backend: no notice, no "Not available yet", no "could not be loaded".
+// In mock mode the sample figures show instead (see the mock-mode describe below), and a forced error keeps its error state.
 // ---------------------------------------------------------------------------------------------
-test.describe('Overview: real-API mode says "Not available yet" calmly', () => {
+test.describe('Overview: real-API mode shows live figures calmly', () => {
   test.skip(MOCK_RUN, 'real API only: mock mode shows the sample figures');
   test.use({ viewport: { width: 1440, height: 1000 } });
   type P = import('@playwright/test').Page;
-  const NOTICE = "Monthly figures aren't connected to live data yet. The queue counts below are live.";
   const open = async (page: P) => {
     await page.goto(`${BASE_URL}/`, { timeout: 30_000 });
     await expect(page.getByTestId('kpi-card-social_reach')).toBeVisible();
   };
 
-  test('one notice at the top, and each of the four sections says "Not available yet" (no "could not be loaded")', async ({ page }) => {
+  test('no notice, and each of the four sections shows its live state (no "Not available yet", no "could not be loaded")', async ({ page }) => {
     await open(page);
-    await expect(page.getByTestId('not-connected-notice')).toHaveCount(1);
-    await expect(page.getByTestId('not-connected-notice')).toHaveText(NOTICE);
-    for (const name of ['Trend', 'Priorities', 'Programs in progress and upcoming', 'Recent activity']) {
-      const section = page.getByRole('region', { name, exact: true });
-      await expect(section.getByTestId('not-available-yet')).toHaveText('Not available yet');
-      await expect(section).not.toContainText('could not be loaded');
-    }
+    await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
+    await expect(page.getByText('Not available yet')).toHaveCount(0);
+    // Trend renders the six-month chart, Priorities its ranked rows, Programs and Activity their empty states.
+    await expect(page.getByRole('combobox', { name: 'KPI shown in the trend' })).toBeVisible();
+    await expect(page.getByTestId('priority-row')).toHaveCount(3);
+    await expect(page.getByRole('region', { name: 'Programs in progress and upcoming' }).getByText('No programs in progress or upcoming')).toBeVisible();
+    // Recent activity reflects earlier tests in the run (approvals, verifications), so only the calm markers hold.
+    const activity = page.getByRole('region', { name: 'Recent activity' });
+    await expect(activity).toBeVisible();
+    await expect(activity.getByTestId('not-available-yet')).toHaveCount(0);
     await expect(page.getByText('could not be loaded')).toHaveCount(0);
   });
 
-  test('the ten cards are one greyed, compact state: the label and "Not available yet", no bar, no status, no "Target: —", same height as a loaded card', async ({ page }) => {
+  test('the ten cards show live figures with status: labels, values, bars and no "Target: —"', async ({ page }) => {
     await open(page);
     const cards = page.locator('[data-testid^="kpi-card-"]');
     await expect(cards).toHaveCount(10);
     for (const key of KPI_KEYS) {
       const card = page.getByTestId(`kpi-card-${key}`);
       await expect(card).toContainText(KPIS[key].label);
-      await expect(card).toContainText('Not available yet');
-      await expect(card.getByRole('progressbar')).toHaveCount(0);
-      await expect(card.getByTestId('kpi-status')).toHaveCount(0);
     }
+    // The seeded backend has figures and default targets: every card shows a live status word, never "not available".
+    // (The exact figure moves when earlier tests publish records, so only the vocabulary is pinned.)
+    await expect(page.getByTestId('kpi-card-opportunities_published')).toContainText(/On track|Off track|Behind/);
+    await expect(page.getByTestId('kpi-status').first()).toBeVisible();
+    await expect(page.getByText('Not available yet')).toHaveCount(0);
     await expect(page.getByText('Status unavailable')).toHaveCount(0);
     await expect(page.getByText(/^Target .*: —$/)).toHaveCount(0);
-    // the height of a loaded card at this width (208px at 1440): nothing jumps when data arrives
-    const heights = await cards.evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().height)));
-    expect(new Set(heights)).toEqual(new Set([208]));
   });
 
-  test('the dark card keeps the two live queue counts and says "Not available yet" for the two without a live source', async ({ page }) => {
+  test('the dark card shows live queue counts, never "Not available yet"', async ({ page }) => {
     await open(page);
     const attention = page.getByRole('region', { name: 'Needs your attention' });
     await expect(attention).toBeVisible();
-    await expect(attention.getByTestId('attention-pendingTestimonials')).toContainText('Not available yet');
-    await expect(attention.getByTestId('attention-draftListings')).toContainText('Not available yet');
-    await expect(attention.getByTestId('attention-pendingVerifications')).not.toContainText('Not available yet');
-    await expect(attention.getByTestId('attention-openReports')).not.toContainText('Not available yet');
+    // Every queue has a live backend source now: each row shows a numeric count.
+    // (Exact counts move when earlier tests approve or resolve queue items, so only the shape is pinned.)
+    for (const testId of ['attention-pendingVerifications', 'attention-openReports', 'attention-pendingTestimonials', 'attention-draftListings']) {
+      const row = attention.getByTestId(testId);
+      await expect(row).toBeVisible();
+      await expect(row).not.toContainText('Not available yet');
+      expect(await row.innerText()).toMatch(/\d/);
+    }
   });
 
-  test('on a phone (434px): the same states and nothing wider than the screen', async ({ page }) => {
+  test('on a phone (434px): the same live states and nothing wider than the screen', async ({ page }) => {
     await page.setViewportSize({ width: 434, height: 900 });
     await open(page);
-    await expect(page.getByTestId('not-connected-notice')).toBeVisible();
-    await expect(page.getByTestId('not-available-yet')).toHaveCount(4);
+    await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
+    await expect(page.getByTestId('not-available-yet')).toHaveCount(0);
     const report = await overflowing(page);
     expect(report.found, JSON.stringify(report)).toEqual([]);
     expect(report.scrollWidth).toBeLessThanOrEqual(report.innerWidth);
@@ -11495,12 +11567,14 @@ test.describe('Scorecard: My scorecard and Team (mock mode)', () => {
   });
 });
 
-test.describe('Scorecard: real-API mode says "Not available yet" calmly', () => {
+test.describe('Scorecard: real-API mode shows the live empty-role state', () => {
   test.skip(MOCK_RUN, 'real API only: mock mode shows the sample figures');
-  test('the sample-data notice and a calm "Not available yet", no ring and no zero', async ({ page }) => {
+  test('no notice, the empty-role state, no ring and no zero', async ({ page }) => {
     await page.goto(`${BASE_URL}/scorecard`, { timeout: 30_000 });
-    await expect(page.getByTestId('not-connected-notice')).toBeVisible();
-    await expect(page.getByTestId('not-available-yet')).toHaveText('Not available yet');
+    // The seeded admin owns no metrics: the API answers with a live empty person, not "not connected".
+    await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
+    await expect(page.getByText('No metrics are assigned to your role')).toBeVisible();
+    await expect(page.getByTestId('not-available-yet')).toHaveCount(0);
     await expect(page.getByTestId('score-ring')).toHaveCount(0);
   });
 });
@@ -12260,10 +12334,16 @@ test.describe('Monthly report: Download PDF and printing (mock mode)', () => {
     await expect(page.getByTestId('download-pdf')).toBeEnabled();
     await page.getByTestId('download-pdf').click();
     await expect(toast.last()).toContainText(`Report recorded for ${formatMonth(defaultMonth())}`);
-    // another month of the partner report is another report
+    // another month of the partner report is another report; pick it with the keyboard: clicking the
+    // option flakes (the open list remounts while the report loads after the template navigation).
     await page.getByRole('link', { name: 'Partner report' }).click();
-    await page.getByRole('combobox', { name: 'Month' }).click();
-    await page.getByRole('option', { name: new RegExp(formatMonth(monthsBefore(currentMonth(), 3))) }).click();
+    const monthCombo = page.getByRole('combobox', { name: 'Month' });
+    await monthCombo.click();
+    // Options are newest first with September selected: two downs land on July 2026 (option index 3).
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowDown');
+    await expect.poll(async () => monthCombo.getAttribute('aria-activedescendant')).toMatch(/option-3$/);
+    await page.keyboard.press('Enter');
     await expect(page.getByTestId('report-month')).toHaveText(formatMonth(monthsBefore(currentMonth(), 3)));
     await page.getByTestId('download-pdf').click();
     await expect(toast.last()).toContainText(`Report recorded for ${formatMonth(monthsBefore(currentMonth(), 3))}`);

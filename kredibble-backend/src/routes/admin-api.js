@@ -366,7 +366,7 @@ const addManagedRoutes = ({
   adminApiRouter.delete(`${path}/:id`, ...editAuth, asyncHandler(async (req, res) => {
     const record = await Model.findById(validId(req.params.id, resource));
     if (!record) throw notFound(resource);
-    let sync = { status: 'pending' };
+    let sync;
     try {
       sync = await deleteFromWordpress(resource, record);
     } catch (error) {
@@ -727,7 +727,7 @@ adminApiRouter.get('/opportunities/:id/analytics', requireAdminOrStaffAuth, requ
 adminApiRouter.delete('/opportunities/:id', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'edit'), requirePortalRoles(...OPPORTUNITY_ROLES), asyncHandler(async (req, res) => {
   const record = await Opportunity.findById(validId(req.params.id, 'Opportunity'));
   if (!record) throw notFound('Opportunity');
-  let sync = { status: 'pending' };
+  let sync;
   try {
     sync = await deleteFromWordpress('opportunities', record);
   } catch (error) {
@@ -926,9 +926,9 @@ export const calculatePipelineHealth = async (monthQuery) => {
   const closedCount = closedInWindow.size;
   const closeRate = reachedCount > 0 ? (closedCount / reachedCount) : null;
 
-  let needed = null;
-  let ratio = null;
-  let status = 'unknown';
+  let needed;
+  let ratio;
+  let status;
 
   if (target <= 0) {
     needed = 0;
@@ -1135,7 +1135,7 @@ const prepareAmbassador = (body, authSub, existing = {}) => {
     joinedAt = body.joinedAt || new Date().toISOString().slice(0, 10);
   }
 
-  let dormantSince = existing.dormantSince;
+  let dormantSince;
   if (status === 'dormant') {
     dormantSince = body.dormantSince || existing.dormantSince || new Date().toISOString().slice(0, 10);
   } else {
@@ -2834,7 +2834,7 @@ adminApiRouter.get(
     const today = req.query.today ? new Date(req.query.today) : new Date();
 
     const staff = await StaffMember.findOne({ userId: req.auth.sub, status: 'active' }).lean();
-    let callerPerson = null;
+    let callerPerson;
 
     const [metricValues, targets, thresholds] = await Promise.all([
       dashboardMetrics(month),
@@ -4301,7 +4301,11 @@ adminApiRouter.post('/staff/invite', requireAdminOrStaffAuth, requireScreen('tea
   let user = await User.findOne({ emailNormalized: emailNorm, role: { $ne: 'deleted' } });
 
   if (!user) {
-    const name = req.body.name?.trim() || req.body.email.split('@')[0];
+    // SEC-077: without a full name the invite must reference an existing
+    // account — fabricating an account from a bare email is rejected (404).
+    // With a name (the admin UI requires one) the invite provisions the account.
+    if (!req.body.name?.trim()) throw notFound('User');
+    const name = req.body.name.trim();
     const randomPassword = crypto.randomBytes(16).toString('hex');
     const passwordHash = await bcrypt.hash(randomPassword, 12);
     user = await User.create({
@@ -4380,9 +4384,9 @@ adminApiRouter.patch('/staff/:id', requireAdminOrStaffAuth, requireScreen('team'
   await auditReq(req, {
     action: AUDIT_ACTIONS.ADMIN_USER_UPDATE,
     resourceType: AUDIT_RESOURCE_TYPES.USER,
-    resourceId: staff.userId,
+    resourceId: staff._id,
     outcome: 'success',
-    metadata: { staffUpdate: true, previous, updated: toClientObject(staff) },
+    metadata: { staffUpdate: true, previous, updated: toClientObject(staff), updatedFields: Object.keys(req.body) },
   });
 
   itemResponse(res, toClientObject(staff));
@@ -4418,9 +4422,9 @@ adminApiRouter.put('/staff/:id', requireAdminOrStaffAuth, requireScreen('team', 
   await auditReq(req, {
     action: AUDIT_ACTIONS.ADMIN_USER_UPDATE,
     resourceType: AUDIT_RESOURCE_TYPES.USER,
-    resourceId: staff.userId,
+    resourceId: staff._id,
     outcome: 'success',
-    metadata: { staffUpdate: true, updated: toClientObject(staff) },
+    metadata: { staffUpdate: true, updated: toClientObject(staff), updatedFields: Object.keys(req.body) },
   });
 
   itemResponse(res, toClientObject(staff));
@@ -4777,5 +4781,5 @@ adminApiRouter.delete('/community/posts/:id', requireAdminOrStaffAuth, requireSc
     metadata: { channelId: post.channelId, authorId: post.authorId },
   });
 
-  res.json({ data: { id: String(post._id), removed: true } });
+  res.status(204).send();
 }));

@@ -11,7 +11,7 @@
  * Props:
  * - counts: the four counts, or null when unavailable (rows then show "—")
  * - loading: show the skeleton with the same size
- * - notConnected: real-API mode: the two queues with a live source show their counts; the others say "Not available yet" (not a bare dash)
+ * - notConnected: real-API mode: every queue has a live source now, so this only ever shows counts (or "—" when unknown)
  */
 import Link from "next/link";
 import { Flag, MessageSquareQuote, NotebookPen, ShieldCheck, type LucideIcon } from "lucide-react";
