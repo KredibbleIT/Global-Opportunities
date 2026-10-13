@@ -8428,9 +8428,11 @@ test.describe('DatePicker: in the Log a post form', () => {
     await expectFocused('2026-08-20');
     await expect(monthLabel(page)).toHaveText('August 2026');
     await page.keyboard.press('PageDown');
+    await expectFocused('2026-09-20');
     await page.keyboard.press('PageDown');
     await expectFocused(clampDate(addMonths('2026-09-20', 1), undefined, today())); // a month ahead, held at today (the maximum)
     await page.keyboard.press('PageUp');
+    await expectFocused(addMonths(today(), -1));
     await page.keyboard.press('Enter');
     await expect(dialog).toHaveCount(0);
     await expect(field(page)).toBeFocused();
