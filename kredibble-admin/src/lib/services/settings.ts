@@ -404,7 +404,10 @@ export function saveIdentifier(kind: IntegrationKind, identifier: string): void 
 
 /** Tests integration connection: calls backend in real mode, or mocks after 800 ms. */
 export function testConnection(kind: IntegrationKind): Promise<{ ok: boolean; kind: IntegrationKind }> {
-  if (typeof window !== "undefined" && (!isMockMode() || hasAdminSession())) {
+  // Unlike the other settings calls (which use the backend whenever a session exists), this is ALWAYS a pure
+  // mock in mock mode: the suite pins the 800 ms spinner and asserts nothing is ever sent, so the typed
+  // secret can never leave the browser on this path.
+  if (typeof window !== "undefined" && !isMockMode()) {
     return testIntegrationApi(kind)
       .then((res) => ({ ok: Boolean(res.success), kind }))
       .catch(() => ({ ok: false, kind }));

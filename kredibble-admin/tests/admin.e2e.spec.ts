@@ -7535,23 +7535,33 @@ test.describe('Database: the pre-step additions', () => {
     const cell = (row: import('@playwright/test').Locator) => row.locator('td[data-label="Verified"]');
     const pending = page.getByTestId('table-row').filter({ has: page.getByTestId('verify-button') }).first();
     await expect(pending.getByTestId('verify-button')).toContainText('Verify');
-    const widths = new Set<number>();
     const pendingX = (await pending.getByTestId('verify-button').boundingBox())!.x;
-    const pendingBadgeX = (await cell(pending).getByTestId('status-badge').boundingBox())!.x;
+    // the badge sits at the same offset inside its cell on both rows; each row is measured atomically
+    // (one frame) so page-level shifts between reads cannot falsify the comparison
+    const badgeDX = (row: import('@playwright/test').Locator) => row.evaluate((el) => {
+      const cell = el.querySelector('td[data-label="Verified"]')!;
+      const badge = cell.querySelector('[data-testid="status-badge"]')!;
+      return badge.getBoundingClientRect().x - cell.getBoundingClientRect().x;
+    });
+    const pendingBadgeDX = await badgeDX(pending);
     // (in the same view: the first page of All has pending rows and verified rows)
     const done = page.getByTestId('table-row').filter({ hasNot: page.getByTestId('verify-button') }).filter({ has: page.getByTestId('status-badge').filter({ hasText: 'Verified' }) }).first();
     await expect(done).toBeVisible();
-    // measured together, after the layout has settled at this width
-    widths.add(Math.round((await cell(pending).boundingBox())!.width));
-    widths.add(Math.round((await cell(done).boundingBox())!.width));
+    // the column keeps its width on every row: read all Verified cells in one frame, so a layout
+    // shift between reads cannot falsify the comparison (the column is table-fixed, content-independent)
+    const widths = await page.locator('main tbody td[data-label="Verified"]').evaluateAll((cells) =>
+      cells.map((cell) => Math.round(cell.getBoundingClientRect().width)),
+    );
+    expect(widths.length).toBeGreaterThan(1);
+    expect(new Set(widths).size).toBe(1);
     // a verified row has the green badge and nothing else: no muted check text, no button
     await expect(done.getByTestId('verified-check')).toHaveCount(0);
     await expect(done.getByTestId('verify-button')).toHaveCount(0);
     await expect(cell(done).getByTestId('status-badge')).toHaveText('Verified');
     expect((await cell(done).innerText()).trim()).toBe('Verified');
-    expect(Math.abs((await cell(done).getByTestId('status-badge').boundingBox())!.x - pendingBadgeX)).toBeLessThanOrEqual(1); // the badge is in the same place
+    expect(Math.abs((await badgeDX(done)) - pendingBadgeDX)).toBeLessThanOrEqual(1); // the badge is in the same place
     expect(pendingX).toBeGreaterThan((await cell(done).getByTestId('status-badge').boundingBox())!.x);
-    expect(widths.size).toBe(1);
+    expect(new Set(widths).size).toBe(1);
   });
 
   test('a truncated linked opportunity shows its full name in the Tooltip', async ({ page }) => {
@@ -9647,7 +9657,16 @@ const goViaSidebar = async (page: import('@playwright/test').Page, group: string
   const aside = page.locator('aside');
   const toggle = aside.getByRole('button', { name: group });
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
-  await aside.getByRole('link', { name: new RegExp(`^${link}\\b`) }).click(); // (a pill after the name, like "Database 32 pending", is fine)
+  // The sidebar re-renders while counts load: re-resolve and retry so a detached node cannot fail the run.
+  const re = new RegExp(`^${link}\\b`); // (a pill after the name, like "Database 32 pending", is fine)
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await aside.getByRole('link', { name: re }).click({ timeout: 10_000 });
+      return;
+    } catch (error) {
+      if (attempt >= 4) throw error;
+    }
+  }
 };
 
 test.describe('Settings: roles', () => {
@@ -9733,14 +9752,15 @@ test.describe('Settings: My account', () => {
       const box = (await eye.boundingBox())!;
       expect([Math.round(box.width), Math.round(box.height)]).toEqual([40, 40]);
       await eye.click();
-      expect(await field.getAttribute('type')).toBe('text');
+      // React flushes the toggle async: poll instead of reading once.
+      await expect.poll(async () => field.getAttribute('type')).toBe('text');
       await expect(card.getByRole('button', { name: `Hide ${word}` })).toHaveAttribute('aria-pressed', 'true');
       await page.evaluate(() => {
         Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
         document.dispatchEvent(new Event('visibilitychange'));
         Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
       });
-      expect(await field.getAttribute('type')).toBe('password'); // hidden again
+      await expect.poll(async () => field.getAttribute('type')).toBe('password'); // hidden again
     }
   });
 
