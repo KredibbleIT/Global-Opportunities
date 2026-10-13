@@ -19,7 +19,7 @@
  * - series: scope "me": the composite of the last six months
  * - tooEarly: the current month is before SCORE_FROM_DAY: no composite and no ranking yet ("Too early in the month to score", "Scores start on day 5")
  * - loading: show the skeleton with the final shape
- * - notConnected: real-API mode: a calm "Not available yet" (the page shows the sample-data notice above)
+ * - notConnected: real-API mode: a calm "Not available yet" while the figures have no live source (the page shows the sample-data notice above)
  */
 import { useId, useMemo, useState } from "react";
 import { ChevronDown, ListChecks, Users } from "lucide-react";

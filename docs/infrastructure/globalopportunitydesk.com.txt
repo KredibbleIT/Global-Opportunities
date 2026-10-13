@@ -1,0 +1,58 @@
+;;
+;; Domain:     globalopportunitydesk.com.
+;; Exported:   2026-10-11 03:12:42
+;;
+;; This file is intended for use for informational and archival
+;; purposes ONLY and MUST be edited before use on a production
+;; DNS server.  In particular, you must:
+;;   -- update the SOA record with the correct authoritative name server
+;;   -- update the SOA record with the contact e-mail address information
+;;   -- update the NS record(s) with the authoritative name servers for this domain.
+;;
+;; For further information, please consult the BIND documentation
+;; located on the following website:
+;;
+;; http://www.isc.org/
+;;
+;; And RFC 1035:
+;;
+;; http://www.ietf.org/rfc/rfc1035.txt
+;;
+;; Please note that we do NOT offer technical support for any use
+;; of this zone data, the BIND name server, or any other third-party
+;; DNS software.
+;;
+;; Use at your own risk.
+;; SOA Record
+globalopportunitydesk.com	3600	IN	SOA	may.ns.cloudflare.com. dns.cloudflare.com. 2054335496 10000 2400 604800 3600
+
+;; NS Records
+globalopportunitydesk.com.	86400	IN	NS	may.ns.cloudflare.com.
+globalopportunitydesk.com.	86400	IN	NS	theo.ns.cloudflare.com.
+
+;; A Records
+api.globalopportunitydesk.com.	1	IN	A	187.7.72.87 ; cf_tags=cf-proxied:true
+dev-api.globalopportunitydesk.com.	1	IN	A	187.7.72.87 ; cf_tags=cf-proxied:true
+globalopportunitydesk.com.	300	IN	A	147.79.116.134 ; cf_tags=cf-proxied:false
+globalopportunitydesk.com.	300	IN	A	77.37.50.148 ; cf_tags=cf-proxied:false
+staging-api.globalopportunitydesk.com.	1	IN	A	187.7.72.87 ; cf_tags=cf-proxied:true
+
+;; CNAME Records
+admin.globalopportunitydesk.com.	300	IN	CNAME	29cdf9b0ee672268.vercel-dns-017.com. ; cf_tags=cf-proxied:false
+rsend.globalopportunitydesk.com.	3600	IN	CNAME	rsend-euw1.forge.rmta.net. ; cf_tags=cf-proxied:false
+send.globalopportunitydesk.com.	3600	IN	CNAME	send.forge.rmta.net. ; cf_tags=cf-proxied:false
+staging-admin.globalopportunitydesk.com.	300	IN	CNAME	cname.vercel-dns.com. ; cf_tags=cf-proxied:false
+www.globalopportunitydesk.com.	300	IN	CNAME	www.globalopportunitydesk.com.cdn.hstgr.net. ; cf_tags=cf-proxied:false
+
+;; MX Records
+bounces.globalopportunitydesk.com.	300	IN	MX	10 feedback-smtp.us-east-1.amazonses.com.
+globalopportunitydesk.com.	300	IN	MX	10 mx1.titan.email.
+globalopportunitydesk.com.	300	IN	MX	20 mx2.titan.email.
+
+;; TXT Records
+bounces.globalopportunitydesk.com.	300	IN	TXT	"v=spf1 include:amazonses.com ~all"
+_dmarc.globalopportunitydesk.com.	300	IN	TXT	"v=DMARC1; p=none; sp=none; rua=mailto:dmarc-reports@globalopportunitydesk.com; aspf=r"
+globalopportunitydesk.com.	300	IN	TXT	"google-site-verification=9syomOs2cEapHPtmRNvGTzJb5tcwuEiRF5KjX18_dSo"
+globalopportunitydesk.com.	300	IN	TXT	"v=spf1 include:spf.titan.email ~all"
+resend._domainkey.globalopportunitydesk.com.	3600	IN	TXT	"p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCwZ/imCWQfyO9mj+E1S+Qh3uh4gnxcvo+vyiP64SD5wqqoih0ftFqkDGT5KSkEFf1J2qk9HBX+tGXVWNE0KVNhooWTjP+4a8pf9wb4VrB0qDsJDxL3n53Kfc4K3ZCoG48XfrxG9GHzk8lLIGhBNrB6bj/TtOvR2JBV9kz4qC1n1wIDAQAB"
+titan1._domainkey.globalopportunitydesk.com.	300	IN	TXT	"v=DKIM1; k=rsa; p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCEFNi6R+vY3DySp1KGDfKaLP6QGuGkXVSOklQ8CER8MgDlsvJ8kFxrWMaROm5wrGxg/uMOT79pzC2XJLSBzEd7nbzGJdDne+W2gf2VLj3K94QWLSjL0K0c3abHU3MrOQ4qYyJWXpTbcwudDCMnBJ2NR0Aqh2dW809FazxFxH2QkwIDAQAB"
