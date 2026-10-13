@@ -42,16 +42,16 @@ async function computeChecksum(filePath) {
 export async function getMigrationStatus({ db, migrationsDir = DEFAULT_MIGRATIONS_DIR }) {
   await db.collection('_migrations').createIndex({ name: 1 }, { unique: true });
 
-  let files = [];
+  let dirEntries;
   try {
-    const dirEntries = await fs.readdir(migrationsDir);
-    files = dirEntries.filter((f) => f.endsWith('.js')).sort();
+    dirEntries = await fs.readdir(migrationsDir);
   } catch (err) {
     if (err.code === 'ENOENT') {
       return { applied: [], pending: [], all: [] };
     }
     throw err;
   }
+  const files = dirEntries.filter((f) => f.endsWith('.js')).sort();
 
   const appliedDocs = await db.collection('_migrations').find({}).sort({ appliedAt: 1 }).toArray();
   const appliedMap = new Map(appliedDocs.map((doc) => [doc.name, doc]));
