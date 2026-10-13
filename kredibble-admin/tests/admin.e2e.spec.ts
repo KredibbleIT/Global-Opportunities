@@ -9671,7 +9671,16 @@ const goViaSidebar = async (page: import('@playwright/test').Page, group: string
   const aside = page.locator('aside');
   const toggle = aside.getByRole('button', { name: group });
   if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
-  await aside.getByRole('link', { name: new RegExp(`^${link}\\b`) }).click(); // (a pill after the name, like "Database 32 pending", is fine)
+  // The sidebar re-renders while counts load: re-resolve and retry so a detached node cannot fail the run.
+  const re = new RegExp(`^${link}\\b`); // (a pill after the name, like "Database 32 pending", is fine)
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await aside.getByRole('link', { name: re }).click({ timeout: 10_000 });
+      return;
+    } catch (error) {
+      if (attempt >= 4) throw error;
+    }
+  }
 };
 
 test.describe('Settings: roles', () => {
