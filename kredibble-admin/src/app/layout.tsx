@@ -1,24 +1,28 @@
 import type { Metadata } from "next";
-import { Inter, Plus_Jakarta_Sans } from "next/font/google";
+import localFont from "next/font/local";
 import { BRAND, BRAND_ADMIN_TITLE } from "@/config/brand";
 import "./globals.css";
 
 // Body font: Inter 400 / 500 / 600. Exposed as --font-inter, consumed by --font-sans in
 // globals.css. display: "swap" shows the system fallback immediately, then swaps in Inter.
-const inter = Inter({
+// Self-hosted variable woff2 (latin) via next/font/local: identical glyphs to the Google
+// Fonts build, but the build never fetches from fonts.googleapis.com — immune to the
+// intermittent extensionless-URL failure (vercel/next.js#99114) that breaks Turbopack builds.
+const inter = localFont({
+  src: "../fonts/inter-latin-wght-normal.woff2",
   variable: "--font-inter",
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: "100 900",
   display: "swap",
   fallback: ["system-ui", "-apple-system", "Segoe UI", "Arial", "sans-serif"],
 });
 
 // Display font for headings, card titles and KPI numbers: Plus Jakarta Sans 600 / 700 / 800.
-// Exposed as --font-jakarta, consumed by --font-display in globals.css.
-const jakarta = Plus_Jakarta_Sans({
+// Exposed as --font-jakarta, consumed by --font-display in globals.css. Self-hosted for the
+// same build-determinism reason as Inter above (variable range 200-800 covers all uses).
+const jakarta = localFont({
+  src: "../fonts/plus-jakarta-sans-latin-wght-normal.woff2",
   variable: "--font-jakarta",
-  subsets: ["latin"],
-  weight: ["600", "700", "800"],
+  weight: "200 800",
   display: "swap",
   fallback: ["system-ui", "-apple-system", "Segoe UI", "Arial", "sans-serif"],
 });
