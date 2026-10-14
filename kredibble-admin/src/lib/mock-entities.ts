@@ -211,8 +211,19 @@ export interface Ambassador {
   country: string;
   city: string;
   phone?: string;
+  /** WhatsApp number, kept as TEXT (a leading 0 must never be lost). Set by the CSV import. */
+  whatsapp?: string;
+  /** Free-text region ("Greater Accra"), only when the person wrote one. Set by the CSV import. */
+  region?: string;
   /** A picked image (an object URL for a new pick). Without one the initials avatar shows. */
   photoUrl?: string;
+  /**
+   * Where the picture came from, usually a Google Drive link from the sign-up form. It is NOT an image: show the initials
+   * avatar until a backend job downloads the file into our own storage and fills `photoUrl`.
+   */
+  pictureSourceUrl?: string;
+  /** When the sign-up form was submitted (ISO date-time). Set by the CSV import. */
+  submittedAt?: string;
   memberType: MemberType;
   description?: string;
   /** "Campus Lead, KNUST" */
@@ -355,7 +366,8 @@ export interface WebsiteMonth {
 }
 
 // ---- People and goals -------------------------------------------------------------------------------
-export type StaffStatus = "active" | "suspended";
+/** invited: created, has not set a password yet (an invite is out). deactivated: switched off by a Super Admin (Create account feature). suspended: the older suspend flow on the member page. */
+export type StaffStatus = "active" | "suspended" | "invited" | "deactivated";
 
 /**
  * A member of the team: the ONE staff collection. The Team page, the invite form, /staff/[id] and the scorecards
@@ -375,6 +387,10 @@ export interface StaffMember {
   country?: string;
   /** True for the one person that the signed-in dev user is mapped to. */
   isCurrentUser?: boolean;
+  /** Set for accounts made with "Create account": "user" or "admin". Missing = worked out from the roles (see lib/accounts.ts). */
+  accountType?: "user" | "admin";
+  /** While the account is Invited: when the invite stops working (ISO). The token itself is never stored. */
+  inviteExpiresAt?: string;
 }
 
 /** The monthly target for one KPI: the one that applied from the start. Changes made in Settings are TargetChange rows on top of it. */
