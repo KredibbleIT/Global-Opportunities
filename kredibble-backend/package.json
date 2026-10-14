@@ -20,6 +20,7 @@
         "accounts:complete-deletions": "node scripts/complete-account-deletions.js",
         "retention:cleanup": "node -e \"import('./src/lib/data-retention.js').then(m => m.runDataRetentionSweep())\",",
         "sync:news-ingest": "node scripts/news-ingest.js",
+        "sync:website-tally": "node scripts/website-tally.js",
         "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest",
         "lint": "eslint .",
         "docs:generate": "node scripts/generate-docs.js",

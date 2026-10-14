@@ -7814,8 +7814,14 @@ test.describe('Social: the page', () => {
     await expect(page.getByTestId('leading-platform')).toHaveCount(1);
     await expect(page.getByTestId(`platform-row-${month.leading}`)).toHaveAttribute('data-leading', 'true');
     await expect(page.getByTestId('leading-platform')).toBeVisible();
-    // the chart: the leading platform is the orange (last) bar
-    await expect(page.getByRole('group', { name: /Reach by platform/ })).toBeVisible();
+    // the chart follows the rule: vertical bars for 2-4 platforms, horizontal bars when more have posts
+    // (the seed grows the current month with the calendar, so either branch is possible).
+    if (month.platforms.length > 4) {
+      await expect(page.getByTestId('platform-bars')).toBeVisible();
+      await expect(page.getByRole('group', { name: /Reach by platform/ })).toHaveCount(0);
+    } else {
+      await expect(page.getByRole('group', { name: /Reach by platform/ })).toBeVisible();
+    }
   });
 
   test('platform labels are text badges with a tinted initial tile, never a logo', async ({ page }) => {
@@ -8799,8 +8805,11 @@ test.describe('Social: phones and the platform table and chart', () => {
     });
     expect(snapshot.toast).toBe(true);
     expect([snapshot.posts, snapshot.reach, snapshot.engagement]).toEqual([before.posts + 1, before.reach + 321, before.engagement + 21]);
+    // The logged platform may already have seeded posts (WhatsApp joins the seed mid-month): expect deltas, not fresh figures.
+    const beforeWhatsapp = before.platforms.find((row) => row.platform === 'whatsapp');
     expect(snapshot.whatsapp).toContain('WhatsApp');
-    expect(snapshot.whatsapp).toContain('321');
+    expect(snapshot.whatsapp).toContain(((beforeWhatsapp?.reach ?? 0) + 321).toLocaleString('en-US'));
+    expect(snapshot.whatsapp).toContain(String((beforeWhatsapp?.engagement ?? 0) + 21));
     expect(snapshot.firstRow).toContain('Snapshot post');
     // the figures are the KPI functions' values for the month (services/social.ts uses kpiValue for all three)
     const after = socialMonth(currentMonth());
@@ -9671,12 +9680,13 @@ test.describe('Settings: the rules (no browser)', () => {
 
 const goViaSidebar = async (page: import('@playwright/test').Page, group: string, link: string) => {
   const aside = page.locator('aside');
-  const toggle = aside.getByRole('button', { name: group });
-  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
-  // The sidebar re-renders while counts load: re-resolve and retry so a detached node cannot fail the run.
   const re = new RegExp(`^${link}\\b`); // (a pill after the name, like "Database 32 pending", is fine)
+  // The sidebar re-renders while counts load, so reads can race it: every attempt re-verifies the group
+  // is open and re-resolves the link, so a stale read or a detached node cannot fail the run.
   for (let attempt = 0; ; attempt++) {
     try {
+      const toggle = aside.getByRole('button', { name: group });
+      if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
       await aside.getByRole('link', { name: re }).click({ timeout: 10_000 });
       return;
     } catch (error) {

@@ -2125,6 +2125,45 @@ export const updateAdminReferenceList = async (
   });
 };
 
+// BE-021: website category taxonomy + live tally.
+export type CategoryMapRecord = {
+  id: string;
+  websiteCategory: string;
+  appCategory: string | null;
+  note?: string;
+  updatedAt: string;
+};
+
+export type TallyReport = {
+  websiteOpportunities: number;
+  appOpportunities: number;
+  report: {
+    opportunities: { inBoth: unknown[]; onlyWebsite: unknown[]; onlyApp: unknown[] };
+    categories: {
+      inBoth: unknown[];
+      onlyWebsite: unknown[];
+      onlyApp: unknown[];
+      differing: unknown[];
+      unmapped: unknown[];
+    };
+  };
+};
+
+export const getCategoryTaxonomyApi = async (): Promise<CategoryMapRecord[]> => {
+  return request<CategoryMapRecord[]>(`/admin/sync/taxonomy`);
+};
+
+export const updateCategoryMappingApi = async (data: { websiteCategory: string; appCategory?: string | null; note?: string }): Promise<CategoryMapRecord> => {
+  return request<CategoryMapRecord>(`/admin/sync/taxonomy`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+};
+
+export const getWebsiteTallyApi = async (): Promise<TallyReport> => {
+  return request<TallyReport>(`/admin/sync/tally`);
+};
+
 // BE-022: ingested news moderation (hide/show re-ingest-proof items).
 export type NewsItemRecord = {
   id: string;
