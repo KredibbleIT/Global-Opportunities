@@ -7812,8 +7812,14 @@ test.describe('Social: the page', () => {
     await expect(page.getByTestId('leading-platform')).toHaveCount(1);
     await expect(page.getByTestId(`platform-row-${month.leading}`)).toHaveAttribute('data-leading', 'true');
     await expect(page.getByTestId('leading-platform')).toBeVisible();
-    // the chart: the leading platform is the orange (last) bar
-    await expect(page.getByRole('group', { name: /Reach by platform/ })).toBeVisible();
+    // the chart follows the rule: vertical bars for 2-4 platforms, horizontal bars when more have posts
+    // (the seed grows the current month with the calendar, so either branch is possible).
+    if (month.platforms.length > 4) {
+      await expect(page.getByTestId('platform-bars')).toBeVisible();
+      await expect(page.getByRole('group', { name: /Reach by platform/ })).toHaveCount(0);
+    } else {
+      await expect(page.getByRole('group', { name: /Reach by platform/ })).toBeVisible();
+    }
   });
 
   test('platform labels are text badges with a tinted initial tile, never a logo', async ({ page }) => {
@@ -8397,28 +8403,39 @@ test.describe('DatePicker: in the Log a post form', () => {
     await field(page).blur();
     await openCalendar(page);
     const dialog = calendar(page);
-    const focused = () => dialog.locator('[data-focus="true"]').getAttribute('data-date');
-    expect(await focused()).toBe('2026-09-16');
+    // Keypresses apply through React state, and a month change unmounts the focused day node (the grid refocuses
+    // async): poll the attribute and wait for DOM focus, or the next keypress lands on <body> and is lost.
+    const expectFocused = async (date: string) => {
+      const day = dialog.locator('[data-focus="true"]');
+      await expect.poll(async () => day.getAttribute('data-date')).toBe(date);
+      await expect.poll(async () => page.evaluate((d) => {
+        const el = document.activeElement as HTMLElement | null;
+        return el?.dataset?.focus === 'true' && el?.dataset?.date === d ? d : null;
+      }, date)).toBe(date);
+    };
+    await expectFocused('2026-09-16');
     await page.keyboard.press('ArrowLeft');
-    expect(await focused()).toBe('2026-09-15');
+    await expectFocused('2026-09-15');
     await page.keyboard.press('ArrowRight');
     await page.keyboard.press('ArrowRight');
-    expect(await focused()).toBe('2026-09-17');
+    await expectFocused('2026-09-17');
     await page.keyboard.press('ArrowUp');
-    expect(await focused()).toBe('2026-09-10');
+    await expectFocused('2026-09-10');
     await page.keyboard.press('ArrowDown');
-    expect(await focused()).toBe('2026-09-17');
+    await expectFocused('2026-09-17');
     await page.keyboard.press('Home');
-    expect(await focused()).toBe('2026-09-14'); // the Monday
+    await expectFocused('2026-09-14'); // the Monday
     await page.keyboard.press('End');
-    expect(await focused()).toBe('2026-09-20'); // the Sunday
+    await expectFocused('2026-09-20'); // the Sunday
     await page.keyboard.press('PageUp');
-    expect(await focused()).toBe('2026-08-20');
+    await expectFocused('2026-08-20');
     await expect(monthLabel(page)).toHaveText('August 2026');
     await page.keyboard.press('PageDown');
+    await expectFocused('2026-09-20');
     await page.keyboard.press('PageDown');
-    expect(await focused()).toBe(clampDate(addMonths('2026-09-20', 1), undefined, today())); // a month ahead, held at today (the maximum)
+    await expectFocused(clampDate(addMonths('2026-09-20', 1), undefined, today())); // a month ahead, held at today (the maximum)
     await page.keyboard.press('PageUp');
+    await expectFocused(addMonths(today(), -1));
     await page.keyboard.press('Enter');
     await expect(dialog).toHaveCount(0);
     await expect(field(page)).toBeFocused();
@@ -8783,8 +8800,11 @@ test.describe('Social: phones and the platform table and chart', () => {
     });
     expect(snapshot.toast).toBe(true);
     expect([snapshot.posts, snapshot.reach, snapshot.engagement]).toEqual([before.posts + 1, before.reach + 321, before.engagement + 21]);
+    // The logged platform may already have seeded posts (WhatsApp joins the seed mid-month): expect deltas, not fresh figures.
+    const beforeWhatsapp = before.platforms.find((row) => row.platform === 'whatsapp');
     expect(snapshot.whatsapp).toContain('WhatsApp');
-    expect(snapshot.whatsapp).toContain('321');
+    expect(snapshot.whatsapp).toContain(((beforeWhatsapp?.reach ?? 0) + 321).toLocaleString('en-US'));
+    expect(snapshot.whatsapp).toContain(String((beforeWhatsapp?.engagement ?? 0) + 21));
     expect(snapshot.firstRow).toContain('Snapshot post');
     // the figures are the KPI functions' values for the month (services/social.ts uses kpiValue for all three)
     const after = socialMonth(currentMonth());
@@ -9655,12 +9675,13 @@ test.describe('Settings: the rules (no browser)', () => {
 
 const goViaSidebar = async (page: import('@playwright/test').Page, group: string, link: string) => {
   const aside = page.locator('aside');
-  const toggle = aside.getByRole('button', { name: group });
-  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
-  // The sidebar re-renders while counts load: re-resolve and retry so a detached node cannot fail the run.
   const re = new RegExp(`^${link}\\b`); // (a pill after the name, like "Database 32 pending", is fine)
+  // The sidebar re-renders while counts load, so reads can race it: every attempt re-verifies the group
+  // is open and re-resolves the link, so a stale read or a detached node cannot fail the run.
   for (let attempt = 0; ; attempt++) {
     try {
+      const toggle = aside.getByRole('button', { name: group });
+      if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
       await aside.getByRole('link', { name: re }).click({ timeout: 10_000 });
       return;
     } catch (error) {
