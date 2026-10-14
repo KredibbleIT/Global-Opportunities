@@ -38,11 +38,11 @@ for (const key of [
 
 const { app } = await import('../src/app.js');
 const { connectToDatabase } = await import('../src/lib/mongodb.js');
-const { User } = await import('../src/models/User.js');
+const { User, StaffMember } = await import('../src/models/User.js');
 const { env } = await import('../src/config/env.js');
 
 await connectToDatabase();
-await User.create({
+const adminUser = await User.create({
   name: 'E2E Admin',
   email: process.env.E2E_ADMIN_EMAIL || 'test-admin@kredibble.com',
   role: 'admin',
@@ -59,6 +59,19 @@ await SeekerProfile.create({ userId: seeker._id, profession: 'Data Analyst', cou
 const hirer = await User.create({ name: 'E2E Recruiter', email: 'e2e-hirer@kredibble.com', role: 'hirer', passwordHash: 'x' });
 const account = await HirerAccount.create({ userId: hirer._id, companyName: 'E2E Holdings', industry: 'Finance', location: 'Accra' });
 await CompanyVerification.create({ hirerId: account._id, name: 'E2E Holdings', overallStatus: 'pending' });
+
+// Team directory (List pages smoke): one staff row so the members table has
+// a row with a detail link. The brand-copy test runs against mock staff only.
+const staffUser = await User.create({ name: 'E2E Support', email: 'e2e-support@kredibble.com', role: 'seeker', passwordHash: 'x' });
+await StaffMember.create({
+  userId: staffUser._id,
+  name: 'E2E Support',
+  email: 'e2e-support@kredibble.com',
+  roles: ['support'],
+  role: 'Support',
+  status: 'active',
+  joinedDate: '2026-10-01',
+});
 
 const { Report } = await import('../src/models/Community.js');
 
@@ -160,6 +173,14 @@ await VerificationDoc.create([
   { companyId: reviewAccount._id, verificationCaseId: reviewCase._id, key: 'companyLogo', label: 'E2E Company Logo', fileName: 'logo.png' },
   { companyId: reviewAccount._id, verificationCaseId: reviewCase._id, key: 'proofOfOrg', label: 'E2E Proof of Organisation', fileName: 'tax-certificate.pdf' },
 ]);
+
+if (process.env.E2E_SEED === 'demo') {
+  const { seedDemoData } = await import('../src/lib/demo-seed.js');
+  const summary = await seedDemoData({ adminUser });
+  console.log(
+    `[e2e-server] Demo seed loaded (${summary.staffCount} staff, ${summary.listingCount} listings, ${summary.partnerCount} partners, ${summary.ambassadorCount} ambassadors, ${summary.beneficiaryCount} beneficiaries, ${summary.socialPostCount} social posts)`
+  );
+}
 
 const server = http.createServer(app).listen(env.port, () => {
   console.log(`e2e API listening on http://localhost:${env.port}/api`);

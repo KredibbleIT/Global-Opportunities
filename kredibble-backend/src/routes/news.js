@@ -1,48 +1,29 @@
 import { Router } from 'express';
-import { env } from '../config/env.js';
-import { ApiError, asyncHandler, listResponse } from '../utils/http.js';
-import { fetchWithTimeout } from '../lib/fetch.js';
+import { ApiError, asyncHandler, itemResponse, listResponse, notFound } from '../utils/http.js';
+import { NewsItem, NEWS_SOURCES } from '../models/Content.js';
+import { toPublicNewsItem } from '../lib/news-ingest.js';
 
 export const newsRouter = Router();
 
-const sources = {
-  insightGhana: { name: 'Insight Ghana', url: () => env.insightGhanaWordpressUrl },
-  africanJournal: { name: 'The African Journal', url: () => env.africanJournalWordpressUrl },
-};
-
-const withoutHtml = (value = '') => value.replace(/<[^>]*>/g, '').trim();
-const configuredUrl = (url) => url && !url.includes('placeholder');
-
-const fetchPosts = async ([sourceKey, source], page, perPage) => {
-  const baseUrl = source.url();
-  if (!configuredUrl(baseUrl)) return [];
-  const endpoint = new URL('/wp-json/wp/v2/posts', baseUrl);
-  endpoint.searchParams.set('page', String(page));
-  endpoint.searchParams.set('per_page', String(perPage));
-  endpoint.searchParams.set('_embed', '1');
-  const response = await fetchWithTimeout(endpoint, { headers: { Accept: 'application/json' } }, source.name);
-  if (!response.ok) throw new Error(`${source.name} returned ${response.status}`);
-  const posts = await response.json();
-  return posts.map((post) => ({
-    id: `${sourceKey}:${post.id}`,
-    source: sourceKey,
-    sourceName: source.name,
-    title: withoutHtml(post.title?.rendered),
-    summary: withoutHtml(post.excerpt?.rendered),
-    content: withoutHtml(post.content?.rendered),
-    publishedAt: post.date_gmt || post.date,
-    url: post.link,
-    imageUrl: post._embedded?.['wp:featuredmedia']?.[0]?.source_url || null,
-  }));
-};
-
+// BE-022: the feed reads the ingested store (populated on a schedule via
+// `npm run sync:news-ingest`). Staff-hidden items never appear here.
 newsRouter.get('/', asyncHandler(async (req, res) => {
-  const selectedSources = req.query.source ? [[req.query.source, sources[req.query.source]]] : Object.entries(sources);
-  if (selectedSources.some(([, source]) => !source)) throw new ApiError(400, 'Unknown news source');
+  const filter = { hidden: { $ne: true } };
+  if (req.query.source) {
+    if (!NEWS_SOURCES.includes(req.query.source)) throw new ApiError(400, 'Unknown news source');
+    filter.source = req.query.source;
+  }
   const page = Math.max(1, Number(req.query.page) || 1);
   const perPage = Math.min(20, Math.max(1, Number(req.query.perPage) || 10));
-  const results = await Promise.allSettled(selectedSources.map((source) => fetchPosts(source, page, perPage)));
-  const failures = results.filter((result) => result.status === 'rejected');
-  if (failures.length === results.length) throw new ApiError(502, 'News sources are unavailable or not configured');
-  listResponse(res, results.flatMap((result) => result.status === 'fulfilled' ? result.value : []).sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt)));
+  const [items, total] = await Promise.all([
+    NewsItem.find(filter).sort({ publishedAt: -1, _id: -1 }).skip((page - 1) * perPage).limit(perPage),
+    NewsItem.countDocuments(filter),
+  ]);
+  listResponse(res, items.map(toPublicNewsItem), total, page, perPage);
+}));
+
+newsRouter.get('/:id', asyncHandler(async (req, res) => {
+  const item = await NewsItem.findOne({ _id: req.params.id, hidden: { $ne: true } });
+  if (!item) throw notFound('News item');
+  itemResponse(res, toPublicNewsItem(item));
 }));

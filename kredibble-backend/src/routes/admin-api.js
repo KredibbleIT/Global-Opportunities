@@ -1,11 +1,14 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
+import crypto from 'node:crypto';
 import { requireAdminOrStaffAuth, requireAdminAuth } from '../middleware/auth.js';
 import { requirePortalRoles, requireScreen } from '../middleware/portal-auth.js';
 import { ApiError, asyncHandler, itemResponse, listResponse, notFound } from '../utils/http.js';
 import { Opportunity, CompanyVerification } from '../models/Platform.js';
 import { StaffMember, User } from '../models/User.js';
-import { Channel, CommunityMembership, Report } from '../models/Community.js';
+import { Channel, CommunityMembership, Report, ChannelPost } from '../models/Community.js';
+import { Notification } from '../models/Content.js';
+import { NewsItem } from '../models/Content.js';
 import { SeekerProfile, HirerAccount } from '../models/Profiles.js';
 import {
   AdminActivity,
@@ -34,6 +37,7 @@ import {
   TESTIMONIAL_ACTIONS_MAP,
   WebsiteMonth,
   MonthlyReport,
+  CategoryMap,
 } from '../models/AdminPortal.js';
 import { deleteFromWordpress, syncToWordpress } from '../lib/wordpress-sync.js';
 import { env } from '../config/env.js';
@@ -43,7 +47,15 @@ import {
   getEffectiveToggles,
   computeFullMatrix,
   invalidateTogglesCache,
+  normalizeLegacyRole,
 } from '../lib/permissions.js';
+import {
+  getReferenceDataGroups,
+  getReferenceDataList,
+  updateReferenceDataList,
+} from '../lib/reference-data.js';
+import { buildTallyReport, fetchWebsiteSnapshot } from '../lib/website-tally.js';
+import { taxonomyUpsertSchema } from '../schemas/website-tally.js';
 import { auditReq, AUDIT_ACTIONS, AUDIT_RESOURCE_TYPES } from '../lib/audit.js';
 import { getTargetsForMonth, getTargetHistory, saveTargetBatch, KPI_KEYS } from '../lib/targets.js';
 import { getThresholdsInForce, getThresholdHistory, saveThresholdChange, getCombinedChangeHistory } from '../lib/thresholds.js';
@@ -75,12 +87,28 @@ import {
   monthlyReportQuerySchema,
   overviewActivityQuerySchema,
   scorecardQuerySchema,
+  kpiQuerySchema,
+  kpiTrendQuerySchema,
   integrationUpdateSchema,
   accountProfileUpdateSchema,
   passwordChangeSchema,
+  staffInviteSchema,
+  staffUpdateSchema,
+  notificationBroadcastSchema,
+  notificationQuerySchema,
+  referenceListUpdateSchema,
+  channelModerateSchema,
+  postModerateSchema,
 } from '../schemas/admin.js';
 import bcrypt from 'bcryptjs';
 import { reauthLimiter } from '../lib/rate-limiters.js';
+import {
+  getKpiCardsForMonth,
+  getKpiPrioritiesForMonth,
+  getKpiTrend,
+  rankPriorities,
+  fetchRawKpiMetrics,
+} from '../lib/kpi-engine.js';
 import {
   getAllIntegrationsStatus,
   saveIntegrationSettings,
@@ -102,6 +130,7 @@ import { postChannelMessage, listChannelMessages, getThread, findPost, setAllowR
 import { notifyUser } from '../lib/user-notify.js';
 import { evictFromChannelRoom } from '../socket.js';
 import { toRequestResponse } from './ambassador.js';
+import { newsAdminQuerySchema, newsModerateSchema } from '../schemas/news.js';
 import {
   approveAmbassadorRequestSchema, rejectAmbassadorRequestSchema, chatMessageSchema,
   createAdminChannelSchema, addChannelMemberSchema, allowRepliesSchema,
@@ -269,11 +298,14 @@ const addManagedRoutes = ({
     if (req.query.q) {
       filter.$or = ['title', 'organizationName', 'fullName', 'email', 'country'].map((field) => ({ [field]: { $regex: escapedRegex(req.query.q), $options: 'i' } }));
     }
-    const { skip, limit } = pageOptions(req.query);
+    const { skip, limit, page } = pageOptions(req.query);
     let query = Model.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit);
     if (populate) query = query.populate(populate);
-    const records = await query;
-    listResponse(res, records.map(transform));
+    const [records, total] = await Promise.all([
+      query,
+      Model.countDocuments(filter),
+    ]);
+    listResponse(res, records.map(transform), total, page, limit);
   }));
 
   adminApiRouter.get(`${path}/:id`, ...viewAuth, asyncHandler(async (req, res) => {
@@ -337,7 +369,7 @@ const addManagedRoutes = ({
   adminApiRouter.delete(`${path}/:id`, ...editAuth, asyncHandler(async (req, res) => {
     const record = await Model.findById(validId(req.params.id, resource));
     if (!record) throw notFound(resource);
-    let sync = { status: 'pending' };
+    let sync;
     try {
       sync = await deleteFromWordpress(resource, record);
     } catch (error) {
@@ -698,7 +730,7 @@ adminApiRouter.get('/opportunities/:id/analytics', requireAdminOrStaffAuth, requ
 adminApiRouter.delete('/opportunities/:id', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'edit'), requirePortalRoles(...OPPORTUNITY_ROLES), asyncHandler(async (req, res) => {
   const record = await Opportunity.findById(validId(req.params.id, 'Opportunity'));
   if (!record) throw notFound('Opportunity');
-  let sync = { status: 'pending' };
+  let sync;
   try {
     sync = await deleteFromWordpress('opportunities', record);
   } catch (error) {
@@ -897,9 +929,9 @@ export const calculatePipelineHealth = async (monthQuery) => {
   const closedCount = closedInWindow.size;
   const closeRate = reachedCount > 0 ? (closedCount / reachedCount) : null;
 
-  let needed = null;
-  let ratio = null;
-  let status = 'unknown';
+  let needed;
+  let ratio;
+  let status;
 
   if (target <= 0) {
     needed = 0;
@@ -1106,7 +1138,7 @@ const prepareAmbassador = (body, authSub, existing = {}) => {
     joinedAt = body.joinedAt || new Date().toISOString().slice(0, 10);
   }
 
-  let dormantSince = existing.dormantSince;
+  let dormantSince;
   if (status === 'dormant') {
     dormantSince = body.dormantSince || existing.dormantSince || new Date().toISOString().slice(0, 10);
   } else {
@@ -2691,133 +2723,11 @@ const metricStatus = (value, target, thresholds = {}) => {
   return ratio >= green ? 'green' : ratio >= amber ? 'amber' : 'red';
 };
 
-const dashboardMetrics = async (month) => {
-  const { start, end } = monthBounds(month);
-  const [opportunitiesPublished, programsActive, programsDelivered, partnersClosed, ambassadorsActive, beneficiariesVerified, beneficiariesAdded, social, applications, websiteAudienceDoc, monthlyReportsDocCount] = await Promise.all([
-    Opportunity.countDocuments({
-      vetted: true,
-      $or: [
-        { status: 'published' },
-        { moderationStatus: { $in: ['published', 'approved'] } },
-      ],
-      $and: [
-        {
-          $or: [
-            { publishedAt: { $gte: start, $lt: end } },
-            { publishedAt: { $exists: false }, createdAt: { $gte: start, $lt: end } },
-            { publishedAt: null, createdAt: { $gte: start, $lt: end } },
-          ],
-        },
-      ],
-    }),
-    Program.countDocuments({ status: { $in: ['planned', 'running'] } }),
-    Program.countDocuments({
-      status: 'delivered',
-      $or: [
-        { deliveredAt: { $gte: start, $lt: end } },
-        { deliveredAt: { $exists: false }, endAt: { $gte: start, $lt: end } },
-        { deliveredAt: null, endAt: { $gte: start, $lt: end } },
-      ],
-    }),
-    Partner.countDocuments({
-      $or: [
-        {
-          stageHistory: {
-            $elemMatch: {
-              stage: { $in: ['onboard', 'renew', 'Onboard', 'Renew'] },
-              at: { $gte: start.toISOString().slice(0, 10), $lt: end.toISOString().slice(0, 10) },
-            },
-          },
-        },
-        {
-          $and: [
-            { stageHistory: { $size: 0 } },
-            { closed: true, updatedAt: { $gte: start, $lt: end } },
-          ],
-        },
-      ],
-    }),
-    (async () => {
-      const summary = await calculateNetworkSummary(month);
-      return summary.active;
-    })(),
-    Beneficiary.countDocuments({
-      verified: true,
-      $or: [
-        { verifiedAt: { $gte: start.toISOString().slice(0, 10), $lt: end.toISOString().slice(0, 10) } },
-        { verifiedAt: { $exists: false }, createdAt: { $gte: start, $lt: end } },
-        { verifiedAt: null, createdAt: { $gte: start, $lt: end } },
-      ],
-    }),
-    Beneficiary.countDocuments({
-      $or: [
-        { createdAtDate: { $gte: start.toISOString().slice(0, 10), $lt: end.toISOString().slice(0, 10) } },
-        { createdAt: { $gte: start, $lt: end } },
-      ],
-    }),
-    SocialPost.aggregate([
-      {
-        $match: {
-          status: 'published',
-          $or: [
-            { postedAt: { $gte: start, $lt: end } },
-            { postedAtDate: { $gte: start.toISOString().slice(0, 10), $lt: end.toISOString().slice(0, 10) } },
-          ],
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          posts: { $sum: 1 },
-          reach: { $sum: '$reach' },
-          engagement: { $sum: '$engagement' },
-        },
-      },
-    ]),
-    OpportunityEngagement.countDocuments({ event: 'application', createdAt: { $gte: start, $lt: end } }),
-    WebsiteMonth.findOne({ month }),
-    MonthlyReport.countDocuments({ generatedAt: { $gte: start, $lt: end } }),
-  ]);
-  const publishedPosts = social[0]?.posts || 0;
-  const reachVal = social[0]?.reach || 0;
-  const engagementVal = social[0]?.engagement || 0;
-  const websiteViews = websiteAudienceDoc?.views || 0;
-  const monthlyReportsCount = monthlyReportsDocCount || 0;
-  return {
-    opportunitiesPublished, programsActive, programsDelivered, partnersClosed, ambassadorsActive, beneficiariesVerified,
-    beneficiariesAdded,
-    postsPublished: publishedPosts,
-    posts_published: publishedPosts,
-    socialReach: reachVal,
-    social_reach: reachVal,
-    socialEngagement: engagementVal,
-    social_engagement: engagementVal,
-    opportunityApplications: applications,
-    websiteViews,
-    website_views: websiteViews,
-    monthlyReports: monthlyReportsCount,
-    monthly_reports: monthlyReportsCount,
-  };
-};
+const dashboardMetrics = async (month) => fetchRawKpiMetrics(month);
 
 const partnerPipelineHealth = (month) => calculatePipelineHealth(month);
 
-const targetProgress = (values, targets) => {
-  const targetsByMetric = new Map(targets.map((target) => [target.metric, target]));
-  return Object.entries(values).map(([metric, value]) => {
-    const target = targetsByMetric.get(metric);
-    const targetValue = target?.target || 0;
-    return {
-      metric,
-      value,
-      target: targetValue,
-      unit: target?.unit || 'count',
-      attainment: targetValue ? Math.min(100, Math.round((value / targetValue) * 100)) : null,
-      status: metricStatus(value, targetValue, target),
-      note: target?.note || '',
-    };
-  });
-};
+
 
 const sixMonthTrend = async (month) => {
   const start = new Date(`${month}-01T00:00:00.000Z`);
@@ -2927,7 +2837,7 @@ adminApiRouter.get(
     const today = req.query.today ? new Date(req.query.today) : new Date();
 
     const staff = await StaffMember.findOne({ userId: req.auth.sub, status: 'active' }).lean();
-    let callerPerson = null;
+    let callerPerson;
 
     const [metricValues, targets, thresholds] = await Promise.all([
       dashboardMetrics(month),
@@ -3004,18 +2914,67 @@ adminApiRouter.get(
 );
 
 
+// BE-004: KPI Engine endpoints
+adminApiRouter.get(
+  '/kpis',
+  requireAdminOrStaffAuth,
+  requireScreen('overview', 'view'),
+  validate(kpiQuerySchema),
+  asyncHandler(async (req, res) => {
+    const today = req.query.today ? new Date(req.query.today) : new Date();
+    const result = await getKpiCardsForMonth(req.query.month, today);
+    itemResponse(res, result);
+  })
+);
+
+adminApiRouter.get(
+  '/kpis/priorities',
+  requireAdminOrStaffAuth,
+  requireScreen('overview', 'view'),
+  validate(kpiQuerySchema),
+  asyncHandler(async (req, res) => {
+    const today = req.query.today ? new Date(req.query.today) : new Date();
+    const count = req.query.count ? parseInt(req.query.count, 10) : undefined;
+    const result = await getKpiPrioritiesForMonth(req.query.month, today, count);
+    itemResponse(res, result);
+  })
+);
+
+adminApiRouter.get(
+  '/kpis/trend',
+  requireAdminOrStaffAuth,
+  requireScreen('overview', 'view'),
+  validate(kpiTrendQuerySchema),
+  asyncHandler(async (req, res) => {
+    const today = req.query.today ? new Date(req.query.today) : new Date();
+    const result = await getKpiTrend(req.query.month, req.query.months, req.query.kpi, today);
+    itemResponse(res, result);
+  })
+);
+
 adminApiRouter.get('/dashboard', requireAdminOrStaffAuth, requirePortalRoles(...ALL_PORTAL_ROLES), asyncHandler(async (req, res) => {
   const { month, start } = monthBounds(req.query.month);
-  const [values, targets, pipeline, upcomingPrograms, activities, trend] = await Promise.all([
+  const today = req.query.today ? new Date(req.query.today) : new Date();
+  const [values, kpiCardsResult, pipeline, upcomingPrograms, activities, trend] = await Promise.all([
     dashboardMetrics(month),
-    MonthlyTarget.find({ month }),
+    getKpiCardsForMonth(month, today),
     partnerPipelineHealth(month),
     Program.find({ status: { $in: ['planned', 'running'] }, startAt: { $gte: start } }).sort({ startAt: 1 }).limit(10),
     AdminActivity.find().sort({ createdAt: -1 }).limit(10),
     sixMonthTrend(month),
   ]);
-  const kpis = targetProgress(values, targets);
-  itemResponse(res, { month, values, kpis, priorities: kpis.filter((kpi) => kpi.target > 0), trend, pipeline, upcomingPrograms: upcomingPrograms.map(toClientObject), recentActivity: activities.map(toClientObject) });
+  const kpis = kpiCardsResult.kpis;
+  const priorities = rankPriorities(kpis);
+  itemResponse(res, {
+    month,
+    values,
+    kpis,
+    priorities,
+    trend,
+    pipeline,
+    upcomingPrograms: upcomingPrograms.map(toClientObject),
+    recentActivity: activities.map(toClientObject),
+  });
 }));
 
 adminApiRouter.get('/settings/pipeline-stages', requireAdminOrStaffAuth, requireScreen('settings_admin', 'view'), asyncHandler(async (req, res) => {
@@ -3296,8 +3255,43 @@ export const resolveTestimonialTransition = (currentStatus, target) => {
   return targetStatus;
 };
 
-adminApiRouter.get('/testimonials/pending-count', requireAdminOrStaffAuth, requireScreen('testimonials', 'view'), requirePortalRoles(...TESTIMONIAL_VIEW_ROLES), asyncHandler(async (req, res) => {
-  const count = await Testimonial.countDocuments({ status: 'pending' });
+// BE-022: ingested news moderation. Staff can hide (or re-show) items;
+// ingest never flips `hidden`, so a hide decision always wins.
+adminApiRouter.get('/news', requireAdminOrStaffAuth, requireScreen('social', 'view'), requirePortalRoles(...SOCIAL_ROLES), validate(newsAdminQuerySchema), asyncHandler(async (req, res) => {
+  const filter = {};
+  if (req.query.source) filter.source = req.query.source;
+  if (req.query.hidden !== undefined) filter.hidden = req.query.hidden === 'true';
+  if (req.query.q) {
+    const regex = new RegExp(escapedRegex(req.query.q.trim()), 'i');
+    filter.$or = [{ title: regex }, { summary: regex }];
+  }
+  const { page, skip, limit } = pageOptions(req.query);
+  const [total, records] = await Promise.all([
+    NewsItem.countDocuments(filter),
+    NewsItem.find(filter).sort({ publishedAt: -1, _id: -1 }).skip(skip).limit(limit),
+  ]);
+  listResponse(res, records.map(toClientObject), total, page, limit);
+}));
+
+adminApiRouter.patch('/news/:id', requireAdminOrStaffAuth, requireScreen('social', 'edit'), requirePortalRoles(...SOCIAL_ROLES), validate(newsModerateSchema), asyncHandler(async (req, res) => {
+  const record = await NewsItem.findById(validId(req.params.id, 'News item'));
+  if (!record) throw notFound('News item');
+  const previous = record.hidden;
+  record.hidden = req.body.hidden;
+  record.hiddenBy = req.body.hidden ? req.auth.sub : null;
+  record.hiddenAt = req.body.hidden ? new Date() : null;
+  await record.save();
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.NEWS_UPDATE,
+    resourceType: AUDIT_RESOURCE_TYPES.NEWS_ITEM,
+    resourceId: record._id,
+    outcome: 'success',
+    metadata: { previous, hidden: record.hidden },
+  });
+  itemResponse(res, toClientObject(record));
+}));
+
+adminApiRouter.get('/testimonials/pending-count', requireAdminOrStaffAuth, requireScreen('testimonials', 'view'), requirePortalRoles(...TESTIMONIAL_VIEW_ROLES), asyncHandler(async (req, res) => { const count = await Testimonial.countDocuments({ status: 'pending' });
   itemResponse(res, { count });
 }));
 
@@ -3629,7 +3623,7 @@ const buildPartnerReport = async (month, now = new Date()) => {
     trend,
     metrics: partnerMetrics,
     channels,
-    kpis: targetProgress(metrics, targets),
+    kpis: (await getKpiCardsForMonth(month, now)).kpis,
     pipeline,
     databasePace: await databasePace(month, targetsByMetric),
     recordsBySource: recordsBySource.map((item) => ({ sourceType: item._id, count: item.count })),
@@ -3718,7 +3712,7 @@ const buildTeamReport = async (month, now = new Date()) => {
   return {
     month,
     audience: 'team',
-    kpis: targetProgress(metrics, targets),
+    kpis: (await getKpiCardsForMonth(month, now)).kpis,
     pipeline,
     pipelineTarget,
     pace,
@@ -4255,4 +4249,593 @@ adminApiRouter.get('/overview/activity', requireAdminOrStaffAuth, requireScreen(
   const limit = req.query?.limit ? Number.parseInt(req.query.limit, 10) : undefined;
   const activity = await buildOverviewActivity(limit);
   itemResponse(res, activity);
+}));
+
+// ============================================================================
+// BE-017: Remaining Collections (Staff, Notifications, Reference Data, Channels Moderation)
+// ============================================================================
+
+// --- 1. Staff Collection & Invitations --------------------------------------
+
+adminApiRouter.get('/staff', requireAdminOrStaffAuth, requireScreen('team', 'view'), asyncHandler(async (req, res) => {
+  const { page, skip, limit } = pageOptions(req.query);
+  const filter = {};
+
+  if (req.query.status) {
+    filter.status = req.query.status;
+  }
+  if (req.query.role) {
+    filter.$or = [
+      { roles: req.query.role },
+      { role: new RegExp(escapedRegex(req.query.role), 'i') },
+    ];
+  }
+  const q = req.query.q || req.query.search;
+  if (q) {
+    const escaped = escapedRegex(q);
+    filter.$or = [
+      { name: new RegExp(escaped, 'i') },
+      { email: new RegExp(escaped, 'i') },
+    ];
+  }
+
+  const [items, total] = await Promise.all([
+    StaffMember.find(filter).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit),
+    StaffMember.countDocuments(filter),
+  ]);
+
+  listResponse(res, items.map(toClientObject), total, page, limit);
+}));
+
+adminApiRouter.get('/staff/:id', requireAdminOrStaffAuth, requireScreen('team', 'view'), asyncHandler(async (req, res) => {
+  let staff = null;
+  if (mongoose.isValidObjectId(req.params.id)) {
+    staff = await StaffMember.findById(req.params.id);
+  }
+  if (!staff) {
+    staff = await StaffMember.findOne({ $or: [{ email: req.params.id }, { userId: req.params.id }] });
+  }
+  if (!staff) throw notFound('Staff member');
+  itemResponse(res, toClientObject(staff));
+}));
+
+adminApiRouter.post('/staff/invite', requireAdminOrStaffAuth, requireScreen('team', 'edit'), validate(staffInviteSchema), asyncHandler(async (req, res) => {
+  const emailNorm = req.body.email.trim().toLowerCase();
+  let user = await User.findOne({ emailNormalized: emailNorm, role: { $ne: 'deleted' } });
+
+  if (!user) {
+    // SEC-077: without a full name the invite must reference an existing
+    // account — fabricating an account from a bare email is rejected (404).
+    // With a name (the admin UI requires one) the invite provisions the account.
+    if (!req.body.name?.trim()) throw notFound('User');
+    const name = req.body.name.trim();
+    const randomPassword = crypto.randomBytes(16).toString('hex');
+    const passwordHash = await bcrypt.hash(randomPassword, 12);
+    user = await User.create({
+      name,
+      email: req.body.email.trim(),
+      emailNormalized: emailNorm,
+      role: 'seeker',
+      emailVerified: true,
+      passwordHash,
+    });
+  } else if (req.body.name && req.body.name.trim() !== user.name) {
+    user.name = req.body.name.trim();
+    await user.save();
+  }
+
+  if (await StaffMember.exists({ userId: user._id })) {
+    throw new ApiError(409, 'That account is already on the staff list');
+  }
+
+  const roles = req.body.roles && req.body.roles.length > 0
+    ? req.body.roles
+    : normalizeLegacyRole(req.body.role);
+
+  const staff = await StaffMember.create({
+    userId: user._id,
+    name: user.name,
+    email: user.email,
+    roles,
+    role: req.body.role || roles.join(','),
+    status: 'active',
+    joinedDate: new Date().toISOString().slice(0, 10),
+  });
+
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.ADMIN_USER_UPDATE,
+    resourceType: AUDIT_RESOURCE_TYPES.USER,
+    resourceId: user._id,
+    outcome: 'success',
+    metadata: { staffInvite: true, roles, role: req.body.role || roles.join(',') },
+  });
+
+  res.status(201).json({ data: toClientObject(staff) });
+}));
+
+adminApiRouter.patch('/staff/:id', requireAdminOrStaffAuth, requireScreen('team', 'edit'), validate(staffUpdateSchema), asyncHandler(async (req, res) => {
+  let staff = null;
+  if (mongoose.isValidObjectId(req.params.id)) {
+    staff = await StaffMember.findById(req.params.id);
+  }
+  if (!staff) {
+    staff = await StaffMember.findOne({ email: req.params.id });
+  }
+  if (!staff) throw notFound('Staff member');
+
+  const previous = toClientObject(staff);
+
+  if (req.body.name) {
+    staff.name = req.body.name.trim();
+    await User.findByIdAndUpdate(staff.userId, { name: staff.name });
+  }
+
+  if (req.body.status) {
+    staff.status = req.body.status;
+  }
+
+  if (req.body.roles && req.body.roles.length > 0) {
+    staff.roles = req.body.roles.slice(0, 2);
+    staff.role = staff.roles.join(',');
+  } else if (req.body.role) {
+    staff.roles = normalizeLegacyRole(req.body.role);
+    staff.role = req.body.role;
+  }
+
+  await staff.save();
+
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.ADMIN_USER_UPDATE,
+    resourceType: AUDIT_RESOURCE_TYPES.USER,
+    resourceId: staff._id,
+    outcome: 'success',
+    metadata: { staffUpdate: true, previous, updated: toClientObject(staff), updatedFields: Object.keys(req.body) },
+  });
+
+  itemResponse(res, toClientObject(staff));
+}));
+
+adminApiRouter.put('/staff/:id', requireAdminOrStaffAuth, requireScreen('team', 'edit'), validate(staffUpdateSchema), asyncHandler(async (req, res) => {
+  let staff = null;
+  if (mongoose.isValidObjectId(req.params.id)) {
+    staff = await StaffMember.findById(req.params.id);
+  }
+  if (!staff) {
+    staff = await StaffMember.findOne({ email: req.params.id });
+  }
+  if (!staff) throw notFound('Staff member');
+
+  if (req.body.name) {
+    staff.name = req.body.name.trim();
+    await User.findByIdAndUpdate(staff.userId, { name: staff.name });
+  }
+  if (req.body.status) {
+    staff.status = req.body.status;
+  }
+  if (req.body.roles && req.body.roles.length > 0) {
+    staff.roles = req.body.roles.slice(0, 2);
+    staff.role = staff.roles.join(',');
+  } else if (req.body.role) {
+    staff.roles = normalizeLegacyRole(req.body.role);
+    staff.role = req.body.role;
+  }
+
+  await staff.save();
+
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.ADMIN_USER_UPDATE,
+    resourceType: AUDIT_RESOURCE_TYPES.USER,
+    resourceId: staff._id,
+    outcome: 'success',
+    metadata: { staffUpdate: true, updated: toClientObject(staff), updatedFields: Object.keys(req.body) },
+  });
+
+  itemResponse(res, toClientObject(staff));
+}));
+
+adminApiRouter.delete('/staff/:id', requireAdminOrStaffAuth, requireScreen('team', 'edit'), asyncHandler(async (req, res) => {
+  let staff = null;
+  if (mongoose.isValidObjectId(req.params.id)) {
+    staff = await StaffMember.findById(req.params.id);
+  }
+  if (!staff) {
+    staff = await StaffMember.findOne({ email: req.params.id });
+  }
+  if (!staff) throw notFound('Staff member');
+
+  await StaffMember.findByIdAndDelete(staff._id);
+
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.ADMIN_USER_UPDATE,
+    resourceType: AUDIT_RESOURCE_TYPES.USER,
+    resourceId: staff.userId,
+    outcome: 'success',
+    metadata: { staffRemoval: true, email: staff.email },
+  });
+
+  res.json({ data: { id: String(staff._id), removed: true } });
+}));
+
+// --- 2. Notifications Collection (Compose, Schedule, History) ---------------
+
+adminApiRouter.get('/notifications', requireAdminOrStaffAuth, requireScreen('notifications', 'view'), validate(notificationQuerySchema), asyncHandler(async (req, res) => {
+  const { page, skip, limit } = pageOptions(req.query);
+  const filter = { userId: null };
+
+  if (req.query.audience) {
+    filter.audience = req.query.audience;
+  }
+  if (req.query.status) {
+    filter.status = req.query.status;
+  }
+  const q = req.query.q || req.query.search;
+  if (q) {
+    const escaped = escapedRegex(q);
+    filter.$or = [
+      { title: new RegExp(escaped, 'i') },
+      { message: new RegExp(escaped, 'i') },
+    ];
+  }
+
+  const [items, total] = await Promise.all([
+    Notification.find(filter).sort({ sentAt: -1, createdAt: -1 }).skip(skip).limit(limit),
+    Notification.countDocuments(filter),
+  ]);
+
+  listResponse(res, items.map(toClientObject), total, page, limit);
+}));
+
+adminApiRouter.get('/notifications/:id', requireAdminOrStaffAuth, requireScreen('notifications', 'view'), asyncHandler(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Notification');
+  const notification = await Notification.findById(req.params.id);
+  if (!notification) throw notFound('Notification');
+  itemResponse(res, toClientObject(notification));
+}));
+
+adminApiRouter.post('/notifications', requireAdminOrStaffAuth, requireScreen('notifications', 'edit'), validate(notificationBroadcastSchema), asyncHandler(async (req, res) => {
+  const { title, message, audience, type = 'general', priority = 'normal', scheduledFor } = req.body;
+
+  let isScheduled = false;
+  let scheduledDate = null;
+  if (scheduledFor) {
+    const parsedDate = new Date(scheduledFor);
+    if (!isNaN(parsedDate.getTime()) && parsedDate.getTime() > Date.now()) {
+      isScheduled = true;
+      scheduledDate = parsedDate;
+    }
+  }
+
+  const notification = await Notification.create({
+    title,
+    message,
+    audience,
+    type,
+    priority,
+    status: isScheduled ? 'scheduled' : 'sent',
+    scheduledFor: scheduledDate,
+    sentAt: isScheduled ? null : new Date(),
+    isActive: true,
+    createdBy: req.auth?.sub || null,
+    userId: null,
+  });
+
+  await auditReq(req, {
+    action: 'notification.broadcast',
+    resourceType: 'Notification',
+    resourceId: notification._id,
+    outcome: 'success',
+    metadata: { title, audience, isScheduled, scheduledFor: scheduledDate },
+  });
+
+  res.status(201).json({ data: toClientObject(notification) });
+}));
+
+adminApiRouter.delete('/notifications/:id', requireAdminOrStaffAuth, requireScreen('notifications', 'edit'), asyncHandler(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Notification');
+  const notification = await Notification.findById(req.params.id);
+  if (!notification) throw notFound('Notification');
+
+  await Notification.findByIdAndDelete(notification._id);
+
+  await auditReq(req, {
+    action: 'notification.delete',
+    resourceType: 'Notification',
+    resourceId: notification._id,
+    outcome: 'success',
+    metadata: { title: notification.title, audience: notification.audience },
+  });
+
+  res.json({ data: { id: String(notification._id), removed: true } });
+}));
+
+// --- 3. Reference Data Lists Collection -------------------------------------
+
+adminApiRouter.get('/reference-data', requireAdminOrStaffAuth, requireScreen('reference_data', 'view'), asyncHandler(async (req, res) => {
+  const groups = await getReferenceDataGroups(req.query.group || null);
+  itemResponse(res, groups);
+}));
+
+adminApiRouter.get('/reference-data/:group/:key', requireAdminOrStaffAuth, requireScreen('reference_data', 'view'), asyncHandler(async (req, res) => {
+  const { group, key } = req.params;
+  const list = await getReferenceDataList(group, key);
+  if (!list) throw notFound(`Reference list "${group}/${key}"`);
+
+  let items = list.items || [];
+  const q = req.query.q || req.query.search;
+  if (q) {
+    items = items.filter((item) => item.toLowerCase().includes(q.toLowerCase()));
+  }
+
+  const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+  const limit = req.query.limit ? Math.min(500, Math.max(1, Number.parseInt(req.query.limit, 10))) : items.length;
+  const skip = (page - 1) * limit;
+  const paginatedItems = req.query.page || req.query.limit ? items.slice(skip, skip + limit) : items;
+
+  itemResponse(res, {
+    group,
+    key,
+    label: list.label,
+    singular: list.singular,
+    items: paginatedItems,
+    total: items.length,
+    page,
+    limit,
+  });
+}));
+
+adminApiRouter.put('/reference-data/:group/:key', requireAdminOrStaffAuth, requireScreen('reference_data', 'edit'), validate(referenceListUpdateSchema), asyncHandler(async (req, res) => {
+  const { group, key } = req.params;
+  const { items, label, singular } = req.body;
+
+  const previous = await getReferenceDataList(group, key);
+  const updated = await updateReferenceDataList(group, key, items, req.auth?.sub, { label, singular });
+
+  await auditReq(req, {
+    action: 'reference_data.update',
+    resourceType: 'ReferenceDataList',
+    resourceId: updated._id,
+    outcome: 'success',
+    metadata: {
+      group,
+      key,
+      previousCount: previous?.items?.length || 0,
+      newCount: updated.items.length,
+    },
+  });
+
+  itemResponse(res, toClientObject(updated));
+}));
+
+// --- BE-021: website category taxonomy + live tally ---------------------------
+// The mapping table curates website category names onto app opportunity
+// types; the tally compares both sides live (502 when the website is
+// unreachable, mirroring the news feed pattern).
+
+adminApiRouter.get('/sync/taxonomy', requireAdminOrStaffAuth, requireScreen('settings_admin', 'view'), asyncHandler(async (req, res) => {
+  const rows = await CategoryMap.find({}).sort({ websiteCategory: 1 }).lean();
+  listResponse(res, rows.map(toClientObject));
+}));
+
+adminApiRouter.put('/sync/taxonomy', requireAdminOrStaffAuth, requireScreen('settings_admin', 'edit'), validate(taxonomyUpsertSchema), asyncHandler(async (req, res) => {
+  const websiteCategory = String(req.body.websiteCategory).trim();
+  const previous = await CategoryMap.findOne({ websiteCategory }).lean();
+  const row = await CategoryMap.findOneAndUpdate(
+    { websiteCategory },
+    {
+      $set: {
+        ...(req.body.appCategory !== undefined ? { appCategory: req.body.appCategory } : {}),
+        ...(req.body.note !== undefined ? { note: req.body.note } : {}),
+        updatedBy: req.auth.sub,
+      },
+    },
+    { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true },
+  );
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.SETTINGS_UPDATE,
+    resourceType: AUDIT_RESOURCE_TYPES.SETTINGS,
+    resourceId: row._id,
+    outcome: 'success',
+    metadata: {
+      setting: 'category_taxonomy',
+      websiteCategory,
+      previous: previous?.appCategory ?? null,
+      appCategory: row.appCategory ?? null,
+    },
+  });
+  itemResponse(res, toClientObject(row));
+}));
+
+adminApiRouter.get('/sync/tally', requireAdminOrStaffAuth, requireScreen('settings_admin', 'view'), asyncHandler(async (req, res) => {
+  const { opportunities: websiteOpportunities, categories: websiteCategories } = await fetchWebsiteSnapshot();
+  const [appOpportunities, mappings] = await Promise.all([
+    Opportunity.find({}).select('title type wordpressSync').lean(),
+    CategoryMap.find({}).lean(),
+  ]);
+  const report = buildTallyReport({ websiteOpportunities, websiteCategories, appOpportunities, mappings });
+  itemResponse(res, {
+    websiteOpportunities: websiteOpportunities.length,
+    appOpportunities: appOpportunities.length,
+    report,
+  });
+}));
+
+// --- 4. Community Channels Moderation ---------------------------------------
+
+adminApiRouter.get('/community/channels', requireAdminOrStaffAuth, requireScreen('channels', 'view'), asyncHandler(async (req, res) => {
+  const { page, skip, limit } = pageOptions(req.query);
+  const filter = {};
+
+  if (req.query.status) {
+    filter.status = req.query.status;
+  }
+  if (req.query.category) {
+    filter.category = req.query.category;
+  }
+  if (req.query.visibility) {
+    filter.visibility = req.query.visibility;
+  }
+  const q = req.query.q || req.query.search;
+  if (q) {
+    const escaped = escapedRegex(q);
+    filter.$or = [
+      { name: new RegExp(escaped, 'i') },
+      { category: new RegExp(escaped, 'i') },
+    ];
+  }
+
+  const [items, total] = await Promise.all([
+    Channel.find(filter).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit),
+    Channel.countDocuments(filter),
+  ]);
+
+  listResponse(res, items.map(toClientObject), total, page, limit);
+}));
+
+adminApiRouter.get('/community/channels/:id', requireAdminOrStaffAuth, requireScreen('channels', 'view'), asyncHandler(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Channel');
+  const channel = await Channel.findById(req.params.id);
+  if (!channel) throw notFound('Channel');
+  itemResponse(res, toClientObject(channel));
+}));
+
+adminApiRouter.post('/community/channels', requireAdminOrStaffAuth, requireScreen('channels', 'edit'), validate(createAdminChannelSchema), asyncHandler(async (req, res) => {
+  const channel = await Channel.create({
+    name: req.body.name,
+    category: req.body.category || 'General',
+    bio: req.body.bio,
+    visibility: req.body.visibility,
+    requiresApproval: req.body.visibility === 'private',
+    owner: 'Kredibble',
+    createdBy: req.auth.sub,
+  });
+  await CommunityMembership.create({ channelId: channel._id, userId: req.auth.sub, role: 'admin', status: 'active', reviewedBy: req.auth.sub, reviewedAt: new Date() });
+  await auditReq(req, { action: AUDIT_ACTIONS.ADMIN_USER_UPDATE, resourceType: AUDIT_RESOURCE_TYPES.COMMUNITY_CHANNEL, resourceId: channel._id, outcome: 'success', metadata: { created: true } });
+  res.status(201).json({ data: toClientObject(channel) });
+}));
+
+adminApiRouter.patch('/community/channels/:id', requireAdminOrStaffAuth, requireScreen('channels', 'edit'), validate(channelModerateSchema), asyncHandler(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Channel');
+  const channel = await Channel.findById(req.params.id);
+  if (!channel) throw notFound('Channel');
+
+  const previousStatus = channel.status;
+  if (req.body.status) channel.status = req.body.status;
+  if (req.body.name) channel.name = req.body.name.trim();
+  if (req.body.bio !== undefined) channel.bio = req.body.bio;
+  if (req.body.category) channel.category = req.body.category.trim();
+
+  await channel.save();
+
+  await auditReq(req, {
+    action: 'channel.moderate',
+    resourceType: 'Channel',
+    resourceId: channel._id,
+    outcome: 'success',
+    metadata: { previousStatus, newStatus: channel.status },
+  });
+
+  itemResponse(res, toClientObject(channel));
+}));
+
+adminApiRouter.delete('/community/channels/:id', requireAdminOrStaffAuth, requireScreen('channels', 'edit'), asyncHandler(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Channel');
+  const channel = await Channel.findById(req.params.id);
+  if (!channel) throw notFound('Channel');
+
+  channel.status = 'removed';
+  await channel.save();
+
+  await auditReq(req, {
+    action: 'channel.remove',
+    resourceType: 'Channel',
+    resourceId: channel._id,
+    outcome: 'success',
+    metadata: { name: channel.name },
+  });
+
+  res.json({ data: { id: String(channel._id), status: 'removed' } });
+}));
+
+adminApiRouter.get('/community/channels/:channelId/posts', requireAdminOrStaffAuth, requireScreen('channels', 'view'), asyncHandler(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.channelId)) throw notFound('Channel');
+  const { page, skip, limit } = pageOptions(req.query);
+
+  const filter = { channelId: req.params.channelId };
+  const q = req.query.q || req.query.search;
+  if (q) {
+    const escaped = escapedRegex(q);
+    filter.$or = [
+      { title: new RegExp(escaped, 'i') },
+      { body: new RegExp(escaped, 'i') },
+    ];
+  }
+
+  const [posts, total] = await Promise.all([
+    ChannelPost.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit)
+      .populate({ path: 'authorId', select: 'name email avatarUrl' }),
+    ChannelPost.countDocuments(filter),
+  ]);
+
+  listResponse(res, posts.map(toClientObject), total, page, limit);
+}));
+
+adminApiRouter.delete('/community/channels/:channelId/posts/:postId', requireAdminOrStaffAuth, requireScreen('channels', 'edit'), asyncHandler(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.channelId) || !mongoose.isValidObjectId(req.params.postId)) {
+    throw notFound('Channel post');
+  }
+  const post = await ChannelPost.findOne({ _id: req.params.postId, channelId: req.params.channelId });
+  if (!post) throw notFound('Channel post');
+
+  await ChannelPost.findByIdAndDelete(post._id);
+  await Channel.findByIdAndUpdate(req.params.channelId, { $inc: { postsCount: -1 } });
+
+  await auditReq(req, {
+    action: 'channel_post.remove',
+    resourceType: 'ChannelPost',
+    resourceId: post._id,
+    outcome: 'success',
+    metadata: { channelId: req.params.channelId, authorId: post.authorId },
+  });
+
+  res.json({ data: { id: String(post._id), removed: true } });
+}));
+
+adminApiRouter.patch('/community/posts/:id', requireAdminOrStaffAuth, requireScreen('channels', 'edit'), validate(postModerateSchema), asyncHandler(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Post');
+  const post = await ChannelPost.findById(req.params.id);
+  if (!post) throw notFound('Post');
+
+  if (req.body.flagged !== undefined) post.flagged = req.body.flagged;
+  await post.save();
+
+  await auditReq(req, {
+    action: 'channel_post.moderate',
+    resourceType: 'ChannelPost',
+    resourceId: post._id,
+    outcome: 'success',
+    metadata: { flagged: post.flagged },
+  });
+
+  itemResponse(res, toClientObject(post));
+}));
+
+adminApiRouter.delete('/community/posts/:id', requireAdminOrStaffAuth, requireScreen('channels', 'edit'), asyncHandler(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Post');
+  const post = await ChannelPost.findById(req.params.id);
+  if (!post) throw notFound('Post');
+
+  await ChannelPost.findByIdAndDelete(post._id);
+  if (post.channelId) {
+    await Channel.findByIdAndUpdate(post.channelId, { $inc: { postsCount: -1 } });
+  }
+
+  await auditReq(req, {
+    action: 'channel_post.remove',
+    resourceType: 'ChannelPost',
+    resourceId: post._id,
+    outcome: 'success',
+    metadata: { channelId: post.channelId, authorId: post.authorId },
+  });
+
+  res.status(204).send();
 }));

@@ -164,7 +164,7 @@ export const testIntegrationConnection = async (kind) => {
 
   if (key === 'wordpress') {
     const identifier = doc?.identifier || env.wordpressSyncBaseUrl || '';
-    let rawSecret = '';
+    let rawSecret;
     if (doc?.encryptedSecret) {
       try {
         rawSecret = decryptSecret(doc.encryptedSecret) || '';
@@ -213,7 +213,7 @@ export const testIntegrationConnection = async (kind) => {
 
   if (key === 'analytics') {
     const identifier = doc?.identifier || process.env.GA4_PROPERTY_ID || env.ga4PropertyId || '';
-    let rawSecret = '';
+    let rawSecret;
     if (doc?.encryptedSecret) {
       try {
         rawSecret = decryptSecret(doc.encryptedSecret) || '';

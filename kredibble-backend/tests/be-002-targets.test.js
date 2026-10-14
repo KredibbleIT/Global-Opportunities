@@ -268,7 +268,7 @@ describe('BE-002: Targets API Endpoints & Role Guards', () => {
     expect(res.status).toBe(400);
 
     // Invalid month format
-    res = await request(app)
+    await request(app)
       .post(api('/admin/targets'))
       .set('Cookie', adminCookie)
       .send({ effectiveFrom: '2026-13', targets: [{ kpi: 'social_reach', value: 12000 }] });

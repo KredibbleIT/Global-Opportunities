@@ -19,6 +19,8 @@ const channelSchema = new mongoose.Schema({
 
 // SEC-031: Text index for search on name, category
 channelSchema.index({ name: 'text', category: 'text' });
+channelSchema.index({ status: 1, createdAt: -1 });
+channelSchema.index({ visibility: 1, status: 1 });
 
 const communityMembershipSchema = new mongoose.Schema({
   channelId: { type: mongoose.Schema.Types.ObjectId, ref: 'Channel', required: true, index: true },
@@ -55,6 +57,9 @@ const channelPostSchema = new mongoose.Schema({
 
 // SEC-031: Text index for search on title, body
 channelPostSchema.index({ title: 'text', body: 'text' });
+channelPostSchema.index({ channelId: 1, createdAt: -1 });
+channelPostSchema.index({ channelId: 1, flagged: 1, createdAt: -1 });
+channelPostSchema.index({ flagged: 1, createdAt: -1 });
 
 // A persisted group-chat message (distinct from ChannelPost, which is a feed post).
 const channelMessageSchema = new mongoose.Schema({

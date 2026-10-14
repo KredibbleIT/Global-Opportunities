@@ -51,7 +51,9 @@ export default function DashboardHomePage() {
 
       {/* 16px between every block */}
       <div className="space-y-4">
-        <NotConnectedNotice message="Monthly figures aren't connected to live data yet. The queue counts below are live." />
+        {notConnected && !loading && (
+          <NotConnectedNotice message="Monthly figures aren't connected to live data yet. The queue counts below are live." />
+        )}
 
         {issue && !loading && <StatusBanner issue={issue} onRetry={overview.reload} />}
 

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+﻿import { test, expect } from '@playwright/test';
 import { BRAND, BRAND_ADMIN_TITLE, BRAND_EMAIL_DOMAIN } from '../src/config/brand';
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import path from 'path';
@@ -645,7 +645,7 @@ test.describe('Overview ?state= switch (dev server, mock mode)', () => {
     await expect(retry).toBeDisabled();
   });
 
-  test('?state=error and ?state=partial show "—" and a retry banner', async ({ page }) => {
+  test('?state=error and ?state=partial show "â€”" and a retry banner', async ({ page }) => {
     await signedIn(page);
     await page.goto(`${BASE_URL}/?state=error`);
     await expect(page.getByRole('alert').filter({ hasText: 'Could not load the overview' }).getByRole('button', { name: 'Try again' })).toBeEnabled();
@@ -686,7 +686,7 @@ test.describe('Overview error hygiene', () => {
     await page.goto(`${BASE_URL}/`);
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     // Exercise the interactive parts: the palette and the user menu (every mode), and in mock mode the chart (hover + keyboard), the KPI picker and "See all"
-    // (in real-API mode the monthly figures are "Not available yet": there is no chart or picker to use).
+    // (in real-API mode the monthly figures are live: the chart and picker exist too, but this test only needs the calm markers).
     if (MOCK_RUN) {
       const chart = page.getByRole('group', { name: /^Opportunities published, last six months/ });
       await chart.hover();
@@ -698,7 +698,10 @@ test.describe('Overview error hygiene', () => {
       await page.getByRole('button', { name: 'See all' }).click();
       await page.getByRole('button', { name: 'Show fewer' }).click();
     } else {
-      await expect(page.getByTestId('not-available-yet').first()).toBeVisible();
+      // Real-API mode: the live KPI cards render, with no "not connected" states anywhere.
+      await expect(page.getByTestId('kpi-card-social_reach')).toBeVisible();
+      await expect(page.getByTestId('not-available-yet')).toHaveCount(0);
+      await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
     }
     await page.keyboard.press('Control+k');
     await page.keyboard.press('Escape');
@@ -823,6 +826,7 @@ test.describe('List pages: template', () => {
   });
 
   test('a flagged channel shows a flag icon and the word "Flagged", never an emoji', async ({ page }) => {
+    test.skip(!MOCK_RUN, 'the real-API seed has no flagged channel; the mock store does');
     await page.goto(`${BASE_URL}/community`);
     const flagged = page.locator('main tbody tr').filter({ hasText: 'Flagged' });
     await expect(flagged).toHaveCount(1);
@@ -902,7 +906,7 @@ test.describe('Truncated cells', () => {
   test.use({ viewport: { width: 1024, height: 900 } });
 
   test('a cut-off title has a title attribute and shows the full text in the tooltip on hover and on focus', async ({ page }) => {
-    test.skip(!MOCK_RUN, 'needs the mock channels (Guaranteed Visa Sponsorship Jobs)');
+    test.skip(!MOCK_RUN, 'asserts on mock channel names that the real-API seed does not have');
     await page.context().addCookies([{ name: 'sidebar', value: 'expanded', url: BASE_URL }]);
     await signedIn(page);
     await page.goto(`${BASE_URL}/community`);
@@ -924,7 +928,7 @@ test.describe('Truncated cells', () => {
   });
 
   test('text that fits has no title, no tooltip and is not a tab stop', async ({ page }) => {
-    test.skip(!MOCK_RUN, 'needs the mock channels (Google Tech Circle)');
+    test.skip(!MOCK_RUN, 'asserts on mock channel names that the real-API seed does not have');
     await signedIn(page);
     await page.goto(`${BASE_URL}/community`);
     const short = page.getByRole('link', { name: 'Google Tech Circle' });
@@ -1111,8 +1115,8 @@ test.describe('Progress cells never truncate', () => {
         await page.setViewportSize({ width, height: 900 });
         await page.goto(`${BASE_URL}${path}`, { timeout: 30_000 });
         await expect(page.locator('main tbody tr').first()).toBeVisible();
-        // Measure loaded rows, never the skeleton (it has no progress bars).
-        await expect(page.locator('main tbody tr a').first()).toBeVisible();
+        // Wait for loaded rows, not the skeleton: the bars only exist once the figures arrive.
+        await expect(page.locator('main tbody [role="progressbar"]').first()).toBeVisible();
         const result = await page.evaluate(() => {
           const bars = [...document.querySelectorAll('main tbody [role="progressbar"]')] as HTMLElement[];
           return {
@@ -1188,10 +1192,9 @@ test.describe('Forms: article editor', () => {
   test('Read time is optional; the Publishing switch changes the save label', async ({ page }) => {
     await page.goto(`${BASE_URL}/content/articles/new`, { timeout: 30_000 });
     await expect(page.getByText('Optional').first()).toBeVisible();
-    // Named: outside mock mode the banner adds a second switch ("Mock data"), so the bare role is ambiguous.
-    const publishing = page.getByRole('switch', { name: 'Published' });
-    await publishing.click();
-    await expect(publishing).toHaveAttribute('aria-checked', 'true');
+    const published = page.getByRole('switch', { name: 'Published' });
+    await published.click();
+    await expect(published).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByRole('button', { name: 'Publish article' })).toBeVisible();
   });
 
@@ -1637,6 +1640,7 @@ test.describe('Sidebar: only the active group stays open', () => {
 
 test.describe('Mock copy uses the brand', () => {
   test('history and staff data come from src/config/brand.ts', async ({ page }) => {
+    test.skip(!MOCK_RUN, 'mock copy (brand welcome text, brand staff emails) only exists in mock mode');
     await page.goto(`${BASE_URL}/notifications`, { timeout: 30_000 });
     await expect(page.getByText(`Welcome to ${BRAND.name}`)).toBeVisible();
     await expect(page.getByText(/Kredibble/i)).toHaveCount(0);
@@ -1679,18 +1683,26 @@ test.describe('Forms: wording and layout fixes', () => {
 
   test('every history timestamp uses the shared 12-hour format', async ({ page }) => {
     await page.goto(`${BASE_URL}/notifications`, { timeout: 30_000 });
+    const items = page.getByRole('region', { name: 'History' }).getByRole('listitem');
+    // Earlier tests may have sent notifications first (the history persists): measure before sending.
+    await expect(items.first()).toBeVisible();
+    const before = await items.count();
     await page.getByLabel('Title').fill('Time check');
     await page.getByRole('textbox', { name: 'Message' }).fill('Checking the clock format.');
     await page.getByRole('button', { name: 'Send notification' }).click();
     await page.getByRole('alertdialog').getByRole('button', { name: 'Send notification' }).click();
-    const items = page.getByRole('region', { name: 'History' }).getByRole('listitem');
-    await expect(items).toHaveCount(3);
+    await expect(items).toHaveCount(before + 1);
+    await expect(items.first()).toContainText('Time check');
     for (const item of await items.all()) {
       const stamp = (await item.locator('p.caption').innerText()).trim();
       expect(stamp).toMatch(/^\d{1,2} [A-Z][a-z]{2} \d{4}, \d{1,2}:\d{2} (AM|PM)$/);
     }
-    await expect(items.nth(1)).toContainText('10 Jul 2026, 2:30 PM');
-    await expect(items.nth(2)).toContainText('1 Jul 2026, 9:00 AM');
+    // The two seeded July entries live in the mock store: in real-API mode the history comes from the backend.
+    if (MOCK_RUN) {
+      const history = page.getByRole('region', { name: 'History' });
+      await expect(history.getByText('10 Jul 2026, 2:30 PM')).toBeVisible();
+      await expect(history.getByText('1 Jul 2026, 9:00 AM')).toBeVisible();
+    }
   });
 
   test('invite: the action bar sits under the form edge; the email field is empty with a neutral placeholder', async ({ page }) => {
@@ -2777,11 +2789,11 @@ test.describe('New placeholder routes', () => {
     ['/scorecard', 'Scorecard'], // (/monthly-report is built: it redirects to the Partner report; see the Monthly report tests)
   ];
   for (const [path, title] of STUBS) {
-    test(`${path}: header, breadcrumb group and the later-step state, no console errors`, async ({ page }) => {
+    test(`${path}: header, breadcrumb group and the empty-role state, no console errors`, async ({ page }) => {
       const problems = trackProblems(page);
       await page.goto(`${BASE_URL}${path}`, { timeout: 30_000 });
       await expect(page.getByTestId('page-title')).toHaveText(title);
-      // the Scorecard of a Super Admin owns no metrics, so it shows that empty state instead
+      // the Scorecard of a Super Admin owns no metrics, so it shows that empty state instead (in both modes: 'No metrics are assigned to your role')
       await expect(page.getByText('No metrics are assigned to your role')).toBeVisible();
       await expect(page.locator('header.sticky nav[aria-label="Breadcrumb"]')).toContainText(title);
       expect(problems).toEqual([]);
@@ -2804,7 +2816,7 @@ test.describe('Admin data API (real backend)', () => {
     expect(Array.isArray(data.data.kpis)).toBeTruthy();
     const metrics = data.data.kpis.map((kpi: { metric: string }) => kpi.metric);
     expect(metrics).toContain('opportunitiesPublished');
-    expect(metrics).toContain('programsActive');
+    expect(metrics).toContain('programsDelivered');
   });
 });
 
@@ -3591,7 +3603,7 @@ test.describe('Verification detail (real API)', () => {
     await page.goto(`${BASE_URL}/verification`, { timeout: 30_000 });
     await page.locator('main tbody tr').filter({ hasText: 'E2E Verify Co' }).getByRole('link').first().click();
     await expect(page.getByTestId('page-title')).toHaveText('E2E Verify Co');
-    await expect(page.getByText('Logistics · 11-50 · Tema')).toBeVisible();
+    await expect(page.getByText('Logistics Â· 11-50 Â· Tema')).toBeVisible();
     await expect(page.getByText('hr@verify.example.com')).toBeVisible();
     await expect(page.getByText('0 of 4 documents approved')).toBeVisible();
 
@@ -3708,7 +3720,7 @@ test.describe('Roles fix pass: Team > Roles & permissions access and the toggles
       (await table.getByRole('row').filter({ has: page.getByRole('rowheader', { name: screen, exact: true }) }).getByRole('cell').nth(column - 1).innerText()).trim();
     expect(await cell('Partners')).toBe('Edit');
     expect(await cell('Monthly report')).toBe('View');
-    expect(await cell('Seekers')).toBe('—');
+    expect(await cell('Seekers')).toBe('â€”');
   });
 
   test('Admin Support has Members but no Roles & permissions tab; ?tab=roles falls back to Members', async ({ page, context }) => {
@@ -3754,6 +3766,17 @@ test.describe('Roles fix pass: Team > Roles & permissions access and the toggles
 
   test('turning "Manage reference data & content" and "Manage staff accounts" on adds Reference data and Team, never the Roles tab', async ({ page, context }) => {
     await asRoles(context, 'super_admin');
+    // Earlier tests in the run may have saved toggles to the shared backend: reset to the defaults first
+    // (backend DEFAULT_TOGGLE_GRANTS) so the switches start from a known state.
+    const reset = await page.request.put(`${API_URL}/admin/roles-permissions`, {
+      data: {
+        toggles: {
+          Moderator: { verifications: true, moderate: true, suspend: true, content: false, broadcast: false, staff: false },
+          Support: { verifications: false, moderate: false, suspend: true, content: false, broadcast: false, staff: false },
+        },
+      },
+    });
+    expect(reset.ok()).toBeTruthy();
     await page.goto(`${BASE_URL}/team?tab=roles`, { timeout: 30_000 });
     await page.getByTestId('sidebar-toggle').waitFor();
     await page.waitForTimeout(500);
@@ -3826,7 +3849,7 @@ test.describe('Roles fix pass: sidebar open state, direct rows, tagline, account
     expect(await openGroups(page)).toEqual(['nav-group-dashboard']);
   });
 
-  test('a group with one visible page is a direct row at the end: Partnerships Officer (Settings) and Database Officer (Database, Settings)', async ({ page, context }) => {
+  test('a group with one visible page is a direct row at the end: Partnerships Officer (Settings) and Database Officer (Network, Ambassadors, Database, Settings)', async ({ page, context }) => {
     await asRoles(context, 'partnerships_officer');
     await page.goto(`${BASE_URL}/`, { timeout: 30_000 });
     const nav = page.locator('aside nav');
@@ -3837,11 +3860,15 @@ test.describe('Roles fix pass: sidebar open state, direct rows, tagline, account
     await asRoles(context, 'database_officer');
     await page.goto(`${BASE_URL}/database`);
     await expect(page.getByTestId('page-title')).toBeVisible();
-    // Network and Ambassadors make Partners & network a real group; Database and Settings stay direct rows.
+    // Database Officer sees the Partners & network group (Network and Ambassadors share it) plus direct rows.
     expect(await nav.locator('[data-testid^="nav-group-"]').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')))).toEqual(['nav-group-dashboard', 'nav-group-partners-network']);
     await expect(nav.getByTestId('nav-item-database')).toHaveAttribute('aria-current', 'page');
     expect(await nav.locator('a[data-testid^="nav-item-"]').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')))).toEqual(['nav-item-database', 'nav-item-settings']);
     expect(await openGroups(page)).toEqual([]); // the active page is a direct row, so no group opens
+    // the two network pages sit in their (closed) group: open it to reach them
+    await nav.getByTestId('nav-group-partners-network').click();
+    await expect(nav.getByTestId('nav-item-network')).toBeVisible();
+    await expect(nav.getByTestId('nav-item-ambassadors')).toBeVisible();
   });
 
   test('the tagline is one line in the expanded desktop sidebar and the collapse button is visible', async ({ page }) => {
@@ -4073,7 +4100,7 @@ test.describe('Opportunities Queue: one list for both sources', () => {
     await expect(page.getByTestId('table-row').first()).toBeVisible();
     await page.getByRole('combobox', { name: 'Filter by country' }).click();
     const options = (await page.getByRole('option').allInnerTexts()).map((text) => text.trim());
-    expect(options).toEqual(["All countries", "Côte d'Ivoire", 'Ghana', 'Kenya', 'Nigeria', 'Rwanda', 'Senegal', 'Sierra Leone', 'Uganda']);
+    expect(options).toEqual(["All countries", "CÃ´te d'Ivoire", 'Ghana', 'Kenya', 'Nigeria', 'Rwanda', 'Senegal', 'Sierra Leone', 'Uganda']);
     await page.getByRole('option', { name: 'Ghana' }).click();
     await expect(page.getByTestId('table-row')).toHaveCount(6); // 3 curated + 3 hirer
     expect(await tabCount(page, 'All')).toBe('6');
@@ -4289,7 +4316,7 @@ test.describe('Opportunities: curated detail, reach and unpublish', () => {
       expect(website).toBe(metrics[kind].website);
       expect(app).toBe(metrics[kind].app);
       // the numbers are text: the split line carries both shares
-      await expect(page.getByTestId(`reach-${kind}-split`)).toContainText(/Website \d+% · App \d+%/);
+      await expect(page.getByTestId(`reach-${kind}-split`)).toContainText(/Website \d+% Â· App \d+%/);
     }
   });
 
@@ -4506,7 +4533,7 @@ test.describe('Opportunities Queue: memory note', () => {
 // ---------------------------------------------------------------------------
 // Hand-written from the seed: 12 programs. Delivered 6, running 3, planned 2, cancelled 1, so Active (planned + running)
 // is 5 and Delivered is 6. Types: training 1, bootcamp 2, webinar 2, outreach 2, project 2, mentorship 1, event 2.
-// Countries: Ghana 3, Nigeria 2, Kenya 2, and one each in Uganda, Sierra Leone, Rwanda, Senegal and Côte d'Ivoire.
+// Countries: Ghana 3, Nigeria 2, Kenya 2, and one each in Uganda, Sierra Leone, Rwanda, Senegal and CÃ´te d'Ivoire.
 test.describe('Programs: the data', () => {
   test('the seven program types and four statuses, and the seed counts', () => {
     expect([...PROGRAM_TYPES]).toEqual(['training', 'bootcamp', 'webinar', 'outreach', 'project', 'mentorship', 'event']);
@@ -4603,14 +4630,14 @@ test.describe('Programs: list', () => {
     await expect(page.getByText('No programs match these filters')).toBeVisible();
   });
 
-  test('?state=empty and ?state=error show their states; the summary shows "—" while unknown', async ({ page }) => {
+  test('?state=empty and ?state=error show their states; the summary shows "â€”" while unknown', async ({ page }) => {
     await page.goto(`${BASE_URL}/programs?state=empty`, { timeout: 30_000 });
     await expect(page.getByText('No programs yet')).toBeVisible();
     await page.goto(`${BASE_URL}/programs?state=error`);
     await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
     await page.goto(`${BASE_URL}/programs?state=loading`);
-    await expect(page.getByTestId('program-summary-active')).toContainText('—');
-    await expect(page.getByTestId('program-summary-delivered')).toContainText('—');
+    await expect(page.getByTestId('program-summary-active')).toContainText('â€”');
+    await expect(page.getByTestId('program-summary-delivered')).toContainText('â€”');
   });
 });
 
@@ -4909,7 +4936,7 @@ test.describe('Opportunity detail (real API)', () => {
     await openPosting(page);
     const summary = page.getByRole('region', { name: 'Summary' });
     await expect(summary).toContainText('Job');
-    await expect(summary).toContainText('E2E Holdings · Accra');
+    await expect(summary).toContainText('E2E Holdings Â· Accra');
     await expect(summary.getByTestId('status-badge')).toHaveText('Pending');
     await expect(page.getByText('E2E posting description')).toBeVisible();
     await expect(page.getByText('GHS 5,000')).toBeVisible();
@@ -5117,8 +5144,8 @@ test.describe('Partners: the board', () => {
     for (const stage of ['prospect', 'outreach', 'proposal', 'mou']) await expect(page.getByTestId(`kanban-marker-${stage}`)).toHaveCount(0);
     const line = page.getByTestId('kanban-column-prospect').locator('.bg-purple-500').first();
     expect(Math.round((await line.boundingBox())!.height)).toBeLessThanOrEqual(3); // a thin line
-    // no manual closed switch anywhere on the board (the top-bar Mock data switch is outside main)
-    await expect(page.locator('main').getByRole('switch')).toHaveCount(0);
+    // no manual closed switch anywhere on the board (the Mock data switch in the header does not count)
+    await expect(page.getByRole('switch', { name: /closed/i })).toHaveCount(0);
     await expect(page.getByRole('checkbox', { name: /closed/i })).toHaveCount(0);
   });
 
@@ -5128,7 +5155,7 @@ test.describe('Partners: the board', () => {
     await expect(card.getByRole('link', { name: 'Google Africa' })).toHaveAttribute('href', '/partners/ptn-15');
     await expect(card).toContainText('Media & tech');
     await expect(card.getByTestId('partner-owner')).toHaveAttribute('aria-label', 'Owner: Kwabena Tetteh');
-    await expect(card).toContainText('Kenya · Amina Bello');
+    await expect(card).toContainText('Kenya Â· Amina Bello');
     await expect(card).toContainText('Product and cloud skills webinars');
   });
 
@@ -5170,13 +5197,13 @@ test.describe('Partners: the board', () => {
     await expect(page.getByTestId('closed-marker')).toHaveCount(0);
     // the history recorded every step with its date and from-to, newest first
     const history = page.getByTestId('stage-history');
-    await expect(history).toContainText('Renew → Proposal');
-    await expect(history).toContainText('Onboard → Renew');
-    await expect(history).toContainText('Prospect → Onboard');
+    await expect(history).toContainText('Renew â†’ Proposal');
+    await expect(history).toContainText('Onboard â†’ Renew');
+    await expect(history).toContainText('Prospect â†’ Onboard');
     await expect(history).toContainText(formatDate(todayLocal()));
     await expect(history).toContainText('The deal closed.');
     await expect(history).toContainText('The deal is open again.');
-    await expect(page.locator('main').getByRole('switch')).toHaveCount(0); // still no manual closed switch
+    await expect(page.getByRole('switch', { name: /closed/i })).toHaveCount(0); // still no manual closed switch
   });
 
   test('drag and drop with the pointer moves a card between columns', async ({ page }) => {
@@ -5268,9 +5295,9 @@ test.describe('Partners: form and detail', () => {
     await page.getByLabel('Contact email').fill('not-an-email');
     await page.getByLabel('Contact email').blur();
     await expect(page.getByText('Enter a full email address, like name@company.com.')).toBeVisible();
-    // there is no stage field and no closed switch on the form (the top-bar Mock data switch is outside the form)
+    // there is no stage field and no closed switch on the form (the Mock data switch in the header does not count)
     await expect(page.getByRole('combobox', { name: /stage/i })).toHaveCount(0);
-    await expect(page.locator('form').getByRole('switch')).toHaveCount(0);
+    await expect(page.getByRole('switch', { name: /closed/i })).toHaveCount(0);
   });
 
   test('creating a partner adds it at Prospect (5 there now), with the first history entry, and it can be edited', async ({ page }) => {
@@ -5321,7 +5348,7 @@ test.describe('Partners: form and detail', () => {
     await expect(page.getByRole('region', { name: 'Contact' })).toContainText('Efua Darko');
     const items = page.getByTestId('stage-history').getByRole('listitem');
     await expect(items).toHaveCount(5);
-    await expect(items.first()).toContainText('MOU → Onboard'); // newest first
+    await expect(items.first()).toContainText('MOU â†’ Onboard'); // newest first
     await expect(items.last()).toContainText('Added at Prospect');
     await expect(page.getByTestId('linked-programs').getByRole('link', { name: 'CV and Interview Masterclass' })).toHaveAttribute('href', '/programs/prg-01');
     await expect(page.getByRole('link', { name: 'Edit' })).toHaveAttribute('href', '/partners/ptn-01/edit');
@@ -5553,10 +5580,10 @@ test.describe('Partners: summary tiles, health states and the empty filter', () 
     expect(await tile(page, 'closed')).toBe('0');
   });
 
-  test('the tiles show "—" while loading, never 0', async ({ page }) => {
+  test('the tiles show "â€”" while loading, never 0', async ({ page }) => {
     await page.goto(`${BASE_URL}/partners?state=loading`, { timeout: 30_000 });
-    await expect(page.getByTestId('partner-summary-open')).toContainText('—');
-    await expect(page.getByTestId('partner-summary-closed')).toContainText('—');
+    await expect(page.getByTestId('partner-summary-open')).toContainText('â€”');
+    await expect(page.getByTestId('partner-summary-closed')).toContainText('â€”');
   });
 
   const STATES = [
@@ -5845,7 +5872,7 @@ test.describe('Partners: polish', () => {
     await expect(page.getByRole('tooltip')).toHaveText('Owner: Kwabena Tetteh');
   });
 
-  test('from 640px "Move to…" is an icon-only 28px button (a 40px hit area) with a tooltip, the same menu, and nothing overlaps it', async ({ page }) => {
+  test('from 640px "Move toâ€¦" is an icon-only 28px button (a 40px hit area) with a tooltip, the same menu, and nothing overlaps it', async ({ page }) => {
     await open(page, 1440, 900);
     const card = page.getByTestId('kanban-card-ptn-15');
     const button = card.getByRole('button', { name: 'Move Google Africa to another stage' });
@@ -5858,7 +5885,7 @@ test.describe('Partners: polish', () => {
     const others = [await box(card.getByTestId('kanban-grip')), await box(card.getByTestId('partner-owner')), await box(card.getByRole('link', { name: 'Google Africa' }))];
     for (const other of others) expect(overlaps(b, other)).toBe(false);
     await button.hover();
-    await expect(page.getByRole('tooltip')).toHaveText('Move to…');
+    await expect(page.getByRole('tooltip')).toHaveText('Move toâ€¦');
     // the same menu as before, moved by keyboard
     await button.focus();
     await page.keyboard.press('Enter');
@@ -5874,7 +5901,7 @@ test.describe('Partners: polish', () => {
     await open(page, 434, 900);
     const card = page.getByTestId('kanban-card-ptn-15');
     const button = card.getByRole('button', { name: 'Move Google Africa to another stage' });
-    await expect(button).toContainText('Move to…');
+    await expect(button).toContainText('Move toâ€¦');
     const b = await box(button);
     expect(b.height).toBeGreaterThanOrEqual(40);
     expect(b.width).toBeGreaterThan(40);
@@ -6166,7 +6193,7 @@ test.describe('Network: the list', () => {
     await expect(row).toContainText(`${trained.city}, ${trained.country}`);
     await expect(row).toContainText('Trained');
     await page.getByRole('searchbox', { name: 'Search ambassadors' }).fill(untrained.name);
-    await expect(page.getByTestId('table-row').filter({ hasText: untrained.name }).first().locator('td[data-label="Trained"]')).toHaveText('—');
+    await expect(page.getByTestId('table-row').filter({ hasText: untrained.name }).first().locator('td[data-label="Trained"]')).toHaveText('â€”');
   });
 
   test('status tabs with counts, and the Tier and Country filters', async ({ page }) => {
@@ -6203,14 +6230,14 @@ test.describe('Network: the list', () => {
     await expect(page.getByText('No ambassadors match these filters')).toBeVisible();
   });
 
-  test('?state=empty and ?state=error show their states; the tiles show "—" while loading', async ({ page }) => {
+  test('?state=empty and ?state=error show their states; the tiles show "â€”" while loading', async ({ page }) => {
     await page.goto(`${BASE_URL}/network?state=empty`, { timeout: 30_000 });
     await expect(page.getByText('No ambassadors yet')).toBeVisible();
     await page.goto(`${BASE_URL}/network?state=error`);
     await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
     await page.goto(`${BASE_URL}/network?state=loading`);
-    await expect(page.getByTestId('network-size')).toContainText('—');
-    await expect(page.getByTestId('network-rate')).toContainText('—');
+    await expect(page.getByTestId('network-size')).toContainText('â€”');
+    await expect(page.getByTestId('network-rate')).toContainText('â€”');
   });
 });
 
@@ -6542,7 +6569,7 @@ test.describe('Network and Leaderboard: phone (434px)', () => {
     const card = page.getByTestId('table-row').first();
     await expect(card).toBeVisible();
     await expect(card.getByTestId('rank-badge')).toHaveText('1');
-    await expect(card.getByTestId('leader-card')).toContainText(/Shares \d+ · Referred clicks \d+ · Verified signups \d+/);
+    await expect(card.getByTestId('leader-card')).toContainText(/Shares \d+ Â· Referred clicks \d+ Â· Verified signups \d+/);
     expect(await noOverflow(page)).toBe(true);
   });
 
@@ -6703,12 +6730,12 @@ test.describe('Visual fixes: the pipeline gauge', () => {
     expect(pin.x + pin.width).toBeLessThan(area.x + area.width - 20);
   });
 
-  test('?health=capped: a 12px marker pinned to the right end, the label "31 open · 3.1× the target" (no ">"), an arrow beside the marker; the tick says "10 needed"', async ({ page }) => {
+  test('?health=capped: a 12px marker pinned to the right end, the label "31 open Â· 3.1Ã— the target" (no ">"), an arrow beside the marker; the tick says "10 needed"', async ({ page }) => {
     await page.goto(`${BASE_URL}/partners?health=capped`, { timeout: 30_000 });
     await expect(page.getByTestId('pipeline-gauge')).toBeVisible();
-    await expect(page.getByTestId('pipeline-marker-label')).toHaveText('31 open · 3.1× the target');
+    await expect(page.getByTestId('pipeline-marker-label')).toHaveText('31 open Â· 3.1Ã— the target');
     await expect(page.getByTestId('pipeline-marker-label')).not.toContainText('>');
-    await expect(page.getByTestId('pipeline-capped')).toHaveText('3.1× the target');
+    await expect(page.getByTestId('pipeline-capped')).toHaveText('3.1Ã— the target');
     const arrow = (await page.getByTestId('pipeline-arrow').boundingBox())!;
     const pin = (await page.getByTestId('pipeline-marker').boundingBox())!;
     expect(arrow.x + arrow.width).toBeLessThanOrEqual(pin.x + 1); // beside the marker, at the end of the bar
@@ -7024,7 +7051,7 @@ test.describe('Database: the page', () => {
     await expect(page.getByTestId('pace-tick-label')).toHaveText(`pace ${pace.paceRounded}`);
     // more verified than the bar can show: the marker is pinned to the right end with a chevron and the multiple of the pace
     if (pace.gauge.capped) {
-      await expect(page.getByTestId('pace-capped')).toHaveText(`${pace.gauge.capped}× the pace`);
+      await expect(page.getByTestId('pace-capped')).toHaveText(`${pace.gauge.capped}Ã— the pace`);
       await expect(page.getByTestId('pace-arrow')).toBeVisible();
     } else {
       await expect(page.getByTestId('pace-capped')).toHaveCount(0);
@@ -7043,7 +7070,7 @@ test.describe('Database: the page', () => {
   test('records by source: a bar and a legend with a count and a percentage for each of the five sources', async ({ page }) => {
     await openList(page);
     const counts = sourceBreakdown(data.databaseRecords);
-    for (const c of counts) await expect(page.getByTestId(`source-legend-${c.source}`)).toContainText(`${c.label}${c.count} · ${Math.round((c.count / 120) * 100)}%`.replace(c.label, c.label));
+    for (const c of counts) await expect(page.getByTestId(`source-legend-${c.source}`)).toContainText(`${c.label}${c.count} Â· ${Math.round((c.count / 120) * 100)}%`.replace(c.label, c.label));
     await expect(page.getByTestId('source-legend').locator('li')).toHaveCount(5);
     await expect(page.getByTestId('source-bar').locator('span')).toHaveCount(5);
   });
@@ -7919,8 +7946,8 @@ test.describe('Social: the page', () => {
     await page.goto(`${BASE_URL}/social?state=error`);
     await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
     await page.goto(`${BASE_URL}/social?state=loading`);
-    await expect(page.getByTestId('total-posts')).toContainText('—');
-    await expect(page.getByTestId('total-reach')).toContainText('—');
+    await expect(page.getByTestId('total-posts')).toContainText('â€”');
+    await expect(page.getByTestId('total-reach')).toContainText('â€”');
   });
 });
 
@@ -8403,8 +8430,9 @@ test.describe('DatePicker: in the Log a post form', () => {
     await field(page).blur();
     await openCalendar(page);
     const dialog = calendar(page);
-    // Keypresses apply through React state, and a month change unmounts the focused day node (the grid refocuses
-    // async): poll the attribute and wait for DOM focus, or the next keypress lands on <body> and is lost.
+    // Keypresses apply through React state: poll instead of reading once, so a slow frame cannot skew the date.
+    // A month change unmounts the focused day node, and the grid refocuses async (rAF): wait until the day node
+    // itself holds DOM focus, or the next keypress lands on <body> and is lost.
     const expectFocused = async (date: string) => {
       const day = dialog.locator('[data-focus="true"]');
       await expect.poll(async () => day.getAttribute('data-date')).toBe(date);
@@ -8612,7 +8640,7 @@ test.describe('ZoneGauge: the labels never overlap', () => {
     [1440, 4, false],
     [360, 1.3, true],
     [360, 1.05, true],
-    [360, 4, true], // the long label "84 open · 4.0× the target" would run into "20 needed"
+    [360, 4, true], // the long label "84 open Â· 4.0Ã— the target" would run into "20 needed"
   ];
   for (const [width, ratio, staggered] of cases) {
     test(`ratio ${ratio} at ${width}px: ${staggered ? 'staggered (the tick label above the bar, the marker label below it)' : 'side by side'}, and the labels do not overlap`, async ({ page }) => {
@@ -8722,6 +8750,8 @@ test.describe('Social: phones and the platform table and chart', () => {
       await card.getByRole('textbox', { name: 'Reach' }).fill(String(100 + i * 150));
       await card.getByRole('textbox', { name: 'Engagement' }).fill(String(10 + i));
       await card.getByRole('button', { name: 'Log post' }).click();
+      // The save completes async (300ms): the newest toast proves the post landed before the row is asserted.
+      await expect(page.getByTestId('toast').last()).toContainText(`A ${platform} post was logged`);
       await expect(page.getByTestId(`platform-row-${platform.toLowerCase()}`)).toBeVisible();
     }
   };
@@ -8734,7 +8764,7 @@ test.describe('Social: phones and the platform table and chart', () => {
       await expect(page.getByTestId('platform-table')).toHaveCount(0);
       const month = socialMonth(currentMonth());
       for (const row of month.platforms) {
-        await expect(page.getByTestId(`platform-row-${row.platform}`)).toContainText(`Posts ${row.posts} · Reach ${row.reach.toLocaleString('en-US')} · Engagement ${row.engagement.toLocaleString('en-US')}`);
+        await expect(page.getByTestId(`platform-row-${row.platform}`)).toContainText(`Posts ${row.posts} Â· Reach ${row.reach.toLocaleString('en-US')} Â· Engagement ${row.engagement.toLocaleString('en-US')}`);
       }
       await expect(page.getByTestId('leading-platform')).toHaveCount(1);
       await expect(page.getByTestId('platform-bars')).toBeVisible();
@@ -8979,7 +9009,7 @@ test.describe('Database: compact phone cards', () => {
   test.skip(!MOCK_RUN, 'the redesign screens run on sample data: see npm run test:e2e:mock');
   test.use({ viewport: { width: 434, height: 900 } });
 
-  test('a card is 170px or less: avatar, name and badge, one "Country · Institution" line, the source pill and the linked item, the Verify button and who added it', async ({ page }) => {
+  test('a card is 170px or less: avatar, name and badge, one "Country Â· Institution" line, the source pill and the linked item, the Verify button and who added it', async ({ page }) => {
     await page.goto(`${BASE_URL}/database`, { timeout: 30_000 });
     const cards = page.getByTestId('record-card');
     await expect(cards.first()).toBeVisible();
@@ -8992,8 +9022,8 @@ test.describe('Database: compact phone cards', () => {
     const badge = (await card.getByTestId('status-badge').boundingBox())!;
     const link = (await card.getByRole('link').first().boundingBox())!;
     expect(badge.x).toBeGreaterThan(link.x + link.width - 1);
-    // "Country · Institution" is ONE line
-    const place = card.getByText(/ · /).first();
+    // "Country Â· Institution" is ONE line
+    const place = card.getByText(/ Â· /).first();
     expect((await place.boundingBox())!.height).toBeLessThanOrEqual(20);
     // the source pill and the linked item share a row
     const withLink = page.getByTestId('record-card').filter({ has: page.locator('[data-testid="linked-ambassador"], [data-testid="linked-opportunity"]') }).first();
@@ -9006,7 +9036,7 @@ test.describe('Database: compact phone cards', () => {
     const vb = (await verify.boundingBox())!;
     expect(vb.height).toBeGreaterThanOrEqual(40);
     expect(rectsIntersect(vb, link)).toBe(false);
-    const added = (await card.getByText(/ · \d+ \w{3} \d{4}$/).boundingBox())!;
+    const added = (await card.getByText(/ Â· \d+ \w{3} \d{4}$/).boundingBox())!;
     expect(Math.abs(vb.y + vb.height / 2 - (added.y + added.height / 2))).toBeLessThanOrEqual(24);
     // a tap on the card (not on a control) opens the record; the Verify button does not
     await verify.click();
@@ -9639,7 +9669,7 @@ test.describe('Settings: the rules (no browser)', () => {
     saveCredential('wordpress', canary);
     const status = getIntegration('wordpress');
     expect(status).toMatchObject({ saved: true, tail: '9f3a' });
-    expect(maskedTail(status.tail)).toBe('••••9f3a');
+    expect(maskedTail(status.tail)).toBe('â€¢â€¢â€¢â€¢9f3a');
     expect(JSON.stringify(status)).not.toContain(canary);
     expect(JSON.stringify(status)).not.toContain('CANARY');
     expect(Object.values(status).every((v) => typeof v === 'string' || typeof v === 'boolean')).toBe(true);
@@ -10095,7 +10125,7 @@ test.describe('Settings: Pipeline stages', () => {
     await expect(page.getByText('Google Africa moved to Pitched.', { exact: true })).toBeVisible();
     // the partner's own page: the timeline and the stage use the new word
     await page.getByTestId('kanban-card-ptn-15').getByRole('link', { name: 'Google Africa' }).click();
-    await expect(page.getByTestId('stage-history')).toContainText('Prospect → Pitched');
+    await expect(page.getByTestId('stage-history')).toContainText('Prospect â†’ Pitched');
     await expect(page.getByTestId('stage-history')).not.toContainText('Outreach');
   });
 
@@ -10156,7 +10186,7 @@ test.describe('Settings: Integrations', () => {
     await expect(wordpress(page).getByText('Enter the credential.')).toBeVisible();
   });
 
-  test('a saved credential is write-only: only "Saved · ends in ••••7b3f9a"-style text is left, and the canary is nowhere: page, inputs, storage, console', async ({ page }) => {
+  test('a saved credential is write-only: only "Saved Â· ends in â€¢â€¢â€¢â€¢7b3f9a"-style text is left, and the canary is nowhere: page, inputs, storage, console', async ({ page }) => {
     const logs: string[] = [];
     page.on('console', (message) => logs.push(message.text()));
     await open(page);
@@ -10166,7 +10196,7 @@ test.describe('Settings: Integrations', () => {
     await wordpress(page).getByRole('button', { name: 'Save credential' }).click();
     await expect(page.getByTestId('toast').filter({ hasText: 'The WordPress credential was saved.' })).toBeVisible();
     const saved = wordpress(page).getByTestId('credential-saved-wordpress');
-    await expect(saved).toHaveText(`Saved · ends in ••••${CANARY.slice(-4)}`);
+    await expect(saved).toHaveText(`Saved Â· ends in â€¢â€¢â€¢â€¢${CANARY.slice(-4)}`);
     await expect(wordpress(page).getByRole('button', { name: 'Replace' })).toBeVisible();
     expect(await wordpress(page).locator('input[type="password"], input[data-testid="credential-input-wordpress"]').count()).toBe(0); // no field is left
     expect(await scan(page, CANARY)).toEqual([]);
@@ -10189,7 +10219,7 @@ test.describe('Settings: Integrations', () => {
     await wordpress(page).getByRole('button', { name: 'Replace' }).click();
     await field.fill('CANARY-second-value-0abc');
     await wordpress(page).getByRole('button', { name: 'Save credential' }).click();
-    await expect(wordpress(page).getByTestId('credential-saved-wordpress')).toHaveText('Saved · ends in ••••0abc');
+    await expect(wordpress(page).getByTestId('credential-saved-wordpress')).toHaveText('Saved Â· ends in â€¢â€¢â€¢â€¢0abc');
     expect(await scan(page, 'CANARY')).toEqual([]);
   });
 
@@ -10247,7 +10277,7 @@ test.describe('Settings: Integrations', () => {
     await expect(page.getByTestId('toast').filter({ hasText: 'property id was saved' })).toBeVisible();
     await analytics.getByTestId('credential-input-analytics').fill('CANARY-ga-secret-2d4e');
     await analytics.getByRole('button', { name: 'Save credential' }).click();
-    await expect(analytics.getByTestId('credential-saved-analytics')).toHaveText('Saved · ends in ••••2d4e');
+    await expect(analytics.getByTestId('credential-saved-analytics')).toHaveText('Saved Â· ends in â€¢â€¢â€¢â€¢2d4e');
     await expect(wordpress(page).getByTestId('credential-saved-wordpress')).toContainText(CANARY.slice(-4));
     expect(await scan(page, 'CANARY')).toEqual([]);
     await wordpress(page).getByRole('textbox', { name: 'Site address' }).fill('https://www.example.org');
@@ -10844,7 +10874,7 @@ test.describe('Overview: the ten KPI cards and the sections below them', () => {
       await expect(row).toContainText(formatDate(program.startAt.slice(0, 10)));
       await expect(row).toContainText(`${program.participants} of ${program.target}`);
       const partner = data.partners.find((entry) => entry.id === program.partnerId);
-      await expect(row).toContainText(partner ? partner.name.slice(0, 8) : '—');
+      await expect(row).toContainText(partner ? partner.name.slice(0, 8) : 'â€”');
     }
     await expect(page.getByRole('columnheader')).toContainText(['Program', 'Type', 'Starts', 'Participants', 'Partner']);
   });
@@ -10901,76 +10931,70 @@ test.describe('Overview: the ten KPI cards and the sections below them', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// Overview in real-API mode: the monthly figures have no live source yet, so the page says so calmly ("Not available yet"),
-// once at the top and once in each section. It is NOT an error. In mock mode none of this shows, and a forced error keeps its error state.
+// Overview in real-API mode: the monthly figures come from the live KPI APIs (BE-004/BE-015), so the page shows
+// live figures against the seeded backend: no notice, no "Not available yet", no "could not be loaded".
+// In mock mode the sample figures show instead (see the mock-mode describe below), and a forced error keeps its error state.
 // ---------------------------------------------------------------------------------------------
-test.describe('Overview: real-API mode says "Not available yet" calmly', () => {
+test.describe('Overview: real-API mode shows live figures calmly', () => {
   test.skip(MOCK_RUN, 'real API only: mock mode shows the sample figures');
   test.use({ viewport: { width: 1440, height: 1000 } });
   type P = import('@playwright/test').Page;
-  const NOTICE = "Monthly figures aren't connected to live data yet. The queue counts below are live.";
   const open = async (page: P) => {
     await page.goto(`${BASE_URL}/`, { timeout: 30_000 });
     await expect(page.getByTestId('kpi-card-social_reach')).toBeVisible();
   };
 
-  test('one notice at the top, and each of the four sections says "Not available yet" (no "could not be loaded")', async ({ page }) => {
+  test('no notice, and each of the four sections shows its live state (no "Not available yet", no "could not be loaded")', async ({ page }) => {
     await open(page);
-    await expect(page.getByTestId('not-connected-notice')).toHaveCount(1);
-    await expect(page.getByTestId('not-connected-notice')).toHaveText(NOTICE);
-    for (const name of ['Trend', 'Priorities', 'Programs in progress and upcoming']) {
-      const section = page.getByRole('region', { name, exact: true });
-      await expect(section.getByTestId('not-available-yet')).toHaveText('Not available yet');
-      await expect(section).not.toContainText('could not be loaded');
-    }
-    // Recent activity has a live source: with an empty feed it is the "No recent activity" empty
-    // state, once other tests record feed entries it is the timeline. Either is calm, never an error.
-    const activity = page.getByRole('region', { name: 'Recent activity', exact: true });
-    await expect(
-      activity.getByTestId('not-available-yet').or(activity.getByText('No recent activity')).or(activity.getByRole('listitem').first()),
-    ).toBeVisible();
-    await expect(activity).not.toContainText('could not be loaded');
+    await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
+    await expect(page.getByText('Not available yet')).toHaveCount(0);
+    // Trend renders the six-month chart, Priorities its ranked rows, Programs and Activity their empty states.
+    await expect(page.getByRole('combobox', { name: 'KPI shown in the trend' })).toBeVisible();
+    await expect(page.getByTestId('priority-row')).toHaveCount(3);
+    await expect(page.getByRole('region', { name: 'Programs in progress and upcoming' }).getByText('No programs in progress or upcoming')).toBeVisible();
+    // Recent activity reflects earlier tests in the run (approvals, verifications), so only the calm markers hold.
+    const activity = page.getByRole('region', { name: 'Recent activity' });
+    await expect(activity).toBeVisible();
+    await expect(activity.getByTestId('not-available-yet')).toHaveCount(0);
     await expect(page.getByText('could not be loaded')).toHaveCount(0);
   });
 
-  test('the ten cards are one greyed, compact state: the label and "Not available yet", no bar, no status, no "Target: —", same height as a loaded card', async ({ page }) => {
+  test('the ten cards show live figures with status: labels, values, bars and no "Target: â€”"', async ({ page }) => {
     await open(page);
     const cards = page.locator('[data-testid^="kpi-card-"]');
     await expect(cards).toHaveCount(10);
     for (const key of KPI_KEYS) {
       const card = page.getByTestId(`kpi-card-${key}`);
       await expect(card).toContainText(KPIS[key].label);
-      await expect(card).toContainText('Not available yet');
-      await expect(card.getByRole('progressbar')).toHaveCount(0);
-      await expect(card.getByTestId('kpi-status')).toHaveCount(0);
     }
+    // The seeded backend has figures and default targets: every card shows a live status word, never "not available".
+    // (The exact figure moves when earlier tests publish records, so only the vocabulary is pinned.)
+    await expect(page.getByTestId('kpi-card-opportunities_published')).toContainText(/On track|Off track|Behind/);
+    await expect(page.getByTestId('kpi-status').first()).toBeVisible();
+    await expect(page.getByText('Not available yet')).toHaveCount(0);
     await expect(page.getByText('Status unavailable')).toHaveCount(0);
-    await expect(page.getByText(/^Target .*: —$/)).toHaveCount(0);
-    // the height of a loaded card at this width (208px at 1440): nothing jumps when data arrives
-    const heights = await cards.evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().height)));
-    expect(new Set(heights)).toEqual(new Set([208]));
+    await expect(page.getByText(/^Target .*: â€”$/)).toHaveCount(0);
   });
 
-  test('the dark card keeps live queue counts: every row is a link and none says "Not available yet"', async ({ page }) => {
+  test('the dark card shows live queue counts, never "Not available yet"', async ({ page }) => {
     await open(page);
     const attention = page.getByRole('region', { name: 'Needs your attention' });
     await expect(attention).toBeVisible();
-    // Every queue has a live backend source, so every row shows its count (whatever the seed and the
-    // earlier tests left it at) and no row ever says "Not available yet".
-    for (const key of ['pendingVerifications', 'openReports', 'pendingTestimonials', 'draftListings']) {
-      await expect(attention.getByTestId(`attention-${key}`)).toBeVisible();
+    // Every queue has a live backend source now: each row shows a numeric count.
+    // (Exact counts move when earlier tests approve or resolve queue items, so only the shape is pinned.)
+    for (const testId of ['attention-pendingVerifications', 'attention-openReports', 'attention-pendingTestimonials', 'attention-draftListings']) {
+      const row = attention.getByTestId(testId);
+      await expect(row).toBeVisible();
+      await expect(row).not.toContainText('Not available yet');
+      expect(await row.innerText()).toMatch(/\d/);
     }
-    await expect(attention).not.toContainText('Not available yet');
   });
 
-  test('on a phone (434px): the same states and nothing wider than the screen', async ({ page }) => {
+  test('on a phone (434px): the same live states and nothing wider than the screen', async ({ page }) => {
     await page.setViewportSize({ width: 434, height: 900 });
     await open(page);
-    await expect(page.getByTestId('not-connected-notice')).toBeVisible();
-    // Trend, Priorities and Programs have no live source; Recent activity depends on the feed state (see above).
-    for (const name of ['Trend', 'Priorities', 'Programs in progress and upcoming']) {
-      await expect(page.getByRole('region', { name, exact: true }).getByTestId('not-available-yet')).toBeVisible();
-    }
+    await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
+    await expect(page.getByTestId('not-available-yet')).toHaveCount(0);
     const report = await overflowing(page);
     expect(report.found, JSON.stringify(report)).toEqual([]);
     expect(report.scrollWidth).toBeLessThanOrEqual(report.innerWidth);
@@ -11582,12 +11606,14 @@ test.describe('Scorecard: My scorecard and Team (mock mode)', () => {
   });
 });
 
-test.describe('Scorecard: real-API mode shows the no-metrics empty state calmly', () => {
+test.describe('Scorecard: real-API mode shows the live empty-role state', () => {
   test.skip(MOCK_RUN, 'real API only: mock mode shows the sample figures');
-  test('the sample-data notice and "No metrics are assigned to your role", no ring and no zero', async ({ page }) => {
+  test('no notice, the empty-role state, no ring and no zero', async ({ page }) => {
     await page.goto(`${BASE_URL}/scorecard`, { timeout: 30_000 });
-    await expect(page.getByTestId('not-connected-notice')).toBeVisible();
+    // The seeded admin owns no metrics: the API answers with a live empty person, not "not connected".
+    await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
     await expect(page.getByText('No metrics are assigned to your role')).toBeVisible();
+    await expect(page.getByTestId('not-available-yet')).toHaveCount(0);
     await expect(page.getByTestId('score-ring')).toHaveCount(0);
   });
 });
@@ -11647,7 +11673,7 @@ test.describe('Scorecard follow-up maths (no browser)', () => {
     expect(formatAttainment(5.274)).toEqual({ text: '300%+', exact: '527%', capped: true });
     expect(formatAttainment(12.5)).toEqual({ text: '300%+', exact: '1,250%', capped: true }); // thousands separators in the exact figure
     expect(formatAttainment(0)).toEqual({ text: '0%', exact: '0%', capped: false }); // a real zero is 0%
-    expect(formatAttainment(null)).toEqual({ text: '—', exact: '—', capped: false }); // unknown is a dash, never 0%
+    expect(formatAttainment(null)).toEqual({ text: 'â€”', exact: 'â€”', capped: false }); // unknown is a dash, never 0%
     // only the display is capped: the attainment is the exact value and the composite stays at 100
     const data = { ...kpiData, targetHistory: [], targets: kpiData.targets.map((target) => (target.kpi === 'posts_published' ? { ...target, target: 1 } : target)) };
     expect(metricAttainment('posts_published', june, day(15), data)!).toBeGreaterThan(3);
@@ -11820,7 +11846,7 @@ test.describe('Scorecard follow-up: name and roles, axis, running totals, too ea
   test('too early in the month (day 4): the composite is a dash with the message, the rows and the Overview chips stay, the team waits ("Scores start on day 5")', async ({ page, context }) => {
     const day4 = dayOfThisMonth(4);
     await open(page, context, 'desk_lead', '/scorecard', day4);
-    await expect(page.getByTestId('score-value')).toHaveText('—');
+    await expect(page.getByTestId('score-value')).toHaveText('â€”');
     const ring = page.getByTestId('score-ring');
     await expect(ring).toHaveAttribute('aria-valuetext', 'Too early in the month to score');
     expect(await ring.getAttribute('aria-valuenow')).toBeNull(); // no number: never 0
@@ -11911,13 +11937,13 @@ test.describe('Monthly report maths (no browser)', () => {
   const may = monthsBefore(june, 1);
   const reportData = { ...kpiData, amplificationLogs: seed.amplificationLogs } as never;
 
-  test('metricDelta: a percentage with the arrow, "n/a" for a previous 0, "—" with no previous month, 0% when nothing changed', () => {
+  test('metricDelta: a percentage with the arrow, "n/a" for a previous 0, "â€”" with no previous month, 0% when nothing changed', () => {
     expect(metricDelta(112, 100, 'August 2026')).toEqual({ kind: 'up', text: '+12% vs August 2026', percent: 12 });
     expect(metricDelta(92, 100, 'August 2026')).toEqual({ kind: 'down', text: '-8% vs August 2026', percent: -8 });
     expect(metricDelta(100, 100, 'August 2026')).toEqual({ kind: 'flat', text: '0% vs August 2026', percent: 0 });
     expect(metricDelta(5, 0, 'August 2026')).toEqual({ kind: 'na', text: 'n/a', percent: null }); // a percentage of nothing is not a number
     expect(metricDelta(0, 0, 'August 2026')).toEqual({ kind: 'na', text: 'n/a', percent: null });
-    expect(metricDelta(5, null, 'August 2026')).toEqual({ kind: 'none', text: '—', percent: null }); // no previous month
+    expect(metricDelta(5, null, 'August 2026')).toEqual({ kind: 'none', text: 'â€”', percent: null }); // no previous month
     expect(metricDelta(3, 2.4, 'the same period last month, estimated').text).toBe('+25% vs the same period last month, estimated'); // an estimate is a fraction
   });
 
@@ -11952,7 +11978,7 @@ test.describe('Monthly report maths (no browser)', () => {
     for (const month of kpiData.websiteMonths) expect(month.dailyVisitors).toBeGreaterThanOrEqual(month.dailyFirstVisits);
   });
 
-  test('deltas: a normal month compares with the previous month; the first month has no previous (—); the current month compares with the previous one pro-rated to the same day', () => {
+  test('deltas: a normal month compares with the previous month; the first month has no previous (â€”); the current month compares with the previous one pro-rated to the same day', () => {
     const normal = partnerMetrics(may, FIXED_TODAY, reportData);
     const views = normal.find((metric) => metric.id === 'website_views')!;
     const before = kpiValue('website_views', monthsBefore(may, 1), kpiData);
@@ -11960,7 +11986,7 @@ test.describe('Monthly report maths (no browser)', () => {
     expect(views.delta).toEqual(metricDelta(views.value, before, formatMonth(monthsBefore(may, 1))));
     // the first month on record: nothing to compare with
     const first = partnerMetrics(FIXED_MONTHS[0], FIXED_TODAY, reportData);
-    expect(first.every((metric) => metric.previous === null && metric.delta.kind === 'none' && metric.delta.text === '—')).toBe(true);
+    expect(first.every((metric) => metric.previous === null && metric.delta.kind === 'none' && metric.delta.text === 'â€”')).toBe(true);
     // the current month (June 15 of 30; May has 31 days): May pro-rated to the 15th, and the words say it is an estimate
     const toDate = partnerMetrics(june, FIXED_TODAY, reportData);
     const reach = toDate.find((metric) => metric.id === 'social_reach')!;
@@ -12056,7 +12082,7 @@ test.describe('Monthly report: routes, access, the two templates and the coheren
       await expect(page.getByTestId(`metric-${id}`)).toContainText(label);
       await expect(page.getByTestId(`metric-${id}`)).toContainText(description);
     }
-    await expect(page.getByTestId('report-footer')).toHaveText(`Global Opportunity Desk · ${formatMonth(defaultMonth())}`);
+    await expect(page.getByTestId('report-footer')).toHaveText(`Global Opportunity Desk Â· ${formatMonth(defaultMonth())}`);
     await expect(paper.getByText("Figures from the Desk's own records.")).toBeVisible();
     // the grid is 5 across on the paper
     const lefts = await paper.locator('[data-testid^="metric-"]:not([data-testid="metric-value"]):not([data-testid="metric-delta"])').evaluateAll((nodes) => new Set(nodes.map((node) => Math.round(node.getBoundingClientRect().left))).size);
@@ -12125,7 +12151,7 @@ test.describe('Monthly report: routes, access, the two templates and the coheren
     await expect(page.getByTestId('to-date-note')).toBeVisible();
     await expect(page.getByTestId('partner-report').getByText('compared with the same period last month', { exact: false }).first()).toBeVisible();
     const deltas = await page.getByTestId('metric-delta').allTextContents();
-    for (const text of deltas) expect(text === 'n/a' || text === '—' || text.endsWith('vs the same period last month, estimated'), text).toBe(true);
+    for (const text of deltas) expect(text === 'n/a' || text === 'â€”' || text.endsWith('vs the same period last month, estimated'), text).toBe(true);
     // back to the default month removes the parameter
     await page.getByRole('combobox', { name: 'Month' }).click();
     await page.getByRole('option', { name: new RegExp(formatMonth(defaultMonth())) }).click();
@@ -12205,7 +12231,7 @@ test.describe('Monthly report: routes, access, the two templates and the coheren
     for (const [index, entry] of top.entries()) await expect(page.getByTestId('top-row').nth(index)).toContainText(entry.ambassador.name);
     // counts are pluralised by the shared helper: "1 share", "2 shares", "1 verified signup"
     for (const [index, entry] of top.entries()) {
-      await expect(page.getByTestId('top-row').nth(index)).toContainText(`${pluralize(entry.signups, 'verified signup')} · ${pluralize(entry.clicks, 'referred click')} · ${pluralize(entry.shares, 'share')}`);
+      await expect(page.getByTestId('top-row').nth(index)).toContainText(`${pluralize(entry.signups, 'verified signup')} Â· ${pluralize(entry.clicks, 'referred click')} Â· ${pluralize(entry.shares, 'share')}`);
     }
     expect(top.some((entry) => entry.shares === 1 || entry.signups === 1)).toBe(true); // the singular is really on the page
     const social = socialMonth(month, data());

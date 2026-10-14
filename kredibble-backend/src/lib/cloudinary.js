@@ -85,7 +85,7 @@ export const uploadToCloudinary = async (fileContent, folder) => {
     return result;
   } catch (error) {
     logger.error({ error: error.message }, 'Cloudinary upload error');
-    throw new Error('Failed to upload file to cloud storage');
+    throw new Error('Failed to upload file to cloud storage', { cause: error });
   }
 };
 

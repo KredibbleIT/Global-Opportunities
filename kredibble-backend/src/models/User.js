@@ -86,6 +86,9 @@ staffMemberSchema.pre('validate', function() {
   }
 });
 
+staffMemberSchema.index({ status: 1, createdAt: -1 });
+staffMemberSchema.index({ roles: 1, status: 1 });
+
 export const User = mongoose.model('User', userSchema);
 export const StaffMember = mongoose.model('StaffMember', staffMemberSchema);
 
@@ -169,5 +172,7 @@ const auditLogSchema = new mongoose.Schema({
 
 // TTL index for retention (e.g., 1 year)
 auditLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 365 * 24 * 60 * 60 });
+auditLogSchema.index({ action: 1, createdAt: -1 });
+auditLogSchema.index({ resourceType: 1, resourceId: 1, createdAt: -1 });
 
 export const AuditLog = mongoose.model('AuditLog', auditLogSchema);
