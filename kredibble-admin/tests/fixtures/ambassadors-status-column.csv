@@ -1,0 +1,4 @@
+fullName,email,phone,whatsapp,country,region,city,pictureUrl,pictureSourceUrl,bio,submittedAt,status
+Column Test One,column.one@example.com,0200000101,,Ghana,,Accra,,,Fake bio one.,2026-10-01T09:00:00.000Z,pending
+Column Test Two,column.two@example.com,0200000102,,Ghana,,Kumasi,,,Fake bio two.,2026-10-02T09:00:00.000Z,active
+Column Test Three,column.three@example.com,0200000103,,Ghana,,Tamale,,,Fake bio three.,2026-10-03T09:00:00.000Z,banana

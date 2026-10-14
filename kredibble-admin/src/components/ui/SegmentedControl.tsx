@@ -21,8 +21,11 @@
  * When the options are wider than the space (a phone), the group scrolls sideways with no scrollbar and a soft fade
  * shows on each edge that has more options beyond it (the same affordance as Tabs). The scroll container carries
  * data-edge-fade, which the phone overflow test uses to tell a scroller with a fade from a real overflow.
+ * The fade blends into the control's own track (surface-2) and carries a small chevron, so "there is more this way" is shown
+ * by a shape as well as by a shade. When the selected option changes, the group scrolls so that option is fully in view.
  */
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/cn";
 
 interface Option<T extends string> {
@@ -64,6 +67,28 @@ export function SegmentedControl<T extends string>({
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
+
+  // Keep the selected option in view (the row scrolls sideways on a phone). Skipped on first render, and it only moves the
+  // group's own scroll position, never the page.
+  const firstRun = useRef(true);
+  const optionsRef = useRef(options);
+  useEffect(() => {
+    optionsRef.current = options;
+  });
+  useEffect(() => {
+    if (firstRun.current) {
+      firstRun.current = false;
+      return;
+    }
+    const list = listRef.current;
+    const button = refs.current[optionsRef.current.findIndex((option) => option.value === value)];
+    if (!list || !button) return;
+    const margin = 28; // clears the edge fade
+    if (button.offsetLeft - margin < list.scrollLeft) list.scrollTo({ left: Math.max(0, button.offsetLeft - margin), behavior: "smooth" });
+    else if (button.offsetLeft + button.offsetWidth + margin > list.scrollLeft + list.clientWidth) {
+      list.scrollTo({ left: button.offsetLeft + button.offsetWidth + margin - list.clientWidth, behavior: "smooth" });
+    }
+  }, [value]);
 
   const select = (index: number) => {
     const next = (index + options.length) % options.length; // wrap around
@@ -132,13 +157,17 @@ export function SegmentedControl<T extends string>({
       <span
         aria-hidden="true"
         data-testid="segmented-fade-start"
-        className={cn("pointer-events-none absolute inset-y-0 left-0 z-10 w-6 rounded-l-control bg-linear-to-r from-canvas to-transparent transition-opacity", edges.start ? "opacity-100" : "opacity-0")}
-      />
+        className={cn("pointer-events-none absolute inset-y-0 left-0 z-10 flex w-8 items-center rounded-l-control bg-linear-to-r from-surface-2 from-40% to-transparent pl-1 text-muted transition-opacity", edges.start ? "opacity-100" : "opacity-0")}
+      >
+        <ChevronLeft size={16} strokeWidth={2} />
+      </span>
       <span
         aria-hidden="true"
         data-testid="segmented-fade-end"
-        className={cn("pointer-events-none absolute inset-y-0 right-0 z-10 w-6 rounded-r-control bg-linear-to-l from-canvas to-transparent transition-opacity", edges.end ? "opacity-100" : "opacity-0")}
-      />
+        className={cn("pointer-events-none absolute inset-y-0 right-0 z-10 flex w-8 items-center justify-end rounded-r-control bg-linear-to-l from-surface-2 from-40% to-transparent pr-1 text-muted transition-opacity", edges.end ? "opacity-100" : "opacity-0")}
+      >
+        <ChevronRight size={16} strokeWidth={2} />
+      </span>
     </div>
   );
 }
