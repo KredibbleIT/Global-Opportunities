@@ -268,11 +268,12 @@ describe('BE-002: Targets API Endpoints & Role Guards', () => {
     expect(res.status).toBe(400);
 
     // Invalid month format
-    await request(app)
+    res = await request(app)
       .post(api('/admin/targets'))
       .set('Cookie', adminCookie)
       .send({ effectiveFrom: '2026-13', targets: [{ kpi: 'social_reach', value: 12000 }] });
-    // regex matches YYYY-MM
+    // month 13 is not a real calendar month
+    expect(res.status).toBe(400);
   });
 
   it('GET /api/v1/admin/targets/history returns changes newest first with replaced flag', async () => {
