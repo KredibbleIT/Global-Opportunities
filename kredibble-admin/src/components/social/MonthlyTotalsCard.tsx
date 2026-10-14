@@ -64,7 +64,7 @@ export function MonthlyTotalsCard({ totals, month, isCurrent }: { totals: Social
   // The chart reads left to right, so the leading platform goes LAST: the chart paints its last bar orange.
   const chartData = t ? [...t.platforms].reverse().map((row) => ({ label: row.label, tooltipLabel: row.label, value: row.reach })) : [];
   return (
-    <Card as="section" ariaLabel="Monthly totals" className="flex min-w-0 flex-1 flex-col justify-between gap-4" testId="social-totals">
+    <Card as="section" ariaLabel="Monthly totals" className="flex min-w-0 flex-1 flex-col gap-4" testId="social-totals">
       <CardHeader title="Monthly totals" subtitle={isCurrent ? "This month so far." : `A snapshot of ${formatMonth(month)}: these figures are fixed and read-only.`} className="mb-0" action={<MonthSelect />} />
 
       {!isCurrent && (
