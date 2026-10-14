@@ -25,6 +25,21 @@ This document details the deployment architecture, promotion pipeline, rollback 
 
 ## 2. Release & Promotion Pipeline
 
+### Branch flow (staging-first)
+
+```text
+feature/* ──PR──▶ staging ──verify on staging hosts──▶ PR ──▶ main ──▶ promo below
+```
+
+- `feature/*` branches merge into `staging` via PR (CI must be green).
+- Verify on `staging-admin.globalopportunitydesk.com` (`API_PROXY_TARGET=https://staging-api.globalopportunitydesk.com/api`),
+  `staging-api.globalopportunitydesk.com`, and the EAS `staging` channel.
+- Promote `staging` into `main` via PR (CI must be green). Merges to `main`
+  auto-deploy staging again (build-once `:sha`) and wait on the GitHub
+  `Production` environment approval before production.
+- Both `staging` and `main` are GitHub-protected: PR-only, CI-green,
+  no force-pushes, no deletions. Never push straight to `main`.
+
 ```text
 ┌────────────────┐     ┌──────────────────────────────────────────────────────────────┐
 │  PR to `main`  │ ──▶ │ CI: Backend Tests · Admin Tests & E2E · App Tests · Hygiene │

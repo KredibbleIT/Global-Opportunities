@@ -114,13 +114,15 @@ await GrantApplication.create({ grantId: grant._id, applicantName: 'E2E Applican
 
 const { Channel, ChannelPost } = await import('../src/models/Community.js');
 
-// Community moderation (SEC-077 Task 8).
+// Community moderation (SEC-077 Task 8). The channel itself is flagged so the
+// channels list template test has a flagged row in real-API mode.
 const channel = await Channel.create({
   name: 'E2E Builders',
   category: 'Tech',
   owner: 'E2E Owner',
   followers: '12 followers',
   postsCount: 1,
+  status: 'flagged',
 });
 await ChannelPost.create({
   channelId: channel._id,
