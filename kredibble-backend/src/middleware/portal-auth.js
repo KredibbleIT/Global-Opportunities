@@ -11,7 +11,9 @@ const rawNormalized = (str) => String(str || '').trim().toLowerCase();
 
 export const requirePortalRoles = (...allowedRoles) => async (req, res, next) => {
   try {
-    if (req.auth?.role === 'admin') return next();
+    // SEC-077: the admin bypass trusts only the admin session (admin-audience
+    // token), never a user-realm Bearer token that merely carries role admin.
+    if (req.auth?.role === 'admin' && req.auth?.aud === 'kredibble-admin') return next();
 
     const staff = await StaffMember.findOne({ userId: req.auth?.sub, status: 'active' });
     if (!staff) {
@@ -41,7 +43,9 @@ export const requirePortalRoles = (...allowedRoles) => async (req, res, next) =>
 
 export const requireScreen = (screen, level = 'view') => async (req, res, next) => {
   try {
-    if (req.auth?.role === 'admin') {
+    // SEC-077: the admin bypass trusts only the admin session (admin-audience
+    // token), never a user-realm Bearer token that merely carries role admin.
+    if (req.auth?.role === 'admin' && req.auth?.aud === 'kredibble-admin') {
       req.screenAccess = { screen, level, grantedVia: 'admin' };
       return next();
     }

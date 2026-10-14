@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { AuditLog } from '../models/User.js';
+export { AuditLog };
 import logger from './logger.js';
 import crypto from 'node:crypto';
 
@@ -46,6 +47,7 @@ export const AUDIT_ACTIONS = {
   TESTIMONIAL_MODERATE: 'testimonial.moderate',
   TESTIMONIAL_UPDATE: 'testimonial.update',
   TESTIMONIAL_DELETE: 'testimonial.delete',
+  NEWS_UPDATE: 'news.update',
   OPPORTUNITY_CREATE: 'opportunity.create',
   OPPORTUNITY_UPDATE: 'opportunity.update',
   OPPORTUNITY_DELETE: 'opportunity.delete',
@@ -92,6 +94,7 @@ export const AUDIT_RESOURCE_TYPES = {
   COMMUNITY_POST: 'community_post',
   REPORT: 'report',
   NOTIFICATION: 'notification',
+  NEWS_ITEM: 'news_item',
   ARTICLE: 'article',
   SAVED_ITEM: 'saved_item',
   EVENT_ATTENDEE: 'event_attendee',
