@@ -88,6 +88,13 @@ partnerSchema.pre('save', function() {
   }
 });
 
+programSchema.index({ status: 1, deliveredAt: -1 });
+programSchema.index({ deliveredAt: -1 });
+
+partnerSchema.index({ 'stageHistory.stage': 1, 'stageHistory.at': 1 });
+partnerSchema.index({ stage: 1, closed: 1 });
+partnerSchema.index({ assignedOwnerId: 1, closed: 1 });
+
 export const CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 
 export function generateReferralCode() {
@@ -182,6 +189,11 @@ ambassadorSchema.pre('save', async function () {
     this.dormantSince = undefined;
   }
 });
+
+ambassadorSchema.index({ status: 1, joinedAt: -1 });
+ambassadorSchema.index({ joinedAt: -1 });
+ambassadorSchema.index({ status: 1, dormantSince: 1 });
+ambassadorSchema.index({ linkedUserId: 1 });
 
 const ambassadorAmplificationSchema = new mongoose.Schema({
   ambassadorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Ambassador', required: true, index: true },
@@ -318,6 +330,9 @@ beneficiarySchema.pre('save', function () {
 
 beneficiarySchema.index({ ambassadorId: 1, verified: 1, verifiedAt: 1 });
 beneficiarySchema.index({ verified: 1, verifiedAt: 1 });
+beneficiarySchema.index({ source: 1, verified: 1 });
+beneficiarySchema.index({ createdAtDate: -1 });
+beneficiarySchema.index({ verifiedAt: -1 });
 
 export const CANONICAL_SOCIAL_PLATFORMS = [
   'facebook',
@@ -847,5 +862,61 @@ const monthlyReportSchema = new mongoose.Schema(
 );
 
 monthlyReportSchema.index({ reportMonth: 1, view: 1, generatedAt: 1 });
+monthlyReportSchema.index({ generatedAt: -1 });
 
 export const MonthlyReport = mongoose.model('MonthlyReport', monthlyReportSchema);
+
+const referenceDataListSchema = new mongoose.Schema(
+  {
+    group: {
+      type: String,
+      required: true,
+      enum: ['seeker', 'hirer', 'grants'],
+      index: true,
+    },
+    key: {
+      type: String,
+      required: true,
+      trim: true,
+      index: true,
+    },
+    label: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    singular: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    items: {
+      type: [String],
+      default: [],
+    },
+    updatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+  },
+  { timestamps: true }
+);
+
+referenceDataListSchema.index({ group: 1, key: 1 }, { unique: true });
+
+export const ReferenceDataList = mongoose.model('ReferenceDataList', referenceDataListSchema);
+
+// BE-021: website-to-app category taxonomy. Each row maps one website
+// category name onto the app opportunity type it corresponds to.
+// `appCategory: null` means "seen on the website, awaiting curation".
+const categoryMapSchema = new mongoose.Schema(
+  {
+    websiteCategory: { type: String, required: true, trim: true, unique: true, index: true },
+    appCategory: { type: String, trim: true, default: null, index: true },
+    note: { type: String, trim: true, default: '' },
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  },
+  { timestamps: true }
+);
+
+export const CategoryMap = mongoose.model('CategoryMap', categoryMapSchema);

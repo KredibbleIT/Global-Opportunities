@@ -132,6 +132,7 @@ export type StaffMember = {
   name: string;
   email: string;
   role: string;
+  roles?: string[];
   status: string;
   joinedDate?: string;
   createdAt: string;
@@ -449,8 +450,39 @@ export const getDashboardSummary = async <T = Record<string, unknown>>() => {
 };
 
 /** The desk dashboard: month KPIs against targets, priorities, trend and pipeline (GET /admin/dashboard). */
-export const getAdminDashboard = async <T = Record<string, unknown>>() => {
-  return request<T>("/admin/dashboard");
+export const getAdminDashboard = async <T = Record<string, unknown>>(month?: string) => {
+  const query = month ? `?month=${month}` : "";
+  return request<T>(`/admin/dashboard${query}`);
+};
+
+/** BE-004: The 10 KPI cards for a month with value, target, pro-rated target, pace, and status (GET /admin/kpis). */
+export const getKpiCardsApi = async <T = Record<string, unknown>>(month?: string, today?: string) => {
+  const params = new URLSearchParams();
+  if (month) params.set("month", month);
+  if (today) params.set("today", today);
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return request<T>(`/admin/kpis${query}`);
+};
+
+/** BE-004: Ranked priority KPIs sorted by lowest attainment against pro-rated target (GET /admin/kpis/priorities). */
+export const getKpiPrioritiesApi = async <T = Record<string, unknown>>(month?: string, count?: number, today?: string) => {
+  const params = new URLSearchParams();
+  if (month) params.set("month", month);
+  if (count) params.set("count", String(count));
+  if (today) params.set("today", today);
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return request<T>(`/admin/kpis/priorities${query}`);
+};
+
+/** BE-004: 6-month historical trend series across KPIs (GET /admin/kpis/trend). */
+export const getKpiTrendApi = async <T = Record<string, unknown>>(params?: { month?: string; kpi?: string; months?: number; today?: string }) => {
+  const search = new URLSearchParams();
+  if (params?.month) search.set("month", params.month);
+  if (params?.kpi) search.set("kpi", params.kpi);
+  if (params?.months) search.set("months", String(params.months));
+  if (params?.today) search.set("today", params.today);
+  const query = search.toString() ? `?${search.toString()}` : "";
+  return request<T>(`/admin/kpis/trend${query}`);
 };
 
 export const getVerifications = async <T = Record<string, unknown>>(status?: string) => {
@@ -749,7 +781,7 @@ export const deleteCommunityPost = async (id: string) => {
 };
 
 // Staff
-export const inviteStaff = async (data: { email: string; role: string }) => {
+export const inviteStaff = async (data: { email: string; role?: string; roles?: string[]; name?: string }) => {
   return request<StaffMember>(`/admin/staff/invite`, { method: "POST", body: JSON.stringify(data) });
 };
 
@@ -1972,6 +2004,196 @@ export const changePasswordApi = async (data: {
     body: JSON.stringify(data),
   });
 };
+
+// --- BE-017: Community Posts Moderation -------------------------------------
+
+export const deleteCommunityChannelPost = async (channelId: string, postId: string) => {
+  return request<{ data: { id: string; removed: boolean } }>(`/admin/community/channels/${channelId}/posts/${postId}`, {
+    method: "DELETE",
+  });
+};
+
+export const moderateCommunityPost = async (postId: string, data: { flagged: boolean }) => {
+  return request<ChannelPost>(`/admin/community/posts/${postId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+};
+
+// --- BE-017: Notifications Broadcasts ---------------------------------------
+
+export interface SentNotificationRecord {
+  id: string;
+  title: string;
+  message: string;
+  audience: "seekers" | "hirers" | "both" | "all";
+  type?: string;
+  priority?: string;
+  status: "sent" | "scheduled" | "cancelled";
+  scheduledFor?: string | null;
+  sentAt: string;
+  createdAt: string;
+}
+
+export const getAdminNotifications = async (params?: {
+  page?: number;
+  limit?: number;
+  q?: string;
+  audience?: string;
+  status?: string;
+}) => {
+  const query = new URLSearchParams();
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.q) query.set("q", params.q);
+  if (params?.audience) query.set("audience", params.audience);
+  if (params?.status) query.set("status", params.status);
+  const queryString = query.toString() ? `?${query.toString()}` : "";
+  return requestPage<SentNotificationRecord>(`/admin/notifications${queryString}`);
+};
+
+export const sendAdminNotification = async (data: {
+  title: string;
+  message: string;
+  audience: "seekers" | "hirers" | "both" | "all";
+  scheduledFor?: string;
+  type?: string;
+  priority?: string;
+}) => {
+  return request<SentNotificationRecord>(`/admin/notifications`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+export const deleteAdminNotification = async (id: string) => {
+  return request<{ data: { id: string; removed: boolean } }>(`/admin/notifications/${id}`, {
+    method: "DELETE",
+  });
+};
+
+// --- BE-017: Reference Data Lists -------------------------------------------
+
+export interface ReferenceListApi {
+  key: string;
+  label: string;
+  singular: string;
+  items: string[];
+  updatedAt?: string | null;
+}
+
+export interface ReferenceGroupApi {
+  key: "seeker" | "hirer" | "grants";
+  label: string;
+  description: string;
+  lists: ReferenceListApi[];
+}
+
+export const getAdminReferenceData = async (group?: string): Promise<ReferenceGroupApi[]> => {
+  const query = group ? `?group=${encodeURIComponent(group)}` : "";
+  return request<ReferenceGroupApi[]>(`/admin/reference-data${query}`);
+};
+
+export const getAdminReferenceList = async (
+  group: string,
+  key: string,
+  params?: { q?: string; page?: number; limit?: number }
+): Promise<{
+  group: string;
+  key: string;
+  label: string;
+  singular: string;
+  items: string[];
+  total: number;
+}> => {
+  const query = new URLSearchParams();
+  if (params?.q) query.set("q", params.q);
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  const queryString = query.toString() ? `?${query.toString()}` : "";
+  return request(`/admin/reference-data/${group}/${key}${queryString}`);
+};
+
+export const updateAdminReferenceList = async (
+  group: string,
+  key: string,
+  data: { items: string[]; label?: string; singular?: string }
+): Promise<ReferenceListApi> => {
+  return request<ReferenceListApi>(`/admin/reference-data/${group}/${key}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+};
+
+// BE-021: website category taxonomy + live tally.
+export type CategoryMapRecord = {
+  id: string;
+  websiteCategory: string;
+  appCategory: string | null;
+  note?: string;
+  updatedAt: string;
+};
+
+export type TallyReport = {
+  websiteOpportunities: number;
+  appOpportunities: number;
+  report: {
+    opportunities: { inBoth: unknown[]; onlyWebsite: unknown[]; onlyApp: unknown[] };
+    categories: {
+      inBoth: unknown[];
+      onlyWebsite: unknown[];
+      onlyApp: unknown[];
+      differing: unknown[];
+      unmapped: unknown[];
+    };
+  };
+};
+
+export const getCategoryTaxonomyApi = async (): Promise<CategoryMapRecord[]> => {
+  return request<CategoryMapRecord[]>(`/admin/sync/taxonomy`);
+};
+
+export const updateCategoryMappingApi = async (data: { websiteCategory: string; appCategory?: string | null; note?: string }): Promise<CategoryMapRecord> => {
+  return request<CategoryMapRecord>(`/admin/sync/taxonomy`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+};
+
+export const getWebsiteTallyApi = async (): Promise<TallyReport> => {
+  return request<TallyReport>(`/admin/sync/tally`);
+};
+
+// BE-022: ingested news moderation (hide/show re-ingest-proof items).
+export type NewsItemRecord = {
+  id: string;
+  externalId: string;
+  source: "insight_ghana" | "african_journal";
+  title: string;
+  summary?: string;
+  content?: string;
+  link?: string;
+  imageUrl?: string | null;
+  publishedAt?: string | null;
+  hidden: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const getAdminNewsApi = async (params?: { source?: "insight_ghana" | "african_journal"; hidden?: boolean; q?: string; page?: number; limit?: number }) => {
+  const query = new URLSearchParams();
+  if (params?.source) query.set("source", params.source);
+  if (params?.hidden !== undefined) query.set("hidden", String(params.hidden));
+  if (params?.q) query.set("q", params.q);
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  const queryString = query.toString() ? `?${query.toString()}` : "";
+  return requestPage<NewsItemRecord>(`/admin/news${queryString}`);
+};
+
+export const moderateNewsItemApi = async (id: string, data: { hidden: boolean }) =>
+  request<NewsItemRecord>(`/admin/news/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+
 
 
 
