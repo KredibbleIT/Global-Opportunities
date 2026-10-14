@@ -902,6 +902,7 @@ test.describe('Truncated cells', () => {
   test.use({ viewport: { width: 1024, height: 900 } });
 
   test('a cut-off title has a title attribute and shows the full text in the tooltip on hover and on focus', async ({ page }) => {
+    test.skip(!MOCK_RUN, 'needs the mock channels (Guaranteed Visa Sponsorship Jobs)');
     await page.context().addCookies([{ name: 'sidebar', value: 'expanded', url: BASE_URL }]);
     await signedIn(page);
     await page.goto(`${BASE_URL}/community`);
@@ -923,6 +924,7 @@ test.describe('Truncated cells', () => {
   });
 
   test('text that fits has no title, no tooltip and is not a tab stop', async ({ page }) => {
+    test.skip(!MOCK_RUN, 'needs the mock channels (Google Tech Circle)');
     await signedIn(page);
     await page.goto(`${BASE_URL}/community`);
     const short = page.getByRole('link', { name: 'Google Tech Circle' });
@@ -1109,6 +1111,8 @@ test.describe('Progress cells never truncate', () => {
         await page.setViewportSize({ width, height: 900 });
         await page.goto(`${BASE_URL}${path}`, { timeout: 30_000 });
         await expect(page.locator('main tbody tr').first()).toBeVisible();
+        // Measure loaded rows, never the skeleton (it has no progress bars).
+        await expect(page.locator('main tbody tr a').first()).toBeVisible();
         const result = await page.evaluate(() => {
           const bars = [...document.querySelectorAll('main tbody [role="progressbar"]')] as HTMLElement[];
           return {
@@ -1184,8 +1188,10 @@ test.describe('Forms: article editor', () => {
   test('Read time is optional; the Publishing switch changes the save label', async ({ page }) => {
     await page.goto(`${BASE_URL}/content/articles/new`, { timeout: 30_000 });
     await expect(page.getByText('Optional').first()).toBeVisible();
-    await page.getByRole('switch').click();
-    await expect(page.getByRole('switch')).toHaveAttribute('aria-checked', 'true');
+    // Named: outside mock mode the banner adds a second switch ("Mock data"), so the bare role is ambiguous.
+    const publishing = page.getByRole('switch', { name: 'Published' });
+    await publishing.click();
+    await expect(publishing).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByRole('button', { name: 'Publish article' })).toBeVisible();
   });
 
@@ -1473,8 +1479,16 @@ test.describe('Team', () => {
   test('role descriptions follow the permissions without a reload', async ({ page }) => {
     await page.goto(`${BASE_URL}/team?tab=roles`, { timeout: 30_000 });
     const support = page.getByRole('region', { name: 'Support permissions' });
-    await support.getByRole('switch', { name: 'Send platform-wide notifications' }).click();
-    await page.getByRole('button', { name: 'Save changes' }).click();
+    const broadcast = support.getByRole('switch', { name: 'Send platform-wide notifications' });
+    // Hermetic: end with it on and saved, whatever earlier tests left behind (no save button when nothing changed).
+    await broadcast.waitFor();
+    if ((await broadcast.getAttribute('aria-checked')) === 'false') await broadcast.click();
+    await expect.poll(async () => broadcast.getAttribute('aria-checked')).toBe('true');
+    const inviteSave = page.getByRole('button', { name: 'Save changes' });
+    if ((await inviteSave.count()) > 0) {
+      await inviteSave.click();
+      await expect(page.getByText('Role permissions were saved.')).toBeVisible();
+    }
     await page.getByRole('tab', { name: 'Members' }).click();
     await page.getByRole('link', { name: 'Invite Staff' }).click(); // client-side: the store survives
     await page.getByRole('combobox', { name: 'Role', exact: true }).click();
@@ -1846,7 +1860,7 @@ const AUDIT_ROUTES: { path: string; mockOnly?: string }[] = [
   { path: '/hirers' },
   { path: '/hirers/hirer-1', mockOnly: 'hirer-1 is a mock record id' },
   { path: '/community' },
-  { path: '/community/ch-1' },
+  { path: '/community/ch-1', mockOnly: 'ch-1 is a mock record id' },
   { path: '/content/articles' },
   { path: '/content/articles/article-1' },
   { path: '/content/articles/new' },
@@ -2572,7 +2586,7 @@ test.describe('Month selector', () => {
 const NAV_ORDER = [
   'Overview', 'Insights', 'Monthly report', 'Scorecard',
   'Opportunities Queue', 'Events', 'Grants', 'Programs',
-  'Partners', 'Network', 'Leaderboard',
+  'Partners', 'Network', 'Ambassadors', 'Leaderboard',
   'Seekers', 'Hirers', 'Channels', 'Database',
   'Verification Queue', 'Reports Queue',
   'Career Resources', 'Reference data', 'Social', 'Testimonials',
@@ -2587,13 +2601,13 @@ const EXPECTED_NAV: Record<string, string[]> = {
   desk_lead: NAV_ORDER,
   moderator: ['Overview', 'Scorecard', 'Seekers', 'Hirers', 'Channels', 'Verification Queue', 'Reports Queue', 'Opportunities Queue', 'Settings'],
   support: ['Overview', 'Scorecard', 'Seekers', 'Hirers', 'Settings'],
-  partnerships_officer: ['Overview', 'Monthly report', 'Scorecard', 'Partners', 'Network', 'Leaderboard', 'Settings'],
+  partnerships_officer: ['Overview', 'Monthly report', 'Scorecard', 'Partners', 'Network', 'Ambassadors', 'Leaderboard', 'Settings'],
   opportunities_officer: ['Overview', 'Scorecard', 'Opportunities Queue', 'Events', 'Grants', 'Career Resources', 'Settings'],
-  training_officer: ['Overview', 'Scorecard', 'Events', 'Programs', 'Network', 'Settings'],
-  database_officer: ['Overview', 'Scorecard', 'Network', 'Database', 'Settings'],
+  training_officer: ['Overview', 'Scorecard', 'Events', 'Programs', 'Network', 'Ambassadors', 'Settings'],
+  database_officer: ['Overview', 'Scorecard', 'Network', 'Ambassadors', 'Database', 'Settings'],
   communications_officer: ['Overview', 'Monthly report', 'Scorecard', 'Career Resources', 'Social', 'Testimonials', 'Notifications', 'Settings'],
   social_media_manager: ['Overview', 'Scorecard', 'Social', 'Testimonials', 'Settings'],
-  country_lead: ['Overview', 'Scorecard', 'Partners', 'Network', 'Leaderboard', 'Programs', 'Database', 'Settings'],
+  country_lead: ['Overview', 'Scorecard', 'Partners', 'Network', 'Ambassadors', 'Leaderboard', 'Programs', 'Database', 'Settings'],
   admin_support: ['Overview', 'Scorecard', 'Team', 'Settings'],
   'moderator,communications_officer': ['Overview', 'Monthly report', 'Scorecard', 'Seekers', 'Hirers', 'Channels', 'Verification Queue', 'Reports Queue', 'Career Resources', 'Social', 'Testimonials', 'Notifications', 'Settings', 'Opportunities Queue'],
 };
@@ -2767,8 +2781,8 @@ test.describe('New placeholder routes', () => {
       const problems = trackProblems(page);
       await page.goto(`${BASE_URL}${path}`, { timeout: 30_000 });
       await expect(page.getByTestId('page-title')).toHaveText(title);
-      // the Scorecard of a Super Admin owns no metrics, so it shows that empty state instead (in real-API mode: the sample-data notice and "Not available yet")
-      await expect(page.getByText(path === '/scorecard' ? (MOCK_RUN ? 'No metrics are assigned to your role' : 'Not available yet') : 'This screen is built in a later step')).toBeVisible();
+      // the Scorecard of a Super Admin owns no metrics, so it shows that empty state instead
+      await expect(page.getByText('No metrics are assigned to your role')).toBeVisible();
       await expect(page.locator('header.sticky nav[aria-label="Breadcrumb"]')).toContainText(title);
       expect(problems).toEqual([]);
     });
@@ -3714,9 +3728,16 @@ test.describe('Roles fix pass: Team > Roles & permissions access and the toggles
     await page.getByTestId('sidebar-toggle').waitFor();
     await page.waitForTimeout(500);
     const nav = page.locator('aside nav');
-    await page.getByRole('region', { name: 'Moderator permissions' }).getByRole('switch', { name: 'Moderate opportunities & community' }).click();
-    await page.getByRole('button', { name: 'Save changes' }).click();
-    await expect(page.getByText('Role permissions were saved.')).toBeVisible();
+    const moderate = page.getByRole('region', { name: 'Moderator permissions' }).getByRole('switch', { name: 'Moderate opportunities & community' });
+    // Hermetic: end with it off and saved, whatever earlier tests left behind (no save button when nothing changed).
+    await moderate.waitFor();
+    if ((await moderate.getAttribute('aria-checked')) === 'true') await moderate.click();
+    await expect.poll(async () => moderate.getAttribute('aria-checked')).toBe('false');
+    const moderateSave = page.getByRole('button', { name: 'Save changes' });
+    if ((await moderateSave.count()) > 0) {
+      await moderateSave.click();
+      await expect(page.getByText('Role permissions were saved.')).toBeVisible();
+    }
     // switch to Moderator with the account menu (client side, so the saved matrix survives)
     await page.getByRole('button', { name: /Account menu/ }).click();
     const menu = page.getByRole('menu', { name: 'Account' });
@@ -3737,10 +3758,20 @@ test.describe('Roles fix pass: Team > Roles & permissions access and the toggles
     await page.getByTestId('sidebar-toggle').waitFor();
     await page.waitForTimeout(500);
     const moderator = page.getByRole('region', { name: 'Moderator permissions' });
-    await expect(moderator.getByRole('switch', { name: 'Manage staff accounts' })).toHaveAttribute('aria-checked', 'false');
-    await moderator.getByRole('switch', { name: 'Manage staff accounts' }).click();
-    await moderator.getByRole('switch', { name: 'Manage reference data & content' }).click();
-    await page.getByRole('button', { name: 'Save changes' }).click();
+    const staffSwitch = moderator.getByRole('switch', { name: 'Manage staff accounts' });
+    const contentSwitch = moderator.getByRole('switch', { name: 'Manage reference data & content' });
+    // Hermetic: end with both on and saved, whatever earlier tests left behind (no save button when nothing changed).
+    for (const sw of [staffSwitch, contentSwitch]) {
+      await sw.waitFor();
+      if ((await sw.getAttribute('aria-checked')) === 'false') await sw.click();
+    }
+    await expect.poll(async () => staffSwitch.getAttribute('aria-checked')).toBe('true');
+    await expect.poll(async () => contentSwitch.getAttribute('aria-checked')).toBe('true');
+    const rolesSave = page.getByRole('button', { name: 'Save changes' });
+    if ((await rolesSave.count()) > 0) {
+      await rolesSave.click();
+      await expect(page.getByText('Role permissions were saved.')).toBeVisible();
+    }
     await page.getByRole('button', { name: /Account menu/ }).click();
     const menu = page.getByRole('menu', { name: 'Account' });
     await menu.getByRole('menuitemcheckbox', { name: 'Super Admin', exact: true }).click();
@@ -3795,7 +3826,7 @@ test.describe('Roles fix pass: sidebar open state, direct rows, tagline, account
     expect(await openGroups(page)).toEqual(['nav-group-dashboard']);
   });
 
-  test('a group with one visible page is a direct row at the end: Partnerships Officer (Settings) and Database Officer (Network, Database, Settings)', async ({ page, context }) => {
+  test('a group with one visible page is a direct row at the end: Partnerships Officer (Settings) and Database Officer (Database, Settings)', async ({ page, context }) => {
     await asRoles(context, 'partnerships_officer');
     await page.goto(`${BASE_URL}/`, { timeout: 30_000 });
     const nav = page.locator('aside nav');
@@ -3806,9 +3837,10 @@ test.describe('Roles fix pass: sidebar open state, direct rows, tagline, account
     await asRoles(context, 'database_officer');
     await page.goto(`${BASE_URL}/database`);
     await expect(page.getByTestId('page-title')).toBeVisible();
-    expect(await nav.locator('[data-testid^="nav-group-"]').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')))).toEqual(['nav-group-dashboard']);
+    // Network and Ambassadors make Partners & network a real group; Database and Settings stay direct rows.
+    expect(await nav.locator('[data-testid^="nav-group-"]').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')))).toEqual(['nav-group-dashboard', 'nav-group-partners-network']);
     await expect(nav.getByTestId('nav-item-database')).toHaveAttribute('aria-current', 'page');
-    expect(await nav.locator('a[data-testid^="nav-item-"]').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')))).toEqual(['nav-item-network', 'nav-item-database', 'nav-item-settings']);
+    expect(await nav.locator('a[data-testid^="nav-item-"]').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')))).toEqual(['nav-item-database', 'nav-item-settings']);
     expect(await openGroups(page)).toEqual([]); // the active page is a direct row, so no group opens
   });
 
@@ -5085,8 +5117,8 @@ test.describe('Partners: the board', () => {
     for (const stage of ['prospect', 'outreach', 'proposal', 'mou']) await expect(page.getByTestId(`kanban-marker-${stage}`)).toHaveCount(0);
     const line = page.getByTestId('kanban-column-prospect').locator('.bg-purple-500').first();
     expect(Math.round((await line.boundingBox())!.height)).toBeLessThanOrEqual(3); // a thin line
-    // no manual closed switch anywhere on the board
-    await expect(page.getByRole('switch')).toHaveCount(0);
+    // no manual closed switch anywhere on the board (the top-bar Mock data switch is outside main)
+    await expect(page.locator('main').getByRole('switch')).toHaveCount(0);
     await expect(page.getByRole('checkbox', { name: /closed/i })).toHaveCount(0);
   });
 
@@ -5144,7 +5176,7 @@ test.describe('Partners: the board', () => {
     await expect(history).toContainText(formatDate(todayLocal()));
     await expect(history).toContainText('The deal closed.');
     await expect(history).toContainText('The deal is open again.');
-    await expect(page.getByRole('switch')).toHaveCount(0); // still no manual closed switch
+    await expect(page.locator('main').getByRole('switch')).toHaveCount(0); // still no manual closed switch
   });
 
   test('drag and drop with the pointer moves a card between columns', async ({ page }) => {
@@ -5236,9 +5268,9 @@ test.describe('Partners: form and detail', () => {
     await page.getByLabel('Contact email').fill('not-an-email');
     await page.getByLabel('Contact email').blur();
     await expect(page.getByText('Enter a full email address, like name@company.com.')).toBeVisible();
-    // there is no stage field and no closed switch on the form
+    // there is no stage field and no closed switch on the form (the top-bar Mock data switch is outside the form)
     await expect(page.getByRole('combobox', { name: /stage/i })).toHaveCount(0);
-    await expect(page.getByRole('switch')).toHaveCount(0);
+    await expect(page.locator('form').getByRole('switch')).toHaveCount(0);
   });
 
   test('creating a partner adds it at Prospect (5 there now), with the first history entry, and it can be edited', async ({ page }) => {
@@ -7503,23 +7535,33 @@ test.describe('Database: the pre-step additions', () => {
     const cell = (row: import('@playwright/test').Locator) => row.locator('td[data-label="Verified"]');
     const pending = page.getByTestId('table-row').filter({ has: page.getByTestId('verify-button') }).first();
     await expect(pending.getByTestId('verify-button')).toContainText('Verify');
-    const widths = new Set<number>();
     const pendingX = (await pending.getByTestId('verify-button').boundingBox())!.x;
-    const pendingBadgeX = (await cell(pending).getByTestId('status-badge').boundingBox())!.x;
+    // the badge sits at the same offset inside its cell on both rows; each row is measured atomically
+    // (one frame) so page-level shifts between reads cannot falsify the comparison
+    const badgeDX = (row: import('@playwright/test').Locator) => row.evaluate((el) => {
+      const cell = el.querySelector('td[data-label="Verified"]')!;
+      const badge = cell.querySelector('[data-testid="status-badge"]')!;
+      return badge.getBoundingClientRect().x - cell.getBoundingClientRect().x;
+    });
+    const pendingBadgeDX = await badgeDX(pending);
     // (in the same view: the first page of All has pending rows and verified rows)
     const done = page.getByTestId('table-row').filter({ hasNot: page.getByTestId('verify-button') }).filter({ has: page.getByTestId('status-badge').filter({ hasText: 'Verified' }) }).first();
     await expect(done).toBeVisible();
-    // measured together, after the layout has settled at this width
-    widths.add(Math.round((await cell(pending).boundingBox())!.width));
-    widths.add(Math.round((await cell(done).boundingBox())!.width));
+    // the column keeps its width on every row: read all Verified cells in one frame, so a layout
+    // shift between reads cannot falsify the comparison (the column is table-fixed, content-independent)
+    const widths = await page.locator('main tbody td[data-label="Verified"]').evaluateAll((cells) =>
+      cells.map((cell) => Math.round(cell.getBoundingClientRect().width)),
+    );
+    expect(widths.length).toBeGreaterThan(1);
+    expect(new Set(widths).size).toBe(1);
     // a verified row has the green badge and nothing else: no muted check text, no button
     await expect(done.getByTestId('verified-check')).toHaveCount(0);
     await expect(done.getByTestId('verify-button')).toHaveCount(0);
     await expect(cell(done).getByTestId('status-badge')).toHaveText('Verified');
     expect((await cell(done).innerText()).trim()).toBe('Verified');
-    expect(Math.abs((await cell(done).getByTestId('status-badge').boundingBox())!.x - pendingBadgeX)).toBeLessThanOrEqual(1); // the badge is in the same place
+    expect(Math.abs((await badgeDX(done)) - pendingBadgeDX)).toBeLessThanOrEqual(1); // the badge is in the same place
     expect(pendingX).toBeGreaterThan((await cell(done).getByTestId('status-badge').boundingBox())!.x);
-    expect(widths.size).toBe(1);
+    expect(new Set(widths).size).toBe(1);
   });
 
   test('a truncated linked opportunity shows its full name in the Tooltip', async ({ page }) => {
@@ -7770,8 +7812,14 @@ test.describe('Social: the page', () => {
     await expect(page.getByTestId('leading-platform')).toHaveCount(1);
     await expect(page.getByTestId(`platform-row-${month.leading}`)).toHaveAttribute('data-leading', 'true');
     await expect(page.getByTestId('leading-platform')).toBeVisible();
-    // the chart: the leading platform is the orange (last) bar
-    await expect(page.getByRole('group', { name: /Reach by platform/ })).toBeVisible();
+    // the chart follows the rule: vertical bars for 2-4 platforms, horizontal bars when more have posts
+    // (the seed grows the current month with the calendar, so either branch is possible).
+    if (month.platforms.length > 4) {
+      await expect(page.getByTestId('platform-bars')).toBeVisible();
+      await expect(page.getByRole('group', { name: /Reach by platform/ })).toHaveCount(0);
+    } else {
+      await expect(page.getByRole('group', { name: /Reach by platform/ })).toBeVisible();
+    }
   });
 
   test('platform labels are text badges with a tinted initial tile, never a logo', async ({ page }) => {
@@ -8355,28 +8403,39 @@ test.describe('DatePicker: in the Log a post form', () => {
     await field(page).blur();
     await openCalendar(page);
     const dialog = calendar(page);
-    const focused = () => dialog.locator('[data-focus="true"]').getAttribute('data-date');
-    expect(await focused()).toBe('2026-09-16');
+    // Keypresses apply through React state, and a month change unmounts the focused day node (the grid refocuses
+    // async): poll the attribute and wait for DOM focus, or the next keypress lands on <body> and is lost.
+    const expectFocused = async (date: string) => {
+      const day = dialog.locator('[data-focus="true"]');
+      await expect.poll(async () => day.getAttribute('data-date')).toBe(date);
+      await expect.poll(async () => page.evaluate((d) => {
+        const el = document.activeElement as HTMLElement | null;
+        return el?.dataset?.focus === 'true' && el?.dataset?.date === d ? d : null;
+      }, date)).toBe(date);
+    };
+    await expectFocused('2026-09-16');
     await page.keyboard.press('ArrowLeft');
-    expect(await focused()).toBe('2026-09-15');
+    await expectFocused('2026-09-15');
     await page.keyboard.press('ArrowRight');
     await page.keyboard.press('ArrowRight');
-    expect(await focused()).toBe('2026-09-17');
+    await expectFocused('2026-09-17');
     await page.keyboard.press('ArrowUp');
-    expect(await focused()).toBe('2026-09-10');
+    await expectFocused('2026-09-10');
     await page.keyboard.press('ArrowDown');
-    expect(await focused()).toBe('2026-09-17');
+    await expectFocused('2026-09-17');
     await page.keyboard.press('Home');
-    expect(await focused()).toBe('2026-09-14'); // the Monday
+    await expectFocused('2026-09-14'); // the Monday
     await page.keyboard.press('End');
-    expect(await focused()).toBe('2026-09-20'); // the Sunday
+    await expectFocused('2026-09-20'); // the Sunday
     await page.keyboard.press('PageUp');
-    expect(await focused()).toBe('2026-08-20');
+    await expectFocused('2026-08-20');
     await expect(monthLabel(page)).toHaveText('August 2026');
     await page.keyboard.press('PageDown');
+    await expectFocused('2026-09-20');
     await page.keyboard.press('PageDown');
-    expect(await focused()).toBe(clampDate(addMonths('2026-09-20', 1), undefined, today())); // a month ahead, held at today (the maximum)
+    await expectFocused(clampDate(addMonths('2026-09-20', 1), undefined, today())); // a month ahead, held at today (the maximum)
     await page.keyboard.press('PageUp');
+    await expectFocused(addMonths(today(), -1));
     await page.keyboard.press('Enter');
     await expect(dialog).toHaveCount(0);
     await expect(field(page)).toBeFocused();
@@ -8654,6 +8713,8 @@ test.describe('Social: phones and the platform table and chart', () => {
     // seven platforms with posts this month: log the ones the seed does not have (the seed has Facebook, X and LinkedIn this month)
     const card = page.getByRole('region', { name: 'Log a post' });
     for (const [i, platform] of ['Instagram', 'TikTok', 'YouTube', 'WhatsApp', 'Other'].entries()) {
+      // the previous submit resets the form ~300ms after saving: wait for the reset before filling, or it wipes the new values
+      await expect(card.getByRole('combobox', { name: 'Platform' })).toContainText('Choose a platform');
       await card.getByRole('combobox', { name: 'Platform' }).click();
       await page.getByRole('option', { name: platform, exact: true }).click();
       await card.getByRole('textbox', { name: 'Post title' }).fill(`Fixture post ${i}`);
@@ -8741,8 +8802,11 @@ test.describe('Social: phones and the platform table and chart', () => {
     });
     expect(snapshot.toast).toBe(true);
     expect([snapshot.posts, snapshot.reach, snapshot.engagement]).toEqual([before.posts + 1, before.reach + 321, before.engagement + 21]);
+    // The logged platform may already have seeded posts (WhatsApp joins the seed mid-month): expect deltas, not fresh figures.
+    const beforeWhatsapp = before.platforms.find((row) => row.platform === 'whatsapp');
     expect(snapshot.whatsapp).toContain('WhatsApp');
-    expect(snapshot.whatsapp).toContain('321');
+    expect(snapshot.whatsapp).toContain(((beforeWhatsapp?.reach ?? 0) + 321).toLocaleString('en-US'));
+    expect(snapshot.whatsapp).toContain(String((beforeWhatsapp?.engagement ?? 0) + 21));
     expect(snapshot.firstRow).toContain('Snapshot post');
     // the figures are the KPI functions' values for the month (services/social.ts uses kpiValue for all three)
     const after = socialMonth(currentMonth());
@@ -9613,9 +9677,19 @@ test.describe('Settings: the rules (no browser)', () => {
 
 const goViaSidebar = async (page: import('@playwright/test').Page, group: string, link: string) => {
   const aside = page.locator('aside');
-  const toggle = aside.getByRole('button', { name: group });
-  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
-  await aside.getByRole('link', { name: new RegExp(`^${link}\\b`) }).click(); // (a pill after the name, like "Database 32 pending", is fine)
+  const re = new RegExp(`^${link}\\b`); // (a pill after the name, like "Database 32 pending", is fine)
+  // The sidebar re-renders while counts load, so reads can race it: every attempt re-verifies the group
+  // is open and re-resolves the link, so a stale read or a detached node cannot fail the run.
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const toggle = aside.getByRole('button', { name: group });
+      if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click();
+      await aside.getByRole('link', { name: re }).click({ timeout: 10_000 });
+      return;
+    } catch (error) {
+      if (attempt >= 4) throw error;
+    }
+  }
 };
 
 test.describe('Settings: roles', () => {
@@ -9701,14 +9775,15 @@ test.describe('Settings: My account', () => {
       const box = (await eye.boundingBox())!;
       expect([Math.round(box.width), Math.round(box.height)]).toEqual([40, 40]);
       await eye.click();
-      expect(await field.getAttribute('type')).toBe('text');
+      // React flushes the toggle async: poll instead of reading once.
+      await expect.poll(async () => field.getAttribute('type')).toBe('text');
       await expect(card.getByRole('button', { name: `Hide ${word}` })).toHaveAttribute('aria-pressed', 'true');
       await page.evaluate(() => {
         Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
         document.dispatchEvent(new Event('visibilitychange'));
         Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
       });
-      expect(await field.getAttribute('type')).toBe('password'); // hidden again
+      await expect.poll(async () => field.getAttribute('type')).toBe('password'); // hidden again
     }
   });
 
@@ -10843,11 +10918,18 @@ test.describe('Overview: real-API mode says "Not available yet" calmly', () => {
     await open(page);
     await expect(page.getByTestId('not-connected-notice')).toHaveCount(1);
     await expect(page.getByTestId('not-connected-notice')).toHaveText(NOTICE);
-    for (const name of ['Trend', 'Priorities', 'Programs in progress and upcoming', 'Recent activity']) {
+    for (const name of ['Trend', 'Priorities', 'Programs in progress and upcoming']) {
       const section = page.getByRole('region', { name, exact: true });
       await expect(section.getByTestId('not-available-yet')).toHaveText('Not available yet');
       await expect(section).not.toContainText('could not be loaded');
     }
+    // Recent activity has a live source: with an empty feed it is the "No recent activity" empty
+    // state, once other tests record feed entries it is the timeline. Either is calm, never an error.
+    const activity = page.getByRole('region', { name: 'Recent activity', exact: true });
+    await expect(
+      activity.getByTestId('not-available-yet').or(activity.getByText('No recent activity')).or(activity.getByRole('listitem').first()),
+    ).toBeVisible();
+    await expect(activity).not.toContainText('could not be loaded');
     await expect(page.getByText('could not be loaded')).toHaveCount(0);
   });
 
@@ -10869,21 +10951,26 @@ test.describe('Overview: real-API mode says "Not available yet" calmly', () => {
     expect(new Set(heights)).toEqual(new Set([208]));
   });
 
-  test('the dark card keeps the two live queue counts and says "Not available yet" for the two without a live source', async ({ page }) => {
+  test('the dark card keeps live queue counts: every row is a link and none says "Not available yet"', async ({ page }) => {
     await open(page);
     const attention = page.getByRole('region', { name: 'Needs your attention' });
     await expect(attention).toBeVisible();
-    await expect(attention.getByTestId('attention-pendingTestimonials')).toContainText('Not available yet');
-    await expect(attention.getByTestId('attention-draftListings')).toContainText('Not available yet');
-    await expect(attention.getByTestId('attention-pendingVerifications')).not.toContainText('Not available yet');
-    await expect(attention.getByTestId('attention-openReports')).not.toContainText('Not available yet');
+    // Every queue has a live backend source, so every row shows its count (whatever the seed and the
+    // earlier tests left it at) and no row ever says "Not available yet".
+    for (const key of ['pendingVerifications', 'openReports', 'pendingTestimonials', 'draftListings']) {
+      await expect(attention.getByTestId(`attention-${key}`)).toBeVisible();
+    }
+    await expect(attention).not.toContainText('Not available yet');
   });
 
   test('on a phone (434px): the same states and nothing wider than the screen', async ({ page }) => {
     await page.setViewportSize({ width: 434, height: 900 });
     await open(page);
     await expect(page.getByTestId('not-connected-notice')).toBeVisible();
-    await expect(page.getByTestId('not-available-yet')).toHaveCount(4);
+    // Trend, Priorities and Programs have no live source; Recent activity depends on the feed state (see above).
+    for (const name of ['Trend', 'Priorities', 'Programs in progress and upcoming']) {
+      await expect(page.getByRole('region', { name, exact: true }).getByTestId('not-available-yet')).toBeVisible();
+    }
     const report = await overflowing(page);
     expect(report.found, JSON.stringify(report)).toEqual([]);
     expect(report.scrollWidth).toBeLessThanOrEqual(report.innerWidth);
@@ -11495,12 +11582,12 @@ test.describe('Scorecard: My scorecard and Team (mock mode)', () => {
   });
 });
 
-test.describe('Scorecard: real-API mode says "Not available yet" calmly', () => {
+test.describe('Scorecard: real-API mode shows the no-metrics empty state calmly', () => {
   test.skip(MOCK_RUN, 'real API only: mock mode shows the sample figures');
-  test('the sample-data notice and a calm "Not available yet", no ring and no zero', async ({ page }) => {
+  test('the sample-data notice and "No metrics are assigned to your role", no ring and no zero', async ({ page }) => {
     await page.goto(`${BASE_URL}/scorecard`, { timeout: 30_000 });
     await expect(page.getByTestId('not-connected-notice')).toBeVisible();
-    await expect(page.getByTestId('not-available-yet')).toHaveText('Not available yet');
+    await expect(page.getByText('No metrics are assigned to your role')).toBeVisible();
     await expect(page.getByTestId('score-ring')).toHaveCount(0);
   });
 });
@@ -12260,10 +12347,16 @@ test.describe('Monthly report: Download PDF and printing (mock mode)', () => {
     await expect(page.getByTestId('download-pdf')).toBeEnabled();
     await page.getByTestId('download-pdf').click();
     await expect(toast.last()).toContainText(`Report recorded for ${formatMonth(defaultMonth())}`);
-    // another month of the partner report is another report
+    // another month of the partner report is another report; pick it with the keyboard: clicking the
+    // option flakes (the open list remounts while the report loads after the template navigation).
     await page.getByRole('link', { name: 'Partner report' }).click();
-    await page.getByRole('combobox', { name: 'Month' }).click();
-    await page.getByRole('option', { name: new RegExp(formatMonth(monthsBefore(currentMonth(), 3))) }).click();
+    const monthCombo = page.getByRole('combobox', { name: 'Month' });
+    await monthCombo.click();
+    // Options are newest first with September selected: two downs land on July 2026 (option index 3).
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowDown');
+    await expect.poll(async () => monthCombo.getAttribute('aria-activedescendant')).toMatch(/option-3$/);
+    await page.keyboard.press('Enter');
     await expect(page.getByTestId('report-month')).toHaveText(formatMonth(monthsBefore(currentMonth(), 3)));
     await page.getByTestId('download-pdf').click();
     await expect(toast.last()).toContainText(`Report recorded for ${formatMonth(monthsBefore(currentMonth(), 3))}`);
