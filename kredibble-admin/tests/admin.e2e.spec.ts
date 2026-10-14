@@ -12345,10 +12345,16 @@ test.describe('Monthly report: Download PDF and printing (mock mode)', () => {
     await expect(page.getByTestId('download-pdf')).toBeEnabled();
     await page.getByTestId('download-pdf').click();
     await expect(toast.last()).toContainText(`Report recorded for ${formatMonth(defaultMonth())}`);
-    // another month of the partner report is another report
+    // another month of the partner report is another report; pick it with the keyboard: clicking the
+    // option flakes (the open list remounts while the report loads after the template navigation).
     await page.getByRole('link', { name: 'Partner report' }).click();
-    await page.getByRole('combobox', { name: 'Month' }).click();
-    await page.getByRole('option', { name: new RegExp(formatMonth(monthsBefore(currentMonth(), 3))) }).click();
+    const monthCombo = page.getByRole('combobox', { name: 'Month' });
+    await monthCombo.click();
+    // Options are newest first with September selected: two downs land on July 2026 (option index 3).
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('ArrowDown');
+    await expect.poll(async () => monthCombo.getAttribute('aria-activedescendant')).toMatch(/option-3$/);
+    await page.keyboard.press('Enter');
     await expect(page.getByTestId('report-month')).toHaveText(formatMonth(monthsBefore(currentMonth(), 3)));
     await page.getByTestId('download-pdf').click();
     await expect(toast.last()).toContainText(`Report recorded for ${formatMonth(monthsBefore(currentMonth(), 3))}`);
