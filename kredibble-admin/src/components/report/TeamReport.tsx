@@ -40,6 +40,8 @@ export function TeamReport({ data, month, toDate }: { data: TeamReportData | nul
         </p>
       )}
       <ReportSection title="Key figures" subtitle="The ten KPIs against their monthly targets" testId="team-kpis">
+        {/* On narrow phones the table's minimum content can exceed the paper: contain it here (never in print). */}
+        <div className="overflow-x-auto print:overflow-visible">
         <table data-testid="kpi-table" className="w-full text-left">
           <caption className="sr-only">The ten KPIs with target, value and status</caption>
           <thead>
@@ -63,6 +65,7 @@ export function TeamReport({ data, month, toDate }: { data: TeamReportData | nul
             ))}
           </tbody>
         </table>
+        </div>
       </ReportSection>
       {/* Side by side in print (two cards that each need half the width), one under the other on screen. */}
       <div className="space-y-8 print:grid print:grid-cols-2 print:items-start print:gap-4 print:space-y-0">

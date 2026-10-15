@@ -29,7 +29,7 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { useToast } from "@/components/ui/Toast";
 
 /** "team_scorecard" -> "Team scorecard". */
-const screenLabel = (screen: string) => screen.charAt(0).toUpperCase() + screen.slice(1).replace(/_/g, " ");
+const screenLabel = (screen: string) => screen.charAt(0).toUpperCase() + screen.slice(1).replace(/_/g, " ").replace(/\./g, ": ");
 
 const FIXED_ROLES = Object.keys(FIXED_PERMISSIONS) as (keyof typeof FIXED_PERMISSIONS)[];
 const LEVEL_TEXT = { edit: "Edit", view: "View" } as const;

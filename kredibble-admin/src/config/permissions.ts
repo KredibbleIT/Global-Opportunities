@@ -19,6 +19,10 @@
  *   The Members tab keeps "team".
  * - settings_admin (Settings > Targets, Pipeline stages, Integrations): edit for super_admin and desk_lead only.
  *   "settings" stays the key for the personal "My account" part, which every role has.
+ * - ambassadors.export and ambassadors.import (download or upload ambassador data in bulk, on the Network page): edit for
+ *   super_admin and desk_lead only (they get every screen). No other role has them. Give them to country_lead later if wanted.
+ * - accounts.create (Create account on Team > Members, and the account actions on its rows: resend invite, change role, deactivate,
+ *   reactivate): SUPER ADMIN ONLY. desk_lead gets every screen through everything(), so it is removed for them below.
  * - listings_curate (creating and editing curated listings): edit for opportunities_officer, desk_lead, super_admin.
  *   "opportunities_queue" stays the key for moderating listings that hirers submit.
  * - monthly_report: also view for partnerships_officer (the partner version only; the team version is gated by
@@ -59,6 +63,13 @@ export const SCREENS = [
   "settings",
   "settings_admin",
   "listings_curate",
+  // Actions on the Ambassadors list. They are separate from "network" (viewing and editing) because they move personal data
+  // (names, emails, phone numbers) in bulk. Like listings_curate and settings_admin they are "screens" only in the sense of the
+  // matrix: edit = allowed, no entry = not allowed.
+  "ambassadors.export",
+  "ambassadors.import",
+  // Creating and managing accounts (User and Admin, never Super Admin). Super admin only: see FIXED_PERMISSIONS.desk_lead.
+  "accounts.create",
 ] as const;
 
 export type Screen = (typeof SCREENS)[number];
@@ -94,7 +105,8 @@ export function editableRoleGrants(role: "moderator" | "support", toggles?: Reco
 /** The ten roles whose rows are fixed. */
 export const FIXED_PERMISSIONS: Record<Exclude<Role, "moderator" | "support">, Grants> = {
   super_admin: everything(),
-  desk_lead: { ...everything(), roles_permissions: "view" }, // may read the roles matrix, not change it
+  // may read the roles matrix, not change it, and may NOT create or manage accounts (Super Admin only)
+  desk_lead: { ...everything(), roles_permissions: "view", "accounts.create": undefined },
   partnerships_officer: own({ partners: "edit", network: "view", leaderboard: "view", monthly_report: "view" }),
   opportunities_officer: own({ opportunities_queue: "edit", career_resources: "edit", events: "view", grants: "view", listings_curate: "edit" }),
   training_officer: own({ programs: "edit", events: "edit", network: "view" }),

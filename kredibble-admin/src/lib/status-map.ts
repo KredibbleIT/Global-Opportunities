@@ -64,6 +64,7 @@ const STATUS_MAP: Record<string, StatusMeta> = {
   proposal: { tone: "info", label: "Proposal" },
   mou: { tone: "info", label: "MOU" },
   onboarding: { tone: "info", label: "Onboarding" },
+  invited: { tone: "info", label: "Invited" },
   // warning
   dormant: { tone: "warning", label: "Dormant" },
   unvetted: { tone: "warning", label: "Unvetted" },
@@ -83,6 +84,7 @@ const STATUS_MAP: Record<string, StatusMeta> = {
   planned: { tone: "neutral", label: "Planned" },
   prospect: { tone: "neutral", label: "Prospect" },
   applicant: { tone: "neutral", label: "Applicant" },
+  deactivated: { tone: "neutral", label: "Deactivated" },
   unpublished: { tone: "neutral", label: "Unpublished" },
   draft: { tone: "neutral", label: "Draft" },
   past: { tone: "neutral", label: "Past" },

@@ -14,7 +14,7 @@ import {
   VerificationDoc,
 } from '../src/models/Platform.js';
 import { Channel, ChannelPost, Report } from '../src/models/Community.js';
-import { Article, Notification } from '../src/models/Content.js';
+import { Article, Notification, NewsItem } from '../src/models/Content.js';
 import {
   Program,
   Partner,
@@ -65,6 +65,8 @@ const models = [
   { name: 'IntegrationConfig', model: IntegrationConfig, path: 'admin/settings/integrations' },
   { name: 'AmbassadorRequest', model: AmbassadorRequest, path: 'admin/ambassador-requests' },
   { name: 'AuditLog', model: AuditLog, path: 'admin/audit-logs' },
+  { name: 'NewsItem', model: NewsItem, path: 'admin/news' },
+  { name: 'NewsItemPublic', model: NewsItem, path: 'news' },
 ];
 
 function sanitizeSchema(obj) {
@@ -449,6 +451,47 @@ swaggerSpec.paths['/reference-data/{group}/{key}'] = {
       { name: 'key', in: 'path', required: true, schema: { type: 'string' } },
     ],
     responses: { 200: { description: 'Reference data items' } },
+  },
+};
+
+// BE-021: website category taxonomy + live tally
+swaggerSpec.paths['/admin/sync/taxonomy'] = {
+  get: {
+    summary: 'List website-to-app category mappings',
+    tags: ['Website Sync'],
+    responses: { 200: { description: 'Category mapping table' } },
+  },
+  put: {
+    summary: 'Create or update a website category mapping',
+    tags: ['Website Sync'],
+    requestBody: {
+      required: true,
+      content: {
+        'application/json': {
+          schema: {
+            type: 'object',
+            required: ['websiteCategory'],
+            properties: {
+              websiteCategory: { type: 'string' },
+              appCategory: { type: 'string', nullable: true },
+              note: { type: 'string' },
+            },
+          },
+        },
+      },
+    },
+    responses: { 200: { description: 'Mapping saved' } },
+  },
+};
+
+swaggerSpec.paths['/admin/sync/tally'] = {
+  get: {
+    summary: 'Compare website opportunities and categories with the app',
+    tags: ['Website Sync'],
+    responses: {
+      200: { description: 'Tally report (in both, only website, only app, differing, unmapped)' },
+      502: { description: 'Website unreachable or unconfigured' },
+    },
   },
 };
 

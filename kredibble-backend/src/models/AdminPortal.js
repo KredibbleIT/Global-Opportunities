@@ -931,3 +931,18 @@ syncEventSchema.index({ resource: 1, externalId: 1, createdAt: -1 });
 syncEventSchema.index({ status: 1, createdAt: -1 });
 
 export const SyncEvent = mongoose.model('SyncEvent', syncEventSchema);
+
+// BE-021: website-to-app category taxonomy. Each row maps one website
+// category name onto the app opportunity type it corresponds to.
+// `appCategory: null` means "seen on the website, awaiting curation".
+const categoryMapSchema = new mongoose.Schema(
+  {
+    websiteCategory: { type: String, required: true, trim: true, unique: true, index: true },
+    appCategory: { type: String, trim: true, default: null, index: true },
+    note: { type: String, trim: true, default: '' },
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  },
+  { timestamps: true }
+);
+
+export const CategoryMap = mongoose.model('CategoryMap', categoryMapSchema);
