@@ -31,15 +31,19 @@ export const parsePagination = (query) => {
  * @param {number} limit - Items per page
  * @returns {Object} Paginated response object
  */
-export const paginatedResponse = (data, total, page, limit) => ({
-  data,
-  meta: {
+export const paginatedResponse = (data, total, page, limit) => {
+  const meta = {
     page,
     limit,
     total,
     pages: Math.ceil(total / limit) || 1,
-  },
-});
+  };
+  return {
+    data,
+    meta,
+    pagination: meta,
+  };
+};
 
 export const listResponse = (res, data, total, page, limit) => {
   if (total !== undefined && page !== undefined && limit !== undefined) {

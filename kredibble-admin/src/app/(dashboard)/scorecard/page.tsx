@@ -11,7 +11,8 @@
  * parameter is ignored: nothing on this page reads it.
  *
  * The month is the header's selector (?month=YYYY-MM, default this month); a past month is a read-only snapshot.
- * Real-API mode: the sample-data notice and a calm "Not available yet". Dev only: ?state=loading|error|empty (mock mode).
+ * Real-API mode: the figures come from the scorecard API; the sample-data notice shows only while
+ * the figures have no live source (notConnected). Dev only: ?state=loading|error|empty (mock mode).
  */
 import { useCallback } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -41,7 +42,7 @@ function Panel({ scope, month, load }: { scope: "me" | "team"; month: MonthKey; 
   const issue = result.data?.issue ?? (result.error ? { kind: "failed" as const, message: result.error.message } : null);
   return (
     <div className="space-y-4">
-      <NotConnectedNotice />
+      {data?.notConnected && !result.isLoading && <NotConnectedNotice />}
       {issue && !result.isLoading && <StatusBanner issue={issue} onRetry={result.reload} />}
       <Scorecard scope={scope} month={month} people={data?.people ?? []} series={data?.series ?? null} loading={result.isLoading} notConnected={data?.notConnected ?? false} tooEarly={data?.tooEarly ?? false} isPast={data?.isPast ?? false} />
     </div>

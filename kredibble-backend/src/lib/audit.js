@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { AuditLog } from '../models/User.js';
+export { AuditLog };
 import logger from './logger.js';
 import crypto from 'node:crypto';
 
@@ -42,6 +43,21 @@ export const AUDIT_ACTIONS = {
   SOCIAL_POST_CREATE: 'social_post.create',
   SOCIAL_POST_UPDATE: 'social_post.update',
   SOCIAL_POST_DELETE: 'social_post.delete',
+  TESTIMONIAL_CREATE: 'testimonial.create',
+  TESTIMONIAL_MODERATE: 'testimonial.moderate',
+  TESTIMONIAL_UPDATE: 'testimonial.update',
+  TESTIMONIAL_DELETE: 'testimonial.delete',
+  NEWS_UPDATE: 'news.update',
+  OPPORTUNITY_CREATE: 'opportunity.create',
+  OPPORTUNITY_UPDATE: 'opportunity.update',
+  OPPORTUNITY_DELETE: 'opportunity.delete',
+  OPPORTUNITY_PUBLISH: 'opportunity.publish',
+  OPPORTUNITY_UNPUBLISH: 'opportunity.unpublish',
+  OPPORTUNITY_VET: 'opportunity.vet',
+  WEBSITE_AUDIENCE_UPDATE: 'website_audience.update',
+  WEBSITE_AUDIENCE_SYNC: 'website_audience.sync',
+  MONTHLY_REPORT_GENERATE: 'monthly_report.generate',
+  SETTINGS_UPDATE: 'settings.update',
 
   // GDPR/CCPA
   DATA_EXPORT: 'data.export',
@@ -58,10 +74,13 @@ export const AUDIT_ACTIONS = {
 export const AUDIT_RESOURCE_TYPES = {
   USER: 'user',
   SETTINGS: 'settings',
+  WEBSITE_AUDIENCE: 'website_audience',
+  MONTHLY_REPORT: 'monthly_report',
   PARTNER: 'partner',
   AMBASSADOR: 'ambassador',
   BENEFICIARY: 'beneficiary',
   SOCIAL_POST: 'social_post',
+  TESTIMONIAL: 'testimonial',
   SEEKER_PROFILE: 'seeker_profile',
   HIRER_ACCOUNT: 'hirer_account',
   OPPORTUNITY: 'opportunity',
@@ -75,6 +94,7 @@ export const AUDIT_RESOURCE_TYPES = {
   COMMUNITY_POST: 'community_post',
   REPORT: 'report',
   NOTIFICATION: 'notification',
+  NEWS_ITEM: 'news_item',
   ARTICLE: 'article',
   SAVED_ITEM: 'saved_item',
   EVENT_ATTENDEE: 'event_attendee',

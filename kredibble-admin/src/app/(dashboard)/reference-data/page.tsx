@@ -8,16 +8,18 @@
  *   Universities 21 | Programs 25 | ...      <- Tabs with counts (one row per group)
  *   <ReferenceListEditor>                    <- the shared content card
  *
- * State: the three groups' lists live in this page's state, so edits survive switching tabs and are
- * lost on reload ("State stays in memory as today"). Each change carries a TODO(backend) in the editor.
+ * In mock mode: State stays in memory.
+ * In live mode: Fetches from /admin/reference-data and persists changes via PUT /admin/reference-data/:group/:key.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { REFERENCE_GROUPS, type ReferenceGroupKey } from "@/lib/reference-data";
 import { ReferenceListEditor } from "@/components/reference/ReferenceListEditor";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Tabs, tabId, tabPanelId } from "@/components/ui/Tabs";
 import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
+import { isMockMode } from "@/lib/services/mock-mode";
+import { getAdminReferenceData, updateAdminReferenceList } from "@/lib/api";
 
 const GROUP_PARAM = "tab";
 
@@ -34,12 +36,33 @@ export default function ReferenceDataPage() {
     Object.fromEntries(REFERENCE_GROUPS.map((group) => [group.key, group.lists[0].key])),
   );
 
+  useEffect(() => {
+    if (isMockMode()) return;
+    getAdminReferenceData()
+      .then((groups) => {
+        if (groups && Array.isArray(groups)) {
+          const loaded = Object.fromEntries(
+            groups.flatMap((g) => g.lists.map((l) => [l.key, l.items]))
+          );
+          setItems((current) => ({ ...current, ...loaded }));
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   const requested = params.get(GROUP_PARAM);
   const group = REFERENCE_GROUPS.find((g) => g.key === requested) ?? REFERENCE_GROUPS[0];
   const list = group.lists.find((l) => l.key === openList[group.key]) ?? group.lists[0];
 
   const selectGroup = (key: ReferenceGroupKey) => {
     router.replace(key === REFERENCE_GROUPS[0].key ? pathname : `${pathname}?${GROUP_PARAM}=${key}`, { scroll: false });
+  };
+
+  const handleListChange = (groupKey: ReferenceGroupKey, listKey: string, next: string[]) => {
+    setItems((current) => ({ ...current, [listKey]: next }));
+    if (!isMockMode()) {
+      updateAdminReferenceList(groupKey, listKey, { items: next }).catch(() => {});
+    }
   };
 
   const idPrefix = `reference-${group.key}`;
@@ -65,7 +88,7 @@ export default function ReferenceDataPage() {
         idPrefix={idPrefix}
         value={list.key}
         onChange={(key) => setOpenList((current) => ({ ...current, [group.key]: key }))}
-        tabs={group.lists.map((l) => ({ value: l.key, label: l.label, count: items[l.key].length }))}
+        tabs={group.lists.map((l) => ({ value: l.key, label: l.label, count: (items[l.key] || []).length }))}
       />
 
       <div role="tabpanel" id={tabPanelId(idPrefix, list.key)} aria-labelledby={tabId(idPrefix, list.key)}>
@@ -73,8 +96,8 @@ export default function ReferenceDataPage() {
           key={list.key}
           label={list.label}
           singular={list.singular}
-          items={items[list.key]}
-          onChange={(next) => setItems((current) => ({ ...current, [list.key]: next }))}
+          items={items[list.key] || []}
+          onChange={(next) => handleListChange(group.key, list.key, next)}
         />
       </div>
     </div>

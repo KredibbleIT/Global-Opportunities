@@ -141,8 +141,12 @@ deploy_action() {
   fi
 
   mkdir -p "$ENV_DIR"
-  echo "god-deploy: Pulling image ${API_IMAGE}:${TARGET_SHA}..."
-  docker pull "${API_IMAGE}:${TARGET_SHA}"
+  if ! docker image inspect "${API_IMAGE}:${TARGET_SHA}" >/dev/null 2>&1; then
+    echo "god-deploy: Pulling image ${API_IMAGE}:${TARGET_SHA}..."
+    docker pull "${API_IMAGE}:${TARGET_SHA}"
+  else
+    echo "god-deploy: Image ${API_IMAGE}:${TARGET_SHA} already present locally, skipping pull."
+  fi
 
   echo "god-deploy: Running database migrations for ${TARGET_ENV}..."
   if ! run_migrations "$TARGET_SHA"; then

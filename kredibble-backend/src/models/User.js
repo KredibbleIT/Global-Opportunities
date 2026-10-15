@@ -33,6 +33,17 @@ const userSchema = new mongoose.Schema({
   failedLoginAttempts: { type: Number, default: 0 },
   lockUntil: { type: Date },
   lastFailedLogin: { type: Date },
+  // Push notifications
+  pushToken: { type: String },
+  pushPlatform: { type: String, enum: ['ios', 'android', 'web', 'other'] },
+  pushTokenUpdatedAt: { type: Date },
+  // BE-016: Notification preferences
+  notificationPreferences: {
+    digest: { type: Boolean, default: true },
+    verifications: { type: Boolean, default: true },
+    reports: { type: Boolean, default: true },
+    testimonials: { type: Boolean, default: false },
+  },
 }, { timestamps: true });
 
 // Virtuals to mimic the previous Prisma/Native structure for the frontend
@@ -74,6 +85,9 @@ staffMemberSchema.pre('validate', function() {
     this.role = this.roles.join(',');
   }
 });
+
+staffMemberSchema.index({ status: 1, createdAt: -1 });
+staffMemberSchema.index({ roles: 1, status: 1 });
 
 export const User = mongoose.model('User', userSchema);
 export const StaffMember = mongoose.model('StaffMember', staffMemberSchema);
@@ -158,5 +172,7 @@ const auditLogSchema = new mongoose.Schema({
 
 // TTL index for retention (e.g., 1 year)
 auditLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 365 * 24 * 60 * 60 });
+auditLogSchema.index({ action: 1, createdAt: -1 });
+auditLogSchema.index({ resourceType: 1, resourceId: 1, createdAt: -1 });
 
 export const AuditLog = mongoose.model('AuditLog', auditLogSchema);

@@ -7,6 +7,8 @@ COPY package*.json ./
 RUN npm ci --omit=dev --legacy-peer-deps && npm cache clean --force
 
 COPY --chown=node:node src ./src
+COPY --chown=node:node scripts ./scripts
+COPY --chown=node:node migrations ./migrations
 
 # The commit this image was built from, reported by /api/v1/health (SEC-112). CI passes
 # --build-arg RELEASE_SHA=<sha>. Render's own build leaves it empty, and the API then

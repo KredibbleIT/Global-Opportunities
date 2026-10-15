@@ -2,9 +2,13 @@ import { z } from 'zod';
 import { ROLE_IDS } from '../lib/permissions.js';
 import { KPI_KEYS } from '../lib/targets.js';
 
-// SEC-077, BE-001: add an existing Kredibble account to the admin staff list with 1 or 2 roles.
+// YYYY-MM with a real calendar month (rejects '2026-13', which /^\d{4}-\d{2}$/ allows).
+const YEAR_MONTH_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+// SEC-077, BE-001, BE-017: add an existing or invited person to the admin staff list with 1 or 2 roles.
 export const staffInviteSchema = z.object({
   body: z.object({
+    name: z.string().trim().min(1, 'Name is required').max(120).optional(),
     email: z.string().email('Invalid email format'),
     role: z.string().trim().min(2, 'Role is too short').max(80, 'Role is too long').optional(),
     roles: z.array(z.enum(ROLE_IDS)).min(1, 'At least 1 role required').max(2, 'At most 2 roles allowed').optional(),
@@ -17,7 +21,7 @@ export const staffInviteSchema = z.object({
 // BE-002, BE-003: batch targets save schema with effective-from month (supports targets, thresholds, or both)
 export const targetsBatchSchema = z.object({
   body: z.object({
-    effectiveFrom: z.string().regex(/^\d{4}-\d{2}$/, 'effectiveFrom must be YYYY-MM format'),
+    effectiveFrom: z.string().regex(YEAR_MONTH_REGEX, 'effectiveFrom must be YYYY-MM format'),
     targets: z.array(z.object({
       kpi: z.enum(KPI_KEYS, { errorMap: () => ({ message: 'Invalid KPI key' }) }),
       value: z.number().int('Target must be an integer').min(1, 'Target must be at least 1').max(10_000_000, 'Target cannot exceed 10,000,000'),
@@ -42,7 +46,7 @@ export const targetsBatchSchema = z.object({
 // BE-003: dedicated thresholds save schema
 export const thresholdsSchema = z.object({
   body: z.object({
-    effectiveFrom: z.string().regex(/^\d{4}-\d{2}$/, 'effectiveFrom must be YYYY-MM format'),
+    effectiveFrom: z.string().regex(YEAR_MONTH_REGEX, 'effectiveFrom must be YYYY-MM format'),
     green: z.number().int('Green must be an integer').min(1, 'Green must be at least 1').max(200, 'Green cannot exceed 200'),
     amber: z.number().int('Amber must be an integer').min(1, 'Amber must be at least 1').max(200, 'Amber cannot exceed 200'),
   }).refine((data) => data.amber < data.green, {
@@ -427,6 +431,344 @@ export const socialPostUpdateSchema = z.object({
     opportunityId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid opportunityId').nullable().optional(),
   }),
 });
+
+export const TESTIMONIAL_STATUS_VALUES = ['pending', 'approved', 'unpublished', 'rejected'];
+export const TESTIMONIAL_ACTION_VALUES = ['approve', 'reject', 'unpublish', 'reapprove'];
+
+export const testimonialCreateSchema = z.object({
+  body: z.object({
+    name: z.string().trim().min(2, 'Name must be at least 2 characters').max(100).optional(),
+    author: z.string().trim().min(2, 'Author must be at least 2 characters').max(100).optional(),
+    email: z.string().trim().email('Valid email address is required').max(200),
+    comment: z.string().trim().min(5, 'Comment must be at least 5 characters').max(2000).optional(),
+    quote: z.string().trim().min(5, 'Quote must be at least 5 characters').max(2000).optional(),
+    role: z.string().trim().max(100).optional(),
+    photo: z.string().trim().url('Photo must be a valid URL').optional().or(z.literal('')),
+    status: z.enum(TESTIMONIAL_STATUS_VALUES).default('pending'),
+    submittedAt: notFutureDateSchema.optional(),
+  }).refine((data) => Boolean(data.name || data.author), {
+    message: 'name or author is required',
+    path: ['name'],
+  }).refine((data) => Boolean(data.comment || data.quote), {
+    message: 'comment or quote is required',
+    path: ['comment'],
+  }),
+});
+
+export const testimonialModerateSchema = z.object({
+  body: z.object({
+    status: z.enum(TESTIMONIAL_STATUS_VALUES).optional(),
+    action: z.enum(TESTIMONIAL_ACTION_VALUES).optional(),
+    rejectionReason: z.string().trim().max(500).optional(),
+  }).refine((data) => Boolean(data.status || data.action), {
+    message: 'Either status or action must be provided',
+    path: ['status'],
+  }),
+});
+
+export const testimonialUpdateSchema = z.object({
+  body: z.object({
+    name: z.string().trim().min(2).max(100).optional(),
+    author: z.string().trim().min(2).max(100).optional(),
+    email: z.string().trim().email().max(200).optional(),
+    comment: z.string().trim().min(5).max(2000).optional(),
+    quote: z.string().trim().min(5).max(2000).optional(),
+    role: z.string().trim().max(100).optional(),
+    photo: z.string().trim().url().optional().or(z.literal('')),
+    status: z.enum(TESTIMONIAL_STATUS_VALUES).optional(),
+    action: z.enum(TESTIMONIAL_ACTION_VALUES).optional(),
+    rejectionReason: z.string().trim().max(500).optional(),
+  }),
+});
+
+export const OPPORTUNITY_STATUS_VALUES = ['draft', 'published', 'pending', 'approved', 'rejected', 'archived'];
+export const OPPORTUNITY_FORMAT_VALUES = ['online', 'in-person', 'hybrid'];
+
+export const opportunityCreateSchema = z.object({
+  body: z.object({
+    title: z.string().trim().min(2, 'Title must be at least 2 characters').max(200),
+    type: z.string().trim().min(2, 'Type is required').max(50),
+    company: z.string().trim().min(2).max(200).optional(),
+    organisation: z.string().trim().min(2).max(200).optional(),
+    offeringOrganization: z.string().trim().max(200).optional(),
+    location: z.string().trim().max(200).optional().default('Online'),
+    country: z.string().trim().max(100).optional(),
+    description: z.string().trim().min(5, 'Description must be at least 5 characters').max(20000),
+    status: z.enum(OPPORTUNITY_STATUS_VALUES).optional(),
+    publish: z.boolean().optional(),
+    vetted: z.boolean().optional(),
+    vettedById: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid vettedById').nullable().optional(),
+    vettedBy: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid vettedBy').nullable().optional(),
+    vettedOn: z.string().trim().optional(),
+    publishedAt: z.string().trim().optional(),
+    writerId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid writerId').nullable().optional(),
+    assignedWriterId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid assignedWriterId').nullable().optional(),
+    closesAt: z.string().trim().optional(),
+    deadline: z.string().trim().optional(),
+    applyUrl: z.string().trim().optional(),
+    applicationUrl: z.string().trim().optional(),
+    applicationLink: z.string().trim().optional(),
+    costLabel: z.string().trim().max(100).optional(),
+    durationLabel: z.string().trim().max(100).optional(),
+    format: z.enum(OPPORTUNITY_FORMAT_VALUES).optional().default('online'),
+    eventAt: z.string().trim().optional(),
+    eventDateTime: z.string().trim().optional(),
+    logoUrl: z.string().trim().optional(),
+    organizationLogo: z.string().trim().optional(),
+    imageUrl: z.string().trim().optional(),
+    coverImage: z.string().trim().optional(),
+    images: z.array(z.string().trim()).optional(),
+    referralOnApply: z.boolean().optional(),
+    referralCodeOnApply: z.boolean().optional(),
+    workType: z.string().trim().optional(),
+    salary: z.string().trim().optional(),
+  }).refine((data) => Boolean(data.company || data.organisation || data.offeringOrganization), {
+    message: 'organisation or company is required',
+    path: ['organisation'],
+  }),
+});
+
+export const opportunityUpdateSchema = z.object({
+  body: z.object({
+    title: z.string().trim().min(2).max(200).optional(),
+    type: z.string().trim().min(2).max(50).optional(),
+    company: z.string().trim().min(2).max(200).optional(),
+    organisation: z.string().trim().min(2).max(200).optional(),
+    offeringOrganization: z.string().trim().max(200).optional(),
+    location: z.string().trim().max(200).optional(),
+    country: z.string().trim().max(100).optional(),
+    description: z.string().trim().min(5).max(20000).optional(),
+    status: z.enum(OPPORTUNITY_STATUS_VALUES).optional(),
+    moderationStatus: z.string().trim().optional(),
+    publish: z.boolean().optional(),
+    vetted: z.boolean().optional(),
+    vettedById: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid vettedById').nullable().optional(),
+    vettedBy: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid vettedBy').nullable().optional(),
+    vettedOn: z.string().trim().optional(),
+    publishedAt: z.string().trim().nullable().optional(),
+    writerId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid writerId').nullable().optional(),
+    assignedWriterId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid assignedWriterId').nullable().optional(),
+    closesAt: z.string().trim().optional(),
+    deadline: z.string().trim().optional(),
+    applyUrl: z.string().trim().optional(),
+    applicationUrl: z.string().trim().optional(),
+    applicationLink: z.string().trim().optional(),
+    costLabel: z.string().trim().max(100).optional(),
+    durationLabel: z.string().trim().max(100).optional(),
+    format: z.enum(OPPORTUNITY_FORMAT_VALUES).optional(),
+    eventAt: z.string().trim().optional(),
+    eventDateTime: z.string().trim().optional(),
+    logoUrl: z.string().trim().optional(),
+    organizationLogo: z.string().trim().optional(),
+    imageUrl: z.string().trim().optional(),
+    coverImage: z.string().trim().optional(),
+    images: z.array(z.string().trim()).optional(),
+    referralOnApply: z.boolean().optional(),
+    referralCodeOnApply: z.boolean().optional(),
+    workType: z.string().trim().optional(),
+    salary: z.string().trim().optional(),
+  }),
+});
+
+export const opportunityModerateDecisionSchema = z.object({
+  body: z.object({
+    decision: z.enum(['approve', 'reject']).optional(),
+    moderationStatus: z.enum(['approved', 'rejected', 'published', 'pending']).optional(),
+    vetted: z.boolean().optional(),
+    note: z.string().trim().max(1000).optional(),
+  }).refine((data) => Boolean(data.decision || data.moderationStatus || data.vetted !== undefined), {
+    message: 'Either decision, moderationStatus, or vetted must be provided',
+    path: ['decision'],
+  }),
+});
+
+// BE-012: Website Audience schemas
+export const websiteChannelSchema = z.object({
+  channel: z.string().trim().min(1, 'Channel name is required').max(100, 'Channel name is too long'),
+  views: z.number().int('Views must be an integer').min(0, 'Views must be non-negative'),
+});
+
+export const websiteMonthInputSchema = z.object({
+  body: z.object({
+    month: z.string().regex(/^\d{4}-\d{2}$/, 'month must be YYYY-MM format').optional(),
+    views: z.number().int('Views must be an integer').min(0, 'Views must be non-negative').optional(),
+    dailyFirstVisits: z.number().int('dailyFirstVisits must be an integer').min(0, 'dailyFirstVisits must be non-negative').optional(),
+    dailyVisitors: z.number().int('dailyVisitors must be an integer').min(0, 'dailyVisitors must be non-negative').optional(),
+    channels: z.array(websiteChannelSchema).optional(),
+    source: z.enum(['manual', 'ga4']).default('manual').optional(),
+  }).refine((data) => {
+    if (data.views !== undefined && data.channels && data.channels.length > 0) {
+      const sum = data.channels.reduce((acc, c) => acc + c.views, 0);
+      return sum === data.views;
+    }
+    return data.views !== undefined || (data.channels && data.channels.length > 0);
+  }, {
+    message: 'Channel views must add up to total views',
+    path: ['channels'],
+  }),
+  params: z.object({
+    month: z.string().regex(/^\d{4}-\d{2}$/, 'month must be YYYY-MM format').optional(),
+  }).optional(),
+});
+
+export const websiteAudienceQuerySchema = z.object({
+  query: z.object({
+    months: z.coerce.number().int().min(1).max(36).default(6).optional(),
+    order: z.enum(['asc', 'desc']).default('asc').optional(),
+    month: z.string().regex(/^\d{4}-\d{2}$/, 'month must be YYYY-MM format').optional(),
+  }).optional(),
+});
+
+// BE-013: Monthly Reports schemas
+export const monthlyReportCreateSchema = z.object({
+  body: z.object({
+    reportMonth: z.string().regex(/^\d{4}-\d{2}$/, 'reportMonth must be YYYY-MM format'),
+    view: z.enum(['partner', 'team']),
+    generatedAt: z.string().or(z.date()).optional(),
+  }),
+});
+
+export const monthlyReportQuerySchema = z.object({
+  query: z.object({
+    reportMonth: z.string().regex(/^\d{4}-\d{2}$/, 'reportMonth must be YYYY-MM format').optional(),
+    month: z.string().regex(/^\d{4}-\d{2}$/, 'month must be YYYY-MM format').optional(),
+    view: z.enum(['partner', 'team']).optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50).optional(),
+  }).optional(),
+});
+
+// BE-014: Overview schemas
+export const overviewActivityQuerySchema = z.object({
+  query: z.object({
+    limit: z.coerce.number().int().min(1).max(50).optional(),
+  }).optional(),
+});
+
+// BE-015: Scorecard schemas
+export const scorecardQuerySchema = z.object({
+  query: z.object({
+    month: z.string().regex(/^\d{4}-\d{2}$/, 'month must be YYYY-MM format').optional(),
+    today: z.string().optional(),
+  }).optional(),
+});
+
+// BE-016: Settings & Integrations schemas
+export const integrationUpdateSchema = z.object({
+  body: z.object({
+    identifier: z.string().trim().max(500).optional(),
+    secret: z.string().trim().max(1000).optional(),
+  }).refine((data) => data.identifier !== undefined || data.secret !== undefined, {
+    message: 'Must provide either identifier or secret to update',
+  }),
+});
+
+export const accountProfileUpdateSchema = z.object({
+  body: z.object({
+    name: z.string().trim().min(1, 'Name cannot be empty').max(100).optional(),
+    notificationPreferences: z.object({
+      digest: z.boolean().optional(),
+      verifications: z.boolean().optional(),
+      reports: z.boolean().optional(),
+      testimonials: z.boolean().optional(),
+    }).optional(),
+  }),
+});
+
+export const passwordChangeSchema = z.object({
+  body: z.object({
+    currentPassword: z.string().min(1, 'Current password is required').optional(),
+    current: z.string().min(1, 'Current password is required').optional(),
+    newPassword: z.string().min(8, 'New password must be at least 8 characters').optional(),
+    next: z.string().min(8, 'New password must be at least 8 characters').optional(),
+  }).refine((data) => (data.currentPassword || data.current) && (data.newPassword || data.next), {
+    message: 'Current password and new password are required',
+  }),
+});
+
+// BE-004: KPI Engine schemas
+export const kpiQuerySchema = z.object({
+  query: z.object({
+    month: z.string().regex(/^\d{4}-\d{2}$/, 'month must be YYYY-MM format').optional(),
+    today: z.string().optional(),
+    count: z.coerce.number().int().min(1).max(10).optional(),
+  }).optional(),
+});
+
+export const kpiTrendQuerySchema = z.object({
+  query: z.object({
+    month: z.string().regex(/^\d{4}-\d{2}$/, 'month must be YYYY-MM format').optional(),
+    kpi: z.string().optional(),
+    months: z.coerce.number().int().min(1).max(36).default(6).optional(),
+    today: z.string().optional(),
+  }).optional(),
+});
+
+// BE-017: Staff update schema
+export const staffUpdateSchema = z.object({
+  body: z.object({
+    name: z.string().trim().min(1).max(120).optional(),
+    status: z.enum(['active', 'suspended']).optional(),
+    role: z.string().trim().min(2).max(80).optional(),
+    roles: z.array(z.enum(ROLE_IDS)).min(1, 'At least 1 role required').max(2, 'At most 2 roles allowed').optional(),
+  }).refine((data) => Object.keys(data).length > 0, {
+    message: 'At least one field to update must be provided',
+  }),
+});
+
+// BE-017: Notification broadcast schemas
+export const notificationBroadcastSchema = z.object({
+  body: z.object({
+    title: z.string().trim().min(1, 'Title is required').max(200, 'Title is too long'),
+    message: z.string().trim().min(1, 'Message is required').max(5000, 'Message is too long'),
+    audience: z.enum(['seekers', 'hirers', 'both', 'all'], { errorMap: () => ({ message: 'Audience must be seekers, hirers, or both' }) }),
+    type: z.string().trim().max(50).optional(),
+    priority: z.enum(['low', 'normal', 'high', 'urgent']).optional(),
+    scheduledFor: z.string().optional(),
+  }),
+});
+
+export const notificationQuerySchema = z.object({
+  query: z.object({
+    page: z.coerce.number().int().min(1).default(1).optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(20).optional(),
+    q: z.string().trim().max(100).optional(),
+    audience: z.enum(['seekers', 'hirers', 'both', 'all']).optional(),
+    status: z.enum(['sent', 'scheduled', 'cancelled']).optional(),
+  }).optional(),
+});
+
+// BE-017: Reference data list schema
+export const referenceListUpdateSchema = z.object({
+  body: z.object({
+    items: z.array(z.string().trim().min(1, 'Item cannot be empty').max(200, 'Item is too long'))
+      .min(1, 'At least one item is required')
+      .max(1000, 'At most 1000 items allowed'),
+    label: z.string().trim().max(100).optional(),
+    singular: z.string().trim().max(100).optional(),
+  }),
+});
+
+// BE-017: Community channels and posts moderation schemas
+export const channelModerateSchema = z.object({
+  body: z.object({
+    status: z.enum(['active', 'flagged', 'removed']).optional(),
+    name: z.string().trim().min(1).max(100).optional(),
+    bio: z.string().trim().max(500).optional(),
+    category: z.string().trim().max(50).optional(),
+  }).refine((data) => Object.keys(data).length > 0, {
+    message: 'At least one field to update must be provided',
+  }),
+});
+
+export const postModerateSchema = z.object({
+  body: z.object({
+    flagged: z.boolean().optional(),
+  }),
+});
+
+
+
+
 
 
 

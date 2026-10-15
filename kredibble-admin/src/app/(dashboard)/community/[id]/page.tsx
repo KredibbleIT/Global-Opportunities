@@ -28,6 +28,7 @@ import { MiniStat } from "@/components/ui/MiniStat";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { RealChannelPage } from "@/components/community/RealChannelPage";
 import { isMockMode } from "@/lib/services/mock-mode";
+import { deleteCommunityChannelPost, updateCommunityChannel } from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
 
 function MockChannelReviewPage() {
@@ -58,8 +59,10 @@ function MockChannelReviewPage() {
       ),
       confirmLabel: "Remove post",
       onConfirm: () => {
-        // TODO(backend): persist this change
         setRecord((prev) => ({ ...prev, posts: prev.posts.filter((p) => p.id !== postId) }));
+        if (!isMockMode()) {
+          deleteCommunityChannelPost(channel.id, postId).catch(() => {});
+        }
         toast.success(`The post by ${post.authorName} was removed.`);
       },
     });
@@ -76,15 +79,19 @@ function MockChannelReviewPage() {
       ),
       confirmLabel: "Remove channel",
       onConfirm: () => {
-        // TODO(backend): persist this change
         setRecord((prev) => ({ ...prev, status: "removed" }));
+        if (!isMockMode()) {
+          updateCommunityChannel(channel.id, { status: "removed" }).catch(() => {});
+        }
         toast.success(`${channel.name} was removed.`);
       },
     });
 
   const restoreChannel = () => {
-    // TODO(backend): persist this change
     setRecord((prev) => ({ ...prev, status: "active" }));
+    if (!isMockMode()) {
+      updateCommunityChannel(channel.id, { status: "active" }).catch(() => {});
+    }
     toast.success(`${channel.name} was restored.`);
   };
 

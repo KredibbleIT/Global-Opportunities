@@ -88,6 +88,13 @@ partnerSchema.pre('save', function() {
   }
 });
 
+programSchema.index({ status: 1, deliveredAt: -1 });
+programSchema.index({ deliveredAt: -1 });
+
+partnerSchema.index({ 'stageHistory.stage': 1, 'stageHistory.at': 1 });
+partnerSchema.index({ stage: 1, closed: 1 });
+partnerSchema.index({ assignedOwnerId: 1, closed: 1 });
+
 export const CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
 
 export function generateReferralCode() {
@@ -185,6 +192,11 @@ ambassadorSchema.pre('save', async function () {
     this.dormantSince = undefined;
   }
 });
+
+ambassadorSchema.index({ status: 1, joinedAt: -1 });
+ambassadorSchema.index({ joinedAt: -1 });
+ambassadorSchema.index({ status: 1, dormantSince: 1 });
+ambassadorSchema.index({ linkedUserId: 1 });
 
 const ambassadorAmplificationSchema = new mongoose.Schema({
   ambassadorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Ambassador', required: true, index: true },
@@ -321,6 +333,9 @@ beneficiarySchema.pre('save', function () {
 
 beneficiarySchema.index({ ambassadorId: 1, verified: 1, verifiedAt: 1 });
 beneficiarySchema.index({ verified: 1, verifiedAt: 1 });
+beneficiarySchema.index({ source: 1, verified: 1 });
+beneficiarySchema.index({ createdAtDate: -1 });
+beneficiarySchema.index({ verifiedAt: -1 });
 
 export const CANONICAL_SOCIAL_PLATFORMS = [
   'facebook',
@@ -442,15 +457,80 @@ const monthlyTargetSchema = new mongoose.Schema({
 }, { timestamps: true });
 monthlyTargetSchema.index({ month: 1, metric: 1 }, { unique: true });
 
+export const TESTIMONIAL_STATUSES = ['pending', 'approved', 'unpublished', 'rejected'];
+
+export const ALLOWED_TESTIMONIAL_TRANSITIONS = {
+  pending: ['approved', 'rejected'],
+  approved: ['unpublished'],
+  unpublished: ['approved'],
+  rejected: ['approved'],
+};
+
+export const TESTIMONIAL_ACTIONS_MAP = {
+  approve: 'approved',
+  reject: 'rejected',
+  unpublish: 'unpublished',
+  reapprove: 'approved',
+};
+
 const testimonialSchema = new mongoose.Schema({
-  name: { type: String, required: true },
+  name: { type: String, required: true, trim: true },
   email: { type: String, required: true, lowercase: true, trim: true },
-  comment: { type: String, required: true },
-  photo: String,
-  status: { type: String, enum: ['pending', 'approved', 'unpublished', 'rejected'], default: 'pending', index: true },
+  comment: { type: String, required: true, trim: true },
+  role: { type: String, trim: true, default: '' },
+  photo: { type: String, trim: true },
+  status: { type: String, enum: TESTIMONIAL_STATUSES, default: 'pending', index: true },
+  submittedAt: { type: Date, default: Date.now, index: true },
+  submittedAtDate: { type: String, index: true },
+  decidedAt: { type: Date },
+  decidedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  moderatedAt: { type: Date },
   moderatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  moderatedAt: Date,
+  rejectionReason: { type: String, trim: true },
 }, { timestamps: true });
+
+testimonialSchema.virtual('id').get(function() {
+  return this._id.toHexString();
+});
+
+testimonialSchema.virtual('author').get(function() {
+  return this.name;
+});
+
+testimonialSchema.virtual('quote').get(function() {
+  return this.comment;
+});
+
+testimonialSchema.set('toJSON', { virtuals: true });
+testimonialSchema.set('toObject', { virtuals: true });
+
+testimonialSchema.pre('validate', function() {
+  if (!this.name && this.author) {
+    this.name = String(this.author).trim();
+  }
+  if (!this.comment && this.quote) {
+    this.comment = String(this.quote).trim();
+  }
+  if (!this.submittedAt) {
+    this.submittedAt = this.createdAt || new Date();
+  }
+  if (this.submittedAt instanceof Date && !isNaN(this.submittedAt.getTime())) {
+    this.submittedAtDate = this.submittedAt.toISOString().slice(0, 10);
+  }
+  if (this.decidedAt && !this.moderatedAt) {
+    this.moderatedAt = this.decidedAt;
+  } else if (this.moderatedAt && !this.decidedAt) {
+    this.decidedAt = this.moderatedAt;
+  }
+  if (this.decidedBy && !this.moderatedBy) {
+    this.moderatedBy = this.decidedBy;
+  } else if (this.moderatedBy && !this.decidedBy) {
+    this.decidedBy = this.moderatedBy;
+  }
+});
+
+testimonialSchema.index({ status: 1, submittedAt: -1 });
+testimonialSchema.index({ status: 1, createdAt: -1 });
 
 const activitySchema = new mongoose.Schema({
   actorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
@@ -509,6 +589,18 @@ const pipelineStageConfigSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 export const PipelineStageConfig = mongoose.model('PipelineStageConfig', pipelineStageConfigSchema);
+
+// BE-016: Integration settings with encrypted credentials and masked secrets
+const integrationConfigSchema = new mongoose.Schema({
+  key: { type: String, required: true, unique: true }, // e.g. 'wordpress', 'analytics'
+  identifier: { type: String, default: '' },           // e.g. siteUrl, propertyId
+  encryptedSecret: { type: String, default: '' },      // AES-256-GCM encrypted payload
+  secretTail: { type: String, default: '' },           // Last 4 characters, e.g. '3f9a'
+  updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  updatedByName: { type: String, default: '' },
+}, { timestamps: true });
+
+export const IntegrationConfig = mongoose.model('IntegrationConfig', integrationConfigSchema);
 
 // BE-002: Append-only KPI TargetChange history
 const targetChangeSchema = new mongoose.Schema({
@@ -636,3 +728,198 @@ thresholdChangeSchema.index({ effectiveFrom: 1, seq: -1 });
 
 export const ThresholdChange = mongoose.model('ThresholdChange', thresholdChangeSchema);
 
+export function getDaysForMonth(monthStr, now = new Date()) {
+  const currentMonthStr = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  const [yearStr, monthNumStr] = (monthStr || currentMonthStr).split('-');
+  const year = Number.parseInt(yearStr, 10);
+  const monthNum = Number.parseInt(monthNumStr, 10);
+  const totalDays = new Date(Date.UTC(year, monthNum, 0)).getUTCDate();
+
+  if (monthStr === currentMonthStr) {
+    return Math.max(1, Math.min(now.getUTCDate(), totalDays));
+  }
+  return totalDays;
+}
+
+export function calculateDefaultDailyFigures(views, monthStr, now = new Date()) {
+  const safeViews = Number.isFinite(views) ? Math.max(0, views) : 0;
+  const days = getDaysForMonth(monthStr, now);
+  return {
+    dailyFirstVisits: Math.round(safeViews / days / 2.6),
+    dailyVisitors: Math.round(safeViews / days / 1.35),
+  };
+}
+
+const websiteChannelEntrySchema = new mongoose.Schema({
+  channel: { type: String, required: true, trim: true },
+  views: { type: Number, required: true, min: 0, default: 0 },
+}, { _id: false });
+
+const websiteMonthSchema = new mongoose.Schema({
+  month: {
+    type: String,
+    required: true,
+    unique: true,
+    match: /^\d{4}-\d{2}$/,
+    index: true,
+  },
+  views: {
+    type: Number,
+    required: true,
+    min: 0,
+  },
+  dailyFirstVisits: {
+    type: Number,
+    required: true,
+    min: 0,
+  },
+  dailyVisitors: {
+    type: Number,
+    required: true,
+    min: 0,
+  },
+  channels: {
+    type: [websiteChannelEntrySchema],
+    default: undefined,
+  },
+  source: {
+    type: String,
+    enum: ['manual', 'ga4'],
+    default: 'manual',
+    index: true,
+  },
+  updatedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+  },
+  updatedByName: {
+    type: String,
+    trim: true,
+  },
+  rawGa4Data: {
+    type: mongoose.Schema.Types.Mixed,
+  },
+}, { timestamps: true });
+
+websiteMonthSchema.pre('validate', function() {
+  if (this.channels && this.channels.length > 0) {
+    const sum = this.channels.reduce((acc, c) => acc + (Number(c.views) || 0), 0);
+    if (this.views === undefined || this.views === null) {
+      this.views = sum;
+    } else if (sum !== this.views) {
+      throw new Error(`Channel views (${sum}) must add up to total views (${this.views})`);
+    }
+  } else if (this.views !== undefined && (!this.channels || this.channels.length === 0)) {
+    this.channels = [{ channel: 'Direct', views: this.views }];
+  } else if (this.views === undefined) {
+    this.views = 0;
+    this.channels = [{ channel: 'Direct', views: 0 }];
+  }
+
+  if (this.views !== undefined) {
+    const defaults = calculateDefaultDailyFigures(this.views, this.month);
+    if (this.dailyFirstVisits === undefined || this.dailyFirstVisits === null) {
+      this.dailyFirstVisits = defaults.dailyFirstVisits;
+    }
+    if (this.dailyVisitors === undefined || this.dailyVisitors === null) {
+      this.dailyVisitors = defaults.dailyVisitors;
+    }
+  }
+});
+
+export const WebsiteMonth = mongoose.model('WebsiteMonth', websiteMonthSchema);
+
+export const MONTHLY_REPORT_VIEWS = Object.freeze(['partner', 'team']);
+
+const monthlyReportSchema = new mongoose.Schema(
+  {
+    reportMonth: {
+      type: String,
+      required: true,
+      match: /^\d{4}-\d{2}$/,
+      index: true,
+    },
+    view: {
+      type: String,
+      required: true,
+      enum: ['partner', 'team'],
+      index: true,
+    },
+    generatedAt: {
+      type: Date,
+      default: Date.now,
+      index: true,
+    },
+    generatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
+    generatedByName: {
+      type: String,
+      trim: true,
+      default: '',
+    },
+  },
+  { timestamps: true }
+);
+
+monthlyReportSchema.index({ reportMonth: 1, view: 1, generatedAt: 1 });
+monthlyReportSchema.index({ generatedAt: -1 });
+
+export const MonthlyReport = mongoose.model('MonthlyReport', monthlyReportSchema);
+
+const referenceDataListSchema = new mongoose.Schema(
+  {
+    group: {
+      type: String,
+      required: true,
+      enum: ['seeker', 'hirer', 'grants'],
+      index: true,
+    },
+    key: {
+      type: String,
+      required: true,
+      trim: true,
+      index: true,
+    },
+    label: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    singular: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    items: {
+      type: [String],
+      default: [],
+    },
+    updatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+  },
+  { timestamps: true }
+);
+
+referenceDataListSchema.index({ group: 1, key: 1 }, { unique: true });
+
+export const ReferenceDataList = mongoose.model('ReferenceDataList', referenceDataListSchema);
+
+// BE-021: website-to-app category taxonomy. Each row maps one website
+// category name onto the app opportunity type it corresponds to.
+// `appCategory: null` means "seen on the website, awaiting curation".
+const categoryMapSchema = new mongoose.Schema(
+  {
+    websiteCategory: { type: String, required: true, trim: true, unique: true, index: true },
+    appCategory: { type: String, trim: true, default: null, index: true },
+    note: { type: String, trim: true, default: '' },
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  },
+  { timestamps: true }
+);
+
+export const CategoryMap = mongoose.model('CategoryMap', categoryMapSchema);

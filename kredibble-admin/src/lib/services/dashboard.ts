@@ -5,8 +5,9 @@
  *   Database, Social and Programs pages use (kpiValue, kpiTarget, kpiThresholds, kpiStatus), so a card, a gauge and a list
  *   always agree, and a target saved in Settings changes the status here. The queue counts come from mock-counts.ts: the SAME
  *   numbers as the sidebar pills and the breadcrumb pill.
- * - Real mode: the API has no monthly targets yet, so the ten cards, the trend, the programs and the feed are "not available yet"
- *   (notConnected: true, not an error) and only the two queue counts from GET /dashboard/summary are live.
+ * - Real mode: the monthly figures come from the live KPI/scorecard APIs (BE-004/BE-015). When the figures endpoint
+ *   cannot be reached the ten cards, the trend, the programs and the feed are "not available yet"
+ *   (notConnected: true, not an error); the four queue counts from GET /dashboard/summary are always live.
  *
  * Design rules:
  * - It never throws for expected failures. It resolves with `issue` set, and every section that could not be loaded is `null`
@@ -17,7 +18,15 @@
  * - A PAST month is a read-only snapshot: the value reached against the target and thresholds that applied THEN (the final status).
  */
 import { KPI_KEYS, isRunningTotal } from "@/config/kpis";
-import { ApiError, getDashboardSummary } from "@/lib/api";
+import {
+  ApiError,
+  getDashboardSummary,
+  getOverviewAttentionApi,
+  getOverviewActivityApi,
+  getKpiCardsApi,
+  getKpiTrendApi,
+  getUpcomingPrograms,
+} from "@/lib/api";
 import { formatDate, formatMonth } from "@/lib/format";
 import { attainment, currentMonth, isPastMonth, kpiStatus, kpiTarget, kpiMonthProgress, kpiThresholds, kpiValue, monthsBefore, storeData, type KpiData } from "@/lib/kpi";
 import { getMockCollection, getPartnerStageLabels } from "@/lib/mock-store";
@@ -247,16 +256,86 @@ function buildForcedMockOverview(state: Exclude<ForcedState, "loading">, month: 
 // ---- real API ----------------------------------------------------------------------------------------------------------
 
 async function fetchRealOverview(month: MonthKey): Promise<OverviewResult> {
-  const [summary] = await Promise.allSettled([getDashboardSummary() as Promise<unknown> as Promise<Record<string, number>>]);
-  const count = (key: string): number | null => (summary.status === "fulfilled" && typeof summary.value[key] === "number" ? summary.value[key] : null);
+  const [attentionRes, activityRes, summaryRes, kpisRes, trendRes, upcomingRes] = await Promise.allSettled([
+    getOverviewAttentionApi(),
+    getOverviewActivityApi(),
+    getDashboardSummary() as Promise<unknown> as Promise<Record<string, number>>,
+    getKpiCardsApi<{ month: string; isPast: boolean; kpis: KpiCardData[]; cards: KpiCardData[] }>(month),
+    getKpiTrendApi<{ trend: Record<KpiKey, TrendPoint[]> }>({ month, months: TREND_MONTHS }),
+    getUpcomingPrograms(),
+  ]);
+
+  const summary = summaryRes.status === "fulfilled" ? summaryRes.value : null;
+  const count = (key: string): number | null => (summary && typeof summary[key] === "number" ? summary[key] : null);
+
+  let attention: AttentionCounts | null = null;
+  if (attentionRes.status === "fulfilled") {
+    const a = attentionRes.value;
+    attention = {
+      pendingVerifications: a.pendingVerifications ?? null,
+      openReports: a.openReports ?? null,
+      pendingTestimonials: a.pendingTestimonials ?? null,
+      draftListings: a.draftListings ?? a.unvettedDrafts ?? null,
+    };
+  } else if (summary) {
+    attention = {
+      pendingVerifications: count("pendingVerifications"),
+      openReports: count("openReports"),
+      pendingTestimonials: count("pendingTestimonials"),
+      draftListings: count("unvettedDrafts"),
+    };
+  }
+
+  const activity = activityRes.status === "fulfilled" ? activityRes.value : null;
+
+  let kpis: KpiCardData[] | null = null;
+  let isPast = isPastMonth(month);
+  if (kpisRes.status === "fulfilled") {
+    const val = kpisRes.value;
+    kpis = val.kpis || val.cards || null;
+    if (typeof val.isPast === "boolean") isPast = val.isPast;
+  }
+
+  let trend: Record<KpiKey, TrendPoint[]> | null = null;
+  if (trendRes.status === "fulfilled") {
+    trend = trendRes.value.trend || null;
+  }
+
+  let programs: UpcomingProgram[] | null = null;
+  if (upcomingRes.status === "fulfilled" && Array.isArray(upcomingRes.value)) {
+    programs = (upcomingRes.value as unknown as Array<Record<string, unknown>>).map((p) => ({
+      id: String(p.id || p._id || ""),
+      title: String(p.title || p.name || ""),
+      type: (p.type || p.programType || "training") as UpcomingProgram["type"],
+      startAt: String(p.startAt || ""),
+      participants: Number(p.participants || p.participantCount || 0),
+      target: Number(p.target || p.participantTarget || 0),
+      partner: p.partner ? String(p.partner) : (p.partnerName ? String(p.partnerName) : null),
+      status: (p.status === "running" ? "running" : "planned") as UpcomingProgram["status"],
+    }));
+  }
+
+  const notConnected = kpis === null;
+
   const data: OverviewData = {
-    ...unavailable(month),
     source: "api",
-    notConnected: true,
-    // The API has no verified testimonials queue or drafts yet: only the two counts it does report.
-    attention: { pendingVerifications: count("pendingVerifications"), openReports: count("openReports"), pendingTestimonials: null, draftListings: null },
+    month,
+    notConnected,
+    isPast,
+    kpis,
+    trend,
+    programs,
+    activity,
+    attention,
   };
-  return { data, issue: classifyIssue(summary) };
+
+  const primaryFailure = attentionRes.status === "rejected"
+    ? attentionRes
+    : (activityRes.status === "rejected"
+      ? activityRes
+      : (kpisRes.status === "rejected" ? kpisRes : summaryRes));
+
+  return { data, issue: classifyIssue(primaryFailure) };
 }
 
 /** Turns the settled request into at most one banner-worthy issue. */

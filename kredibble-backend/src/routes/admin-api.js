@@ -1,11 +1,14 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
+import crypto from 'node:crypto';
 import { requireAdminOrStaffAuth, requireAdminAuth } from '../middleware/auth.js';
 import { requirePortalRoles, requireScreen } from '../middleware/portal-auth.js';
 import { ApiError, asyncHandler, itemResponse, listResponse, notFound } from '../utils/http.js';
-import { Opportunity } from '../models/Platform.js';
+import { Opportunity, CompanyVerification } from '../models/Platform.js';
 import { StaffMember, User } from '../models/User.js';
-import { Channel, CommunityMembership } from '../models/Community.js';
+import { Channel, CommunityMembership, Report, ChannelPost } from '../models/Community.js';
+import { Notification } from '../models/Content.js';
+import { NewsItem } from '../models/Content.js';
 import { SeekerProfile, HirerAccount } from '../models/Profiles.js';
 import {
   AdminActivity,
@@ -29,6 +32,12 @@ import {
   CANONICAL_SOCIAL_PLATFORMS,
   SOCIAL_PLATFORM_LABELS,
   normalizeSocialPlatform,
+  TESTIMONIAL_STATUSES,
+  ALLOWED_TESTIMONIAL_TRANSITIONS,
+  TESTIMONIAL_ACTIONS_MAP,
+  WebsiteMonth,
+  MonthlyReport,
+  CategoryMap,
 } from '../models/AdminPortal.js';
 import { deleteFromWordpress, syncToWordpress } from '../lib/wordpress-sync.js';
 import { env } from '../config/env.js';
@@ -38,7 +47,15 @@ import {
   getEffectiveToggles,
   computeFullMatrix,
   invalidateTogglesCache,
+  normalizeLegacyRole,
 } from '../lib/permissions.js';
+import {
+  getReferenceDataGroups,
+  getReferenceDataList,
+  updateReferenceDataList,
+} from '../lib/reference-data.js';
+import { buildTallyReport, fetchWebsiteSnapshot } from '../lib/website-tally.js';
+import { taxonomyUpsertSchema } from '../schemas/website-tally.js';
 import { auditReq, AUDIT_ACTIONS, AUDIT_RESOURCE_TYPES } from '../lib/audit.js';
 import { getTargetsForMonth, getTargetHistory, saveTargetBatch, KPI_KEYS } from '../lib/targets.js';
 import { getThresholdsInForce, getThresholdHistory, saveThresholdChange, getCombinedChangeHistory } from '../lib/thresholds.js';
@@ -59,12 +76,61 @@ import {
   beneficiaryUndoVerifySchema,
   socialPostCreateSchema,
   socialPostUpdateSchema,
+  testimonialCreateSchema,
+  testimonialModerateSchema,
+  testimonialUpdateSchema,
+  opportunityCreateSchema,
+  opportunityUpdateSchema,
+  websiteMonthInputSchema,
+  websiteAudienceQuerySchema,
+  monthlyReportCreateSchema,
+  monthlyReportQuerySchema,
+  overviewActivityQuerySchema,
+  scorecardQuerySchema,
+  kpiQuerySchema,
+  kpiTrendQuerySchema,
+  integrationUpdateSchema,
+  accountProfileUpdateSchema,
+  passwordChangeSchema,
+  staffInviteSchema,
+  staffUpdateSchema,
+  notificationBroadcastSchema,
+  notificationQuerySchema,
+  referenceListUpdateSchema,
+  channelModerateSchema,
+  postModerateSchema,
 } from '../schemas/admin.js';
+import bcrypt from 'bcryptjs';
+import { reauthLimiter } from '../lib/rate-limiters.js';
+import {
+  getKpiCardsForMonth,
+  getKpiPrioritiesForMonth,
+  getKpiTrend,
+  rankPriorities,
+  fetchRawKpiMetrics,
+} from '../lib/kpi-engine.js';
+import {
+  getAllIntegrationsStatus,
+  saveIntegrationSettings,
+  testIntegrationConnection,
+  normalizeIntegrationKind,
+} from '../lib/integrations.js';
+import {
+  SCORE_FROM_DAY,
+  isPastMonth,
+  isTooEarly,
+  buildScorecardPerson,
+  teamSummary,
+  sortTeamScorecards,
+  buildCompositeSeries,
+} from '../lib/scorecards.js';
+import { syncWebsiteAudienceFromGa4 } from '../lib/ga4-sync.js';
 import { validate } from '../middleware/validate.js';
 import { postChannelMessage, listChannelMessages, getThread, findPost, setAllowReplies } from '../lib/chat.js';
 import { notifyUser } from '../lib/user-notify.js';
 import { evictFromChannelRoom } from '../socket.js';
 import { toRequestResponse } from './ambassador.js';
+import { newsAdminQuerySchema, newsModerateSchema } from '../schemas/news.js';
 import {
   approveAmbassadorRequestSchema, rejectAmbassadorRequestSchema, chatMessageSchema,
   createAdminChannelSchema, addChannelMemberSchema, allowRepliesSchema,
@@ -81,6 +147,8 @@ const PROGRAM_ROLES = ['Training and Capacity Development Officer', 'Desk Lead']
 const PARTNER_ROLES = ['Partnerships Officer', 'Desk Lead'];
 const AMBASSADOR_ROLES = ['Communications Officer', 'Social Media Manager', 'Country Lead', 'Desk Lead'];
 const SOCIAL_ROLES = ['Communications Officer', 'Social Media Manager', 'Desk Lead'];
+const TESTIMONIAL_VIEW_ROLES = ['Communications Officer', 'Social Media Manager', 'Desk Lead'];
+const TESTIMONIAL_EDIT_ROLES = ['Communications Officer', 'Desk Lead'];
 const configured = (value) => Boolean(value && !value.includes('placeholder'));
 const escapedRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const pageOptions = (query) => {
@@ -230,11 +298,14 @@ const addManagedRoutes = ({
     if (req.query.q) {
       filter.$or = ['title', 'organizationName', 'fullName', 'email', 'country'].map((field) => ({ [field]: { $regex: escapedRegex(req.query.q), $options: 'i' } }));
     }
-    const { skip, limit } = pageOptions(req.query);
+    const { skip, limit, page } = pageOptions(req.query);
     let query = Model.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit);
     if (populate) query = query.populate(populate);
-    const records = await query;
-    listResponse(res, records.map(transform));
+    const [records, total] = await Promise.all([
+      query,
+      Model.countDocuments(filter),
+    ]);
+    listResponse(res, records.map(transform), total, page, limit);
   }));
 
   adminApiRouter.get(`${path}/:id`, ...viewAuth, asyncHandler(async (req, res) => {
@@ -298,7 +369,7 @@ const addManagedRoutes = ({
   adminApiRouter.delete(`${path}/:id`, ...editAuth, asyncHandler(async (req, res) => {
     const record = await Model.findById(validId(req.params.id, resource));
     if (!record) throw notFound(resource);
-    let sync = { status: 'pending' };
+    let sync;
     try {
       sync = await deleteFromWordpress(resource, record);
     } catch (error) {
@@ -322,11 +393,82 @@ const addManagedRoutes = ({
 };
 
 const OPPORTUNITY_ALLOWED_FIELDS = [
-  'title', 'type', 'company', 'offeringOrganization', 'location', 'description',
-  'date', 'workType', 'salary', 'experienceLevels', 'eventDateTime', 'eventRegion',
+  'title', 'type', 'company', 'organisation', 'offeringOrganization', 'location', 'description',
+  'date', 'workType', 'salary', 'experienceLevels', 'eventDateTime', 'eventAt', 'eventRegion',
   'eventCategory', 'grantBudgetRange', 'grantSector', 'status', 'moderationStatus',
-  'vetted', 'deadline', 'url', 'coverImage', 'assignedWriterId', 'referralCodeOnApply', 'category',
+  'vetted', 'vettedById', 'vettedBy', 'vettedOn', 'publishedAt', 'closesAt', 'deadline',
+  'url', 'applyUrl', 'applicationUrl', 'applicationLink', 'costLabel', 'durationLabel',
+  'format', 'country', 'logoUrl', 'organizationLogo', 'imageUrl', 'coverImage', 'images',
+  'writerId', 'assignedWriterId', 'referralOnApply', 'referralCodeOnApply', 'category', 'publish',
 ];
+
+export const toOpportunityAdminObject = (record) => {
+  if (!record) return null;
+  const raw = record.toJSON ? record.toJSON({ virtuals: true }) : record;
+  const id = raw.id || raw._id?.toString();
+  const rawPublished = raw.publishedAt;
+  const publishedAt = rawPublished
+    ? (rawPublished instanceof Date ? rawPublished.toISOString() : String(rawPublished))
+    : undefined;
+  const rawDeadline = raw.closesAt || raw.deadline;
+  const closesAt = rawDeadline
+    ? (rawDeadline instanceof Date ? rawDeadline.toISOString() : String(rawDeadline))
+    : undefined;
+
+  const vettedByDoc = raw.vettedBy;
+  const vettedById = vettedByDoc && typeof vettedByDoc === 'object'
+    ? (vettedByDoc._id?.toString() || vettedByDoc.id)
+    : (vettedByDoc ? String(vettedByDoc) : raw.vettedById);
+  const vettedByName = vettedByDoc && typeof vettedByDoc === 'object'
+    ? (vettedByDoc.name || vettedByDoc.fullName)
+    : undefined;
+
+  const writerDoc = raw.writerId || raw.assignedWriterId;
+  const writerId = writerDoc && typeof writerDoc === 'object'
+    ? (writerDoc._id?.toString() || writerDoc.id)
+    : (writerDoc ? String(writerDoc) : undefined);
+  const writerName = writerDoc && typeof writerDoc === 'object'
+    ? (writerDoc.name || writerDoc.fullName)
+    : undefined;
+
+  const views = raw.views || { website: 0, app: 0 };
+  const applications = raw.applications || { website: 0, app: 0 };
+
+  return {
+    ...raw,
+    id,
+    _id: undefined,
+    __v: undefined,
+    status: raw.status || (raw.moderationStatus === 'published' || raw.moderationStatus === 'approved' ? 'published' : 'draft'),
+    moderationStatus: raw.moderationStatus || (raw.status === 'published' ? 'published' : 'pending'),
+    vetted: Boolean(raw.vetted),
+    vettedBy: vettedById,
+    vettedById,
+    vettedByName,
+    vettedAt: raw.vettedAt ? new Date(raw.vettedAt).toISOString() : undefined,
+    vettedOn: raw.vettedOn || (raw.vettedAt ? new Date(raw.vettedAt).toISOString().slice(0, 10) : undefined),
+    publishedAt,
+    closesAt,
+    deadline: closesAt,
+    applyUrl: raw.applyUrl || raw.applicationUrl || raw.applicationLink,
+    applicationUrl: raw.applyUrl || raw.applicationUrl || raw.applicationLink,
+    eventAt: raw.eventAt || raw.eventDateTime,
+    eventDateTime: raw.eventAt || raw.eventDateTime,
+    writerId,
+    assignedWriterId: writerId,
+    writerName,
+    company: raw.company || raw.offeringOrganization,
+    organisation: raw.organisation || raw.company || raw.offeringOrganization,
+    logoUrl: raw.logoUrl || raw.organizationLogo,
+    organizationLogo: raw.logoUrl || raw.organizationLogo,
+    imageUrl: raw.imageUrl || raw.coverImage,
+    coverImage: raw.imageUrl || raw.coverImage,
+    referralOnApply: Boolean(raw.referralOnApply || raw.referralCodeOnApply),
+    referralCodeOnApply: Boolean(raw.referralOnApply || raw.referralCodeOnApply),
+    views,
+    applications,
+  };
+};
 
 const prepareOpportunity = (data, actorId, existing = {}) => {
   const allowed = {};
@@ -336,58 +478,229 @@ const prepareOpportunity = (data, actorId, existing = {}) => {
     }
   }
 
+  const company = allowed.company || allowed.organisation || allowed.offeringOrganization || existing.company;
   const next = {
     ...allowed,
-    company: allowed.company || allowed.offeringOrganization || existing.company,
-    offeringOrganization: allowed.offeringOrganization || allowed.company || existing.offeringOrganization,
+    company,
+    offeringOrganization: allowed.offeringOrganization || company,
   };
-  if (allowed.vetted === true && !existing.vetted) {
-    next.vettedBy = actorId;
-    next.vettedAt = new Date();
+
+  // If publish flag is provided
+  if (data.publish === true) {
+    next.status = 'published';
+    next.moderationStatus = 'published';
+  } else if (data.publish === false && !next.status) {
+    next.status = 'draft';
   }
-  const publishing = next.moderationStatus === 'published' || next.moderationStatus === 'approved';
-  const vetted = next.vetted ?? existing.vetted;
-  if (publishing && !vetted) throw new ApiError(400, 'An opportunity must be vetted before it can be published');
+
+  // Alias closesAt / deadline
+  if (allowed.closesAt && !allowed.deadline) next.deadline = new Date(allowed.closesAt);
+  if (allowed.deadline && !allowed.closesAt) next.closesAt = new Date(allowed.deadline);
+
+  // Alias applyUrl / applicationUrl
+  if (allowed.applyUrl && !allowed.applicationUrl) next.applicationUrl = allowed.applyUrl;
+  if (allowed.applicationUrl && !allowed.applyUrl) next.applyUrl = allowed.applicationUrl;
+
+  // Alias eventAt / eventDateTime
+  if (allowed.eventAt && !allowed.eventDateTime) next.eventDateTime = allowed.eventAt;
+  if (allowed.eventDateTime && !allowed.eventAt) next.eventAt = allowed.eventDateTime;
+
+  // Alias writerId / assignedWriterId
+  if (allowed.writerId && !allowed.assignedWriterId) next.assignedWriterId = allowed.writerId;
+  if (allowed.assignedWriterId && !allowed.writerId) next.writerId = allowed.assignedWriterId;
+
+  // Alias images / logos
+  if (allowed.logoUrl && !allowed.organizationLogo) next.organizationLogo = allowed.logoUrl;
+  if (allowed.organizationLogo && !allowed.logoUrl) next.logoUrl = allowed.organizationLogo;
+  if (allowed.imageUrl && !allowed.coverImage) next.coverImage = allowed.imageUrl;
+  if (allowed.coverImage && !allowed.imageUrl) next.imageUrl = allowed.coverImage;
+
+  // Rule: A published listing is always vetted
+  const isPublishing = next.status === 'published' || next.moderationStatus === 'published' || next.moderationStatus === 'approved';
+  if (isPublishing) {
+    next.vetted = true;
+    if (!existing.vetted && !next.vettedBy) {
+      next.vettedBy = allowed.vettedBy || allowed.vettedById || actorId;
+      next.vettedAt = new Date();
+      next.vettedOn = next.vettedAt.toISOString().slice(0, 10);
+    }
+    if (!next.publishedAt && !existing.publishedAt) {
+      next.publishedAt = new Date();
+    }
+  }
+
+  if (allowed.vetted === true && !existing.vetted) {
+    next.vettedBy = allowed.vettedBy || allowed.vettedById || actorId;
+    next.vettedAt = new Date();
+    next.vettedOn = next.vettedAt.toISOString().slice(0, 10);
+  }
+
   return next;
 };
 
-adminApiRouter.get('/opportunities', requireAdminOrStaffAuth, requirePortalRoles(...OPPORTUNITY_ROLES), asyncHandler(async (req, res) => {
+adminApiRouter.get('/opportunities/counts', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'view'), requirePortalRoles(...OPPORTUNITY_ROLES), asyncHandler(async (req, res) => {
+  const [unvettedDrafts, drafts, published, pending, vetted, total] = await Promise.all([
+    Opportunity.countDocuments({ status: 'draft', vetted: false }),
+    Opportunity.countDocuments({ status: 'draft' }),
+    Opportunity.countDocuments({ $or: [{ status: 'published' }, { moderationStatus: { $in: ['published', 'approved'] } }] }),
+    Opportunity.countDocuments({ moderationStatus: 'pending' }),
+    Opportunity.countDocuments({ vetted: true }),
+    Opportunity.countDocuments({}),
+  ]);
+  itemResponse(res, { unvettedDrafts, drafts, published, pending, vetted, total });
+}));
+
+adminApiRouter.get('/opportunities', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'view'), requirePortalRoles(...OPPORTUNITY_ROLES), asyncHandler(async (req, res) => {
   const filter = {};
-  for (const key of ['country', 'type', 'moderationStatus', 'vetted']) {
+  for (const key of ['country', 'type', 'status', 'moderationStatus', 'vetted']) {
     const value = req.query[key];
     if (value === undefined) continue;
     // SEC-061: a filter value is a plain string, never an operator object.
     if (typeof value !== 'string') throw new ApiError(400, 'Invalid query parameters');
     filter[key] = key === 'vetted' ? value === 'true' : value;
   }
+
+  if (req.query.search || req.query.q) {
+    const rawSearch = (req.query.search || req.query.q).trim();
+    const regex = new RegExp(escapedRegex(rawSearch), 'i');
+    filter.$or = [{ title: regex }, { company: regex }, { location: regex }, { offeringOrganization: regex }];
+  }
+
   const { page, skip, limit } = pageOptions(req.query);
   // Real totals, so a client can tell when it has read every page (the admin's Opportunities Queue does).
   const [records, total] = await Promise.all([
-    Opportunity.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+    Opportunity.find(filter)
+      .populate('vettedBy', 'name fullName email')
+      .populate('writerId', 'name fullName email')
+      .populate('assignedWriterId', 'name fullName email')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit),
     Opportunity.countDocuments(filter),
   ]);
-  listResponse(res, records.map(toClientObject), total, page, limit);
+  listResponse(res, records.map(toOpportunityAdminObject), total, page, limit);
 }));
 
-adminApiRouter.post('/opportunities', requireAdminOrStaffAuth, requirePortalRoles(...OPPORTUNITY_ROLES), asyncHandler(async (req, res) => {
-  const record = new Opportunity({ ...prepareOpportunity(req.body, req.auth.sub), createdBy: req.auth.sub });
+adminApiRouter.get('/opportunities/:id', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'view'), requirePortalRoles(...OPPORTUNITY_ROLES), asyncHandler(async (req, res) => {
+  const record = await Opportunity.findById(validId(req.params.id, 'Opportunity'))
+    .populate('vettedBy', 'name fullName email')
+    .populate('writerId', 'name fullName email')
+    .populate('assignedWriterId', 'name fullName email');
+  if (!record) throw notFound('Opportunity');
+  itemResponse(res, toOpportunityAdminObject(record));
+}));
+
+adminApiRouter.post('/opportunities', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'edit'), requirePortalRoles(...OPPORTUNITY_ROLES), validate(opportunityCreateSchema), asyncHandler(async (req, res) => {
+  const prepared = prepareOpportunity(req.body, req.auth.sub);
+  const record = new Opportunity({ ...prepared, createdBy: req.auth.sub });
   await record.save();
   const sync = await syncManagedRecord('opportunities', record);
   await logActivity(req.auth.sub, 'created', 'opportunities', record);
-  res.status(201).json({ data: { ...toClientObject(record), sync } });
+
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.OPPORTUNITY_CREATE,
+    resourceType: AUDIT_RESOURCE_TYPES.OPPORTUNITY,
+    resourceId: record._id,
+    outcome: 'success',
+    metadata: {
+      title: record.title,
+      type: record.type,
+      status: record.status,
+      vetted: record.vetted,
+    },
+  });
+
+  res.status(201).json({ data: { ...toOpportunityAdminObject(record), sync } });
 }));
 
-adminApiRouter.patch('/opportunities/:id', requireAdminOrStaffAuth, requirePortalRoles(...OPPORTUNITY_ROLES), asyncHandler(async (req, res) => {
+adminApiRouter.patch('/opportunities/:id', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'edit'), requirePortalRoles(...OPPORTUNITY_ROLES), validate(opportunityUpdateSchema), asyncHandler(async (req, res) => {
   const record = await Opportunity.findById(validId(req.params.id, 'Opportunity'));
   if (!record) throw notFound('Opportunity');
-  Object.assign(record, prepareOpportunity(req.body, req.auth.sub, record));
+  const wasVetted = record.vetted;
+  const wasPublished = record.status === 'published';
+
+  const prepared = prepareOpportunity(req.body, req.auth.sub, record);
+  Object.assign(record, prepared);
   await record.save();
   const sync = await syncManagedRecord('opportunities', record);
   await logActivity(req.auth.sub, 'updated', 'opportunities', record);
-  itemResponse(res, { ...toClientObject(record), sync });
+
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.OPPORTUNITY_UPDATE,
+    resourceType: AUDIT_RESOURCE_TYPES.OPPORTUNITY,
+    resourceId: record._id,
+    outcome: 'success',
+    metadata: {
+      title: record.title,
+      status: record.status,
+      vetted: record.vetted,
+    },
+  });
+
+  if (!wasPublished && record.status === 'published') {
+    await auditReq(req, {
+      action: AUDIT_ACTIONS.OPPORTUNITY_PUBLISH,
+      resourceType: AUDIT_RESOURCE_TYPES.OPPORTUNITY,
+      resourceId: record._id,
+      outcome: 'success',
+      metadata: { title: record.title },
+    });
+  }
+
+  if (!wasVetted && record.vetted) {
+    await auditReq(req, {
+      action: AUDIT_ACTIONS.OPPORTUNITY_VET,
+      resourceType: AUDIT_RESOURCE_TYPES.OPPORTUNITY,
+      resourceId: record._id,
+      outcome: 'success',
+      metadata: { title: record.title },
+    });
+  }
+
+  itemResponse(res, { ...toOpportunityAdminObject(record), sync });
 }));
 
-adminApiRouter.get('/opportunities/:id/analytics', requireAdminOrStaffAuth, requirePortalRoles(...OPPORTUNITY_ROLES), asyncHandler(async (req, res) => {
+adminApiRouter.post('/opportunities/:id/unpublish', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'edit'), requirePortalRoles(...OPPORTUNITY_ROLES), asyncHandler(async (req, res) => {
+  const record = await Opportunity.findById(validId(req.params.id, 'Opportunity'));
+  if (!record) throw notFound('Opportunity');
+
+  record.status = 'draft';
+  record.moderationStatus = 'pending';
+  record.publishedAt = undefined;
+  await record.save();
+  await logActivity(req.auth.sub, 'unpublished', 'opportunities', record);
+
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.OPPORTUNITY_UNPUBLISH,
+    resourceType: AUDIT_RESOURCE_TYPES.OPPORTUNITY,
+    resourceId: record._id,
+    outcome: 'success',
+    metadata: { title: record.title },
+  });
+
+  itemResponse(res, toOpportunityAdminObject(record));
+}));
+
+adminApiRouter.get('/opportunities/:id/metrics', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'view'), requirePortalRoles(...OPPORTUNITY_ROLES), asyncHandler(async (req, res) => {
+  const record = await Opportunity.findById(validId(req.params.id, 'Opportunity'));
+  if (!record) throw notFound('Opportunity');
+
+  const views = record.views || { website: 0, app: 0 };
+  const applications = record.applications || { website: 0, app: 0 };
+  itemResponse(res, {
+    listingId: record._id.toString(),
+    views: {
+      website: Number(views.website || 0),
+      app: Number(views.app || 0),
+    },
+    applications: {
+      website: Number(applications.website || 0),
+      app: Number(applications.app || 0),
+    },
+  });
+}));
+
+adminApiRouter.get('/opportunities/:id/analytics', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'view'), requirePortalRoles(...OPPORTUNITY_ROLES), asyncHandler(async (req, res) => {
   const opportunity = await Opportunity.findById(validId(req.params.id, 'Opportunity'));
   if (!opportunity) throw notFound('Opportunity');
   const totals = await OpportunityEngagement.aggregate([
@@ -400,13 +713,24 @@ adminApiRouter.get('/opportunities/:id/analytics', requireAdminOrStaffAuth, requ
     analytics[key][item._id.source] = item.count;
     analytics[key].total += item.count;
   }
+  // If direct views on opportunity are higher, incorporate them
+  if (opportunity.views) {
+    analytics.views.website = Math.max(analytics.views.website, opportunity.views.website || 0);
+    analytics.views.app = Math.max(analytics.views.app, opportunity.views.app || 0);
+    analytics.views.total = analytics.views.website + analytics.views.app;
+  }
+  if (opportunity.applications) {
+    analytics.applications.website = Math.max(analytics.applications.website, opportunity.applications.website || 0);
+    analytics.applications.app = Math.max(analytics.applications.app, opportunity.applications.app || 0);
+    analytics.applications.total = analytics.applications.website + analytics.applications.app;
+  }
   itemResponse(res, analytics);
 }));
 
-adminApiRouter.delete('/opportunities/:id', requireAdminOrStaffAuth, requirePortalRoles(...OPPORTUNITY_ROLES), asyncHandler(async (req, res) => {
+adminApiRouter.delete('/opportunities/:id', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'edit'), requirePortalRoles(...OPPORTUNITY_ROLES), asyncHandler(async (req, res) => {
   const record = await Opportunity.findById(validId(req.params.id, 'Opportunity'));
   if (!record) throw notFound('Opportunity');
-  let sync = { status: 'pending' };
+  let sync;
   try {
     sync = await deleteFromWordpress('opportunities', record);
   } catch (error) {
@@ -416,13 +740,22 @@ adminApiRouter.delete('/opportunities/:id', requireAdminOrStaffAuth, requirePort
   }
   await record.deleteOne();
   await logActivity(req.auth.sub, 'deleted', 'opportunities', record);
+
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.OPPORTUNITY_DELETE,
+    resourceType: AUDIT_RESOURCE_TYPES.OPPORTUNITY,
+    resourceId: record._id,
+    outcome: 'success',
+    metadata: { title: record.title },
+  });
+
   itemResponse(res, { id: req.params.id, sync });
 }));
 
-adminApiRouter.post('/opportunities/:id/retry-wordpress-sync', requireAdminOrStaffAuth, requirePortalRoles(...OPPORTUNITY_ROLES), asyncHandler(async (req, res) => {
+adminApiRouter.post('/opportunities/:id/retry-wordpress-sync', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'edit'), requirePortalRoles(...OPPORTUNITY_ROLES), asyncHandler(async (req, res) => {
   const record = await Opportunity.findById(validId(req.params.id, 'Opportunity'));
   if (!record) throw notFound('Opportunity');
-  itemResponse(res, { ...toClientObject(record), sync: await syncManagedRecord('opportunities', record) });
+  itemResponse(res, { ...toOpportunityAdminObject(record), sync: await syncManagedRecord('opportunities', record) });
 }));
 
 export const toProgramClientObject = (document) => {
@@ -596,9 +929,9 @@ export const calculatePipelineHealth = async (monthQuery) => {
   const closedCount = closedInWindow.size;
   const closeRate = reachedCount > 0 ? (closedCount / reachedCount) : null;
 
-  let needed = null;
-  let ratio = null;
-  let status = 'unknown';
+  let needed;
+  let ratio;
+  let status;
 
   if (target <= 0) {
     needed = 0;
@@ -805,7 +1138,7 @@ const prepareAmbassador = (body, authSub, existing = {}) => {
     joinedAt = body.joinedAt || new Date().toISOString().slice(0, 10);
   }
 
-  let dormantSince = existing.dormantSince;
+  let dormantSince;
   if (status === 'dormant') {
     dormantSince = body.dormantSince || existing.dormantSince || new Date().toISOString().slice(0, 10);
   } else {
@@ -2390,110 +2723,11 @@ const metricStatus = (value, target, thresholds = {}) => {
   return ratio >= green ? 'green' : ratio >= amber ? 'amber' : 'red';
 };
 
-const dashboardMetrics = async (month) => {
-  const { start, end } = monthBounds(month);
-  const [opportunitiesPublished, programsActive, programsDelivered, partnersClosed, ambassadorsActive, beneficiariesVerified, beneficiariesAdded, social, applications] = await Promise.all([
-    Opportunity.countDocuments({ vetted: true, moderationStatus: { $in: ['published', 'approved'] }, createdAt: { $gte: start, $lt: end } }),
-    Program.countDocuments({ status: { $in: ['planned', 'running'] } }),
-    Program.countDocuments({
-      status: 'delivered',
-      $or: [
-        { deliveredAt: { $gte: start, $lt: end } },
-        { deliveredAt: { $exists: false }, endAt: { $gte: start, $lt: end } },
-        { deliveredAt: null, endAt: { $gte: start, $lt: end } },
-      ],
-    }),
-    Partner.countDocuments({
-      $or: [
-        {
-          stageHistory: {
-            $elemMatch: {
-              stage: { $in: ['onboard', 'renew', 'Onboard', 'Renew'] },
-              at: { $gte: start.toISOString().slice(0, 10), $lt: end.toISOString().slice(0, 10) },
-            },
-          },
-        },
-        {
-          $and: [
-            { stageHistory: { $size: 0 } },
-            { closed: true, updatedAt: { $gte: start, $lt: end } },
-          ],
-        },
-      ],
-    }),
-    (async () => {
-      const summary = await calculateNetworkSummary(month);
-      return summary.active;
-    })(),
-    Beneficiary.countDocuments({
-      verified: true,
-      $or: [
-        { verifiedAt: { $gte: start.toISOString().slice(0, 10), $lt: end.toISOString().slice(0, 10) } },
-        { verifiedAt: { $exists: false }, createdAt: { $gte: start, $lt: end } },
-        { verifiedAt: null, createdAt: { $gte: start, $lt: end } },
-      ],
-    }),
-    Beneficiary.countDocuments({
-      $or: [
-        { createdAtDate: { $gte: start.toISOString().slice(0, 10), $lt: end.toISOString().slice(0, 10) } },
-        { createdAt: { $gte: start, $lt: end } },
-      ],
-    }),
-    SocialPost.aggregate([
-      {
-        $match: {
-          status: 'published',
-          $or: [
-            { postedAt: { $gte: start, $lt: end } },
-            { postedAtDate: { $gte: start.toISOString().slice(0, 10), $lt: end.toISOString().slice(0, 10) } },
-          ],
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          posts: { $sum: 1 },
-          reach: { $sum: '$reach' },
-          engagement: { $sum: '$engagement' },
-        },
-      },
-    ]),
-    OpportunityEngagement.countDocuments({ event: 'application', createdAt: { $gte: start, $lt: end } }),
-  ]);
-  const publishedPosts = social[0]?.posts || 0;
-  const reachVal = social[0]?.reach || 0;
-  const engagementVal = social[0]?.engagement || 0;
-  return {
-    opportunitiesPublished, programsActive, programsDelivered, partnersClosed, ambassadorsActive, beneficiariesVerified,
-    beneficiariesAdded,
-    postsPublished: publishedPosts,
-    posts_published: publishedPosts,
-    socialReach: reachVal,
-    social_reach: reachVal,
-    socialEngagement: engagementVal,
-    social_engagement: engagementVal,
-    opportunityApplications: applications,
-  };
-};
+const dashboardMetrics = async (month) => fetchRawKpiMetrics(month);
 
 const partnerPipelineHealth = (month) => calculatePipelineHealth(month);
 
-const targetProgress = (values, targets) => {
-  const targetsByMetric = new Map(targets.map((target) => [target.metric, target]));
-  return Object.entries(values).map(([metric, value]) => {
-    const target = targetsByMetric.get(metric);
-    const targetValue = target?.target || 0;
-    return {
-      metric,
-      value,
-      target: targetValue,
-      unit: target?.unit || 'count',
-      attainment: targetValue ? Math.min(100, Math.round((value / targetValue) * 100)) : null,
-      status: metricStatus(value, targetValue, target),
-      note: target?.note || '',
-    };
-  });
-};
+
 
 const sixMonthTrend = async (month) => {
   const start = new Date(`${month}-01T00:00:00.000Z`);
@@ -2523,98 +2757,224 @@ const leaderboardEntries = async (month, limit) => {
   return limit ? entries.slice(0, limit) : entries;
 };
 
-const staffRoles = (staff) => String(staff.role || '').split(',').map((role) => role.trim().toLowerCase());
-
-const scorecardForStaff = async (staff, month, targetsByMetric) => {
-  const { start, end } = monthBounds(month);
-  const userId = staff.userId;
-  const metrics = [];
-  const roles = staffRoles(staff);
-  if (roles.some((role) => ['opportunities officer', 'writer'].includes(role))) {
-    metrics.push({ metric: 'opportunitiesPublished', value: await Opportunity.countDocuments({ createdBy: userId, vetted: true, createdAt: { $gte: start, $lt: end } }) });
-  }
-  if (roles.includes('training and capacity development officer')) {
-    metrics.push({
-      metric: 'programsDelivered',
-      value: await Program.countDocuments({
-        createdBy: userId,
-        status: 'delivered',
-        $or: [
-          { deliveredAt: { $gte: start, $lt: end } },
-          { deliveredAt: { $exists: false }, endAt: { $gte: start, $lt: end } },
-          { deliveredAt: null, endAt: { $gte: start, $lt: end } },
-        ],
-      }),
-    });
-  }
-  if (roles.includes('partnerships officer')) {
-    metrics.push({
-      metric: 'partnersClosed',
-      value: await Partner.countDocuments({
-        assignedOwnerId: userId,
-        $or: [
-          {
-            stageHistory: {
-              $elemMatch: {
-                stage: { $in: ['onboard', 'renew', 'Onboard', 'Renew'] },
-                at: { $gte: start.toISOString().slice(0, 10), $lt: end.toISOString().slice(0, 10) },
-              },
-            },
-          },
-          {
-            $and: [
-              { stageHistory: { $size: 0 } },
-              { closed: true, updatedAt: { $gte: start, $lt: end } },
-            ],
-          },
-        ],
-      }),
-    });
-  }
-  if (roles.some((role) => ['database officer', 'country lead'].includes(role))) {
-    metrics.push({ metric: 'beneficiariesAdded', value: await Beneficiary.countDocuments({ addedBy: userId, createdAt: { $gte: start, $lt: end } }) });
-  }
-  if (roles.some((role) => ['communications officer', 'social media manager'].includes(role))) {
-    const social = await SocialPost.aggregate([{ $match: { createdBy: userId, status: 'published', postedAt: { $gte: start, $lt: end } } }, { $group: { _id: null, reach: { $sum: '$reach' } } }]);
-    metrics.push({ metric: 'socialReach', value: social[0]?.reach || 0 });
-  }
-  const scored = metrics.map((item) => {
-    const target = targetsByMetric.get(item.metric)?.target || 0;
-    return { ...item, target, attainment: target ? Math.min(100, Math.round((item.value / target) * 100)) : 0 };
+export const scorecardForStaff = async (staff, month, targetsByMetric, options = {}) => {
+  const today = options.today || new Date();
+  const metricValues = options.metricValues || await dashboardMetrics(month);
+  const thresholds = options.thresholds || await getThresholdsInForce(month);
+  return buildScorecardPerson({
+    staff,
+    metricValues,
+    targetsByMetric,
+    month,
+    today,
+    thresholds,
+    scoreFromDay: options.scoreFromDay || SCORE_FROM_DAY,
   });
-  const ordered = [...scored].sort((a, b) => b.attainment - a.attainment);
-  const score = scored.length ? Math.round(scored.reduce((sum, item) => sum + item.attainment, 0) / scored.length) : 0;
-  return { staff: { id: staff.id || staff._id.toString(), name: staff.name, role: staff.role }, score, metrics: scored, strongestMetric: ordered[0] || null, weakestMetric: ordered.at(-1) || null };
 };
 
-adminApiRouter.get('/scorecards', requireAdminOrStaffAuth, requirePortalRoles('Desk Lead', 'Admin Support'), asyncHandler(async (req, res) => {
+const handleTeamScorecards = asyncHandler(async (req, res) => {
   const { month } = monthBounds(req.query.month);
-  const [staffMembers, targets] = await Promise.all([StaffMember.find({ status: 'active' }), MonthlyTarget.find({ month })]);
-  const targetsByMetric = new Map(targets.map((target) => [target.metric, target]));
-  const scorecards = await Promise.all(staffMembers.map((staff) => scorecardForStaff(staff, month, targetsByMetric)));
-  listResponse(res, scorecards);
-}));
+  const today = req.query.today ? new Date(req.query.today) : new Date();
 
-adminApiRouter.get('/scorecards/me', requireAdminOrStaffAuth, requirePortalRoles(...ALL_PORTAL_ROLES), asyncHandler(async (req, res) => {
-  const { month } = monthBounds(req.query.month);
-  const staff = await StaffMember.findOne({ userId: req.auth.sub, status: 'active' });
-  if (!staff) throw new ApiError(403, 'An active staff profile is required');
-  const targets = await MonthlyTarget.find({ month });
-  itemResponse(res, { month, ...await scorecardForStaff(staff, month, new Map(targets.map((target) => [target.metric, target]))) });
-}));
+  const [staffMembers, metricValues, targets, thresholds] = await Promise.all([
+    StaffMember.find({ status: 'active' }).lean(),
+    dashboardMetrics(month),
+    getTargetsForMonth(month),
+    getThresholdsInForce(month),
+  ]);
+  const targetsByMetric = new Map(targets.map((t) => [t.kpi || t.metric, t]));
+
+  const people = staffMembers.map((staff) =>
+    buildScorecardPerson({
+      staff,
+      metricValues,
+      targetsByMetric,
+      month,
+      today,
+      thresholds,
+    })
+  );
+
+  const sortedPeople = sortTeamScorecards(people);
+  const summary = teamSummary(sortedPeople);
+  const isPast = isPastMonth(month, today);
+  const tooEarly = isTooEarly(month, today);
+
+  itemResponse(res, {
+    month,
+    isPast,
+    notConnected: false,
+    tooEarly,
+    people: sortedPeople,
+    series: null,
+    summary,
+  });
+});
+
+adminApiRouter.get(
+  '/scorecards/team',
+  requireAdminOrStaffAuth,
+  requireScreen('team_scorecard', 'view'),
+  validate(scorecardQuerySchema),
+  handleTeamScorecards
+);
+
+adminApiRouter.get(
+  '/scorecards',
+  requireAdminOrStaffAuth,
+  requireScreen('team_scorecard', 'view'),
+  validate(scorecardQuerySchema),
+  handleTeamScorecards
+);
+
+adminApiRouter.get(
+  '/scorecards/me',
+  requireAdminOrStaffAuth,
+  requireScreen('my_scorecard', 'view'),
+  validate(scorecardQuerySchema),
+  asyncHandler(async (req, res) => {
+    const { month } = monthBounds(req.query.month);
+    const today = req.query.today ? new Date(req.query.today) : new Date();
+
+    const staff = await StaffMember.findOne({ userId: req.auth.sub, status: 'active' }).lean();
+    let callerPerson;
+
+    const [metricValues, targets, thresholds] = await Promise.all([
+      dashboardMetrics(month),
+      getTargetsForMonth(month),
+      getThresholdsInForce(month),
+    ]);
+    const targetsByMetric = new Map(targets.map((t) => [t.kpi || t.metric, t]));
+
+    if (staff) {
+      callerPerson = buildScorecardPerson({
+        staff,
+        metricValues,
+        targetsByMetric,
+        month,
+        today,
+        thresholds,
+      });
+    } else if (req.auth.role === 'admin') {
+      const user = await User.findById(req.auth.sub).lean();
+      callerPerson = buildScorecardPerson({
+        staff: {
+          id: req.auth.sub,
+          name: user?.name || user?.fullName || 'Admin',
+          roles: ['super_admin'],
+        },
+        metricValues,
+        targetsByMetric,
+        month,
+        today,
+        thresholds,
+      });
+    } else {
+      throw new ApiError(403, 'An active staff profile is required');
+    }
+
+    const series = await buildCompositeSeries(
+      callerPerson.roles,
+      6,
+      month,
+      today,
+      async (m) => {
+        const [mValues, mTargets, mThresholds] = await Promise.all([
+          dashboardMetrics(m),
+          getTargetsForMonth(m),
+          getThresholdsInForce(m),
+        ]);
+        return {
+          metricValues: mValues,
+          targetsByMetric: new Map(mTargets.map((t) => [t.kpi || t.metric, t])),
+          thresholds: mThresholds,
+        };
+      }
+    );
+
+    const isPast = isPastMonth(month, today);
+    const tooEarly = callerPerson.tooEarly;
+
+    itemResponse(res, {
+      month,
+      isPast,
+      notConnected: false,
+      tooEarly,
+      people: [callerPerson],
+      series,
+      // Backward compatibility fields
+      staff: { id: callerPerson.id, name: callerPerson.name, role: callerPerson.roles.join(', ') },
+      score: callerPerson.composite,
+      status: callerPerson.status,
+      metrics: callerPerson.metrics,
+      strongestMetric: callerPerson.highlight?.kind === 'pair' ? callerPerson.highlight.strongest : callerPerson.highlight?.focus || null,
+      weakestMetric: callerPerson.highlight?.kind === 'pair' ? callerPerson.highlight.weakest : null,
+    });
+  })
+);
+
+
+// BE-004: KPI Engine endpoints
+adminApiRouter.get(
+  '/kpis',
+  requireAdminOrStaffAuth,
+  requireScreen('overview', 'view'),
+  validate(kpiQuerySchema),
+  asyncHandler(async (req, res) => {
+    const today = req.query.today ? new Date(req.query.today) : new Date();
+    const result = await getKpiCardsForMonth(req.query.month, today);
+    itemResponse(res, result);
+  })
+);
+
+adminApiRouter.get(
+  '/kpis/priorities',
+  requireAdminOrStaffAuth,
+  requireScreen('overview', 'view'),
+  validate(kpiQuerySchema),
+  asyncHandler(async (req, res) => {
+    const today = req.query.today ? new Date(req.query.today) : new Date();
+    const count = req.query.count ? parseInt(req.query.count, 10) : undefined;
+    const result = await getKpiPrioritiesForMonth(req.query.month, today, count);
+    itemResponse(res, result);
+  })
+);
+
+adminApiRouter.get(
+  '/kpis/trend',
+  requireAdminOrStaffAuth,
+  requireScreen('overview', 'view'),
+  validate(kpiTrendQuerySchema),
+  asyncHandler(async (req, res) => {
+    const today = req.query.today ? new Date(req.query.today) : new Date();
+    const result = await getKpiTrend(req.query.month, req.query.months, req.query.kpi, today);
+    itemResponse(res, result);
+  })
+);
 
 adminApiRouter.get('/dashboard', requireAdminOrStaffAuth, requirePortalRoles(...ALL_PORTAL_ROLES), asyncHandler(async (req, res) => {
   const { month, start } = monthBounds(req.query.month);
-  const [values, targets, pipeline, upcomingPrograms, activities, trend] = await Promise.all([
+  const today = req.query.today ? new Date(req.query.today) : new Date();
+  const [values, kpiCardsResult, pipeline, upcomingPrograms, activities, trend] = await Promise.all([
     dashboardMetrics(month),
-    MonthlyTarget.find({ month }),
+    getKpiCardsForMonth(month, today),
     partnerPipelineHealth(month),
     Program.find({ status: { $in: ['planned', 'running'] }, startAt: { $gte: start } }).sort({ startAt: 1 }).limit(10),
     AdminActivity.find().sort({ createdAt: -1 }).limit(10),
     sixMonthTrend(month),
   ]);
-  const kpis = targetProgress(values, targets);
-  itemResponse(res, { month, values, kpis, priorities: kpis.filter((kpi) => kpi.target > 0), trend, pipeline, upcomingPrograms: upcomingPrograms.map(toClientObject), recentActivity: activities.map(toClientObject) });
+  const kpis = kpiCardsResult.kpis;
+  const priorities = rankPriorities(kpis);
+  itemResponse(res, {
+    month,
+    values,
+    kpis,
+    priorities,
+    trend,
+    pipeline,
+    upcomingPrograms: upcomingPrograms.map(toClientObject),
+    recentActivity: activities.map(toClientObject),
+  });
 }));
 
 adminApiRouter.get('/settings/pipeline-stages', requireAdminOrStaffAuth, requireScreen('settings_admin', 'view'), asyncHandler(async (req, res) => {
@@ -2667,14 +3027,175 @@ adminApiRouter.put('/settings/pipeline-stages', requireAdminOrStaffAuth, require
   itemResponse(res, responseStages);
 }));
 
-adminApiRouter.get('/settings/integrations', requireAdminOrStaffAuth, requirePortalRoles('Desk Lead', 'Admin Support'), (req, res) => {
+// BE-016: Integrations settings (write-only credentials, connection tests)
+adminApiRouter.get('/settings/integrations', requireAdminOrStaffAuth, requireScreen('settings_admin', 'view'), asyncHandler(async (req, res) => {
+  const integrations = await getAllIntegrationsStatus();
   itemResponse(res, {
-    wordpress: { configured: configured(env.wordpressSyncBaseUrl) && configured(env.wordpressApiKey) },
+    ...integrations,
     openai: { configured: configured(env.openaiApiKey), model: env.openaiModel },
     anthropic: { configured: configured(env.anthropicApiKey), model: env.anthropicModel },
     resend: { configured: configured(env.resendApiKey) && configured(env.resendFromEmail) },
   });
+}));
+
+const handleSaveIntegration = asyncHandler(async (req, res) => {
+  const { kind } = req.params;
+  const { identifier, secret } = req.body;
+  const callerUser = await User.findById(req.auth.sub).select('name email').lean();
+
+  const saved = await saveIntegrationSettings({
+    kind,
+    identifier,
+    secret,
+    userId: req.auth.sub,
+    userName: callerUser?.name || 'Admin',
+  });
+
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.SETTINGS_UPDATE,
+    resourceType: AUDIT_RESOURCE_TYPES.SETTINGS,
+    outcome: 'success',
+    details: {
+      kind,
+      identifier: identifier !== undefined ? String(identifier).trim() : undefined,
+      secret: secret ? `••••${String(secret).trim().slice(-4)}` : (secret === '' ? 'cleared' : undefined),
+    },
+  });
+
+  itemResponse(res, saved);
 });
+
+adminApiRouter.put('/settings/integrations/:kind', requireAdminOrStaffAuth, requireScreen('settings_admin', 'edit'), validate(integrationUpdateSchema), handleSaveIntegration);
+adminApiRouter.post('/settings/integrations/:kind', requireAdminOrStaffAuth, requireScreen('settings_admin', 'edit'), validate(integrationUpdateSchema), handleSaveIntegration);
+
+adminApiRouter.post('/settings/integrations/:kind/test', requireAdminOrStaffAuth, requireScreen('settings_admin', 'edit'), asyncHandler(async (req, res) => {
+  const { kind } = req.params;
+  const result = await testIntegrationConnection(kind);
+  itemResponse(res, {
+    ...result,
+    kind: normalizeIntegrationKind(kind),
+  });
+}));
+
+// BE-016: My Account & Profile management
+const handleGetAccountProfile = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.auth.sub).select('name email role notificationPreferences').lean();
+  if (!user || user.role === 'deleted') {
+    throw notFound('User account not found');
+  }
+
+  const staff = await StaffMember.findOne({ userId: req.auth.sub, status: 'active' }).select('roles role joinedDate').lean();
+
+  const profile = {
+    id: user._id.toString(),
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    roles: staff?.roles || (staff?.role ? [staff.role] : [user.role]),
+    notificationPreferences: user.notificationPreferences || {
+      digest: true,
+      verifications: true,
+      reports: true,
+      testimonials: false,
+    },
+  };
+  itemResponse(res, profile);
+});
+
+adminApiRouter.get('/settings/account', requireAdminOrStaffAuth, requireScreen('settings', 'view'), handleGetAccountProfile);
+adminApiRouter.get('/settings/me', requireAdminOrStaffAuth, requireScreen('settings', 'view'), handleGetAccountProfile);
+
+const handleUpdateAccountProfile = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.auth.sub);
+  if (!user || user.role === 'deleted') {
+    throw notFound('User account not found');
+  }
+
+  const { name, notificationPreferences } = req.body;
+  if (name !== undefined) {
+    user.name = String(name).trim();
+    await StaffMember.updateOne({ userId: user._id }, { $set: { name: user.name } });
+  }
+
+  if (notificationPreferences !== undefined) {
+    const existing = user.notificationPreferences?.toObject?.() || user.notificationPreferences || {};
+    user.notificationPreferences = {
+      ...existing,
+      ...notificationPreferences,
+    };
+  }
+
+  await user.save();
+
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.ADMIN_USER_UPDATE,
+    resourceType: AUDIT_RESOURCE_TYPES.USER,
+    resourceId: user._id,
+    outcome: 'success',
+    details: {
+      updatedFields: Object.keys(req.body),
+    },
+  });
+
+  const staff = await StaffMember.findOne({ userId: user._id, status: 'active' }).select('roles role joinedDate').lean();
+
+  const profile = {
+    id: user._id.toString(),
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    roles: staff?.roles || (staff?.role ? [staff.role] : [user.role]),
+    notificationPreferences: user.notificationPreferences,
+  };
+  itemResponse(res, profile);
+});
+
+adminApiRouter.put('/settings/account', requireAdminOrStaffAuth, requireScreen('settings', 'edit'), validate(accountProfileUpdateSchema), handleUpdateAccountProfile);
+adminApiRouter.put('/settings/me', requireAdminOrStaffAuth, requireScreen('settings', 'edit'), validate(accountProfileUpdateSchema), handleUpdateAccountProfile);
+
+// BE-016: Password Change behind authenticated session
+const handleChangePassword = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.auth.sub);
+  if (!user || user.role === 'deleted') {
+    throw notFound('User account not found');
+  }
+
+  const currentPassword = req.body.currentPassword || req.body.current;
+  const newPassword = req.body.newPassword || req.body.next;
+
+  if (!user.passwordHash || !(await bcrypt.compare(currentPassword, user.passwordHash))) {
+    await auditReq(req, {
+      action: AUDIT_ACTIONS.PASSWORD_CHANGE,
+      resourceType: AUDIT_RESOURCE_TYPES.USER,
+      outcome: 'failure',
+      reason: 'Incorrect current password',
+    });
+    throw new ApiError(400, 'Current password is incorrect');
+  }
+
+  if (await bcrypt.compare(newPassword, user.passwordHash)) {
+    throw new ApiError(400, 'New password must be different from the current one');
+  }
+
+  user.passwordHash = await bcrypt.hash(newPassword, 12);
+  user.tokenVersion = (user.tokenVersion || 0) + 1;
+  user.failedLoginAttempts = 0;
+  user.lockUntil = undefined;
+  await user.save();
+
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.PASSWORD_CHANGE,
+    resourceType: AUDIT_RESOURCE_TYPES.USER,
+    resourceId: user._id,
+    outcome: 'success',
+    details: { event: 'password_change' },
+  });
+
+  itemResponse(res, { success: true, message: 'Password updated successfully' });
+});
+
+adminApiRouter.post('/settings/password', requireAdminOrStaffAuth, requireScreen('settings', 'edit'), reauthLimiter, validate(passwordChangeSchema), handleChangePassword);
+adminApiRouter.post('/settings/change-password', requireAdminOrStaffAuth, requireScreen('settings', 'edit'), reauthLimiter, validate(passwordChangeSchema), handleChangePassword);
 
 adminApiRouter.get('/leaderboard', requireAdminOrStaffAuth, requirePortalRoles(...AMBASSADOR_ROLES), asyncHandler(async (req, res) => {
   const { month } = monthBounds(req.query.month);
@@ -2682,63 +3203,639 @@ adminApiRouter.get('/leaderboard', requireAdminOrStaffAuth, requirePortalRoles(.
   itemResponse(res, { month, entries });
 }));
 
-adminApiRouter.get('/testimonials', requireAdminOrStaffAuth, requirePortalRoles(...SOCIAL_ROLES), asyncHandler(async (req, res) => {
-  const filter = req.query.status ? { status: req.query.status } : {};
-  const records = await Testimonial.find(filter).sort({ createdAt: -1 });
-  listResponse(res, records.map(toClientObject));
+export const toTestimonialAdminObject = (document) => {
+  if (!document) return null;
+  const value = document.toJSON ? document.toJSON({ virtuals: true }) : document;
+  const decider = value.decidedBy || value.moderatedBy;
+  const deciderName = decider && typeof decider === 'object' ? (decider.name || decider.fullName) : undefined;
+  const deciderId = decider && typeof decider === 'object'
+    ? (decider._id?.toString() || decider.id)
+    : (decider ? decider.toString() : undefined);
+
+  const rawSubmitted = value.submittedAt || value.createdAt;
+  const submittedAt = rawSubmitted
+    ? (typeof rawSubmitted === 'string' ? rawSubmitted : new Date(rawSubmitted).toISOString())
+    : new Date().toISOString();
+
+  return {
+    id: value.id || value._id?.toString(),
+    name: value.name,
+    author: value.name,
+    email: value.email,
+    role: value.role || '',
+    comment: value.comment,
+    quote: value.comment,
+    photo: value.photo || null,
+    status: value.status || 'pending',
+    submittedAt,
+    decidedAt: value.decidedAt ? new Date(value.decidedAt).toISOString() : (value.moderatedAt ? new Date(value.moderatedAt).toISOString() : null),
+    decidedBy: deciderId || null,
+    decidedByName: deciderName || null,
+    moderatedAt: value.moderatedAt ? new Date(value.moderatedAt).toISOString() : (value.decidedAt ? new Date(value.decidedAt).toISOString() : null),
+    moderatedBy: deciderId || null,
+    rejectionReason: value.rejectionReason || undefined,
+    createdAt: value.createdAt ? new Date(value.createdAt).toISOString() : submittedAt,
+    updatedAt: value.updatedAt ? new Date(value.updatedAt).toISOString() : submittedAt,
+  };
+};
+
+export const resolveTestimonialTransition = (currentStatus, target) => {
+  const norm = String(target || '').trim().toLowerCase();
+  const targetStatus = TESTIMONIAL_ACTIONS_MAP[norm] || norm;
+
+  if (!TESTIMONIAL_STATUSES.includes(targetStatus)) {
+    throw new ApiError(400, `Invalid status or action: "${target}". Status must be one of: ${TESTIMONIAL_STATUSES.join(', ')}`);
+  }
+
+  const allowed = ALLOWED_TESTIMONIAL_TRANSITIONS[currentStatus] || [];
+  if (!allowed.includes(targetStatus)) {
+    throw new ApiError(400, `Cannot transition testimonial from "${currentStatus}" to "${targetStatus}". Allowed target statuses from "${currentStatus}": ${allowed.join(', ')}`);
+  }
+
+  return targetStatus;
+};
+
+// BE-022: ingested news moderation. Staff can hide (or re-show) items;
+// ingest never flips `hidden`, so a hide decision always wins.
+adminApiRouter.get('/news', requireAdminOrStaffAuth, requireScreen('social', 'view'), requirePortalRoles(...SOCIAL_ROLES), validate(newsAdminQuerySchema), asyncHandler(async (req, res) => {
+  const filter = {};
+  if (req.query.source) filter.source = req.query.source;
+  if (req.query.hidden !== undefined) filter.hidden = req.query.hidden === 'true';
+  if (req.query.q) {
+    const regex = new RegExp(escapedRegex(req.query.q.trim()), 'i');
+    filter.$or = [{ title: regex }, { summary: regex }];
+  }
+  const { page, skip, limit } = pageOptions(req.query);
+  const [total, records] = await Promise.all([
+    NewsItem.countDocuments(filter),
+    NewsItem.find(filter).sort({ publishedAt: -1, _id: -1 }).skip(skip).limit(limit),
+  ]);
+  listResponse(res, records.map(toClientObject), total, page, limit);
 }));
 
-adminApiRouter.post('/testimonials/:id/moderate', requireAdminOrStaffAuth, requirePortalRoles(...SOCIAL_ROLES), asyncHandler(async (req, res) => {
-  const status = req.body.status;
-  if (!['approved', 'unpublished', 'rejected'].includes(status)) throw new ApiError(400, 'status must be approved, unpublished, or rejected');
+adminApiRouter.patch('/news/:id', requireAdminOrStaffAuth, requireScreen('social', 'edit'), requirePortalRoles(...SOCIAL_ROLES), validate(newsModerateSchema), asyncHandler(async (req, res) => {
+  const record = await NewsItem.findById(validId(req.params.id, 'News item'));
+  if (!record) throw notFound('News item');
+  const previous = record.hidden;
+  record.hidden = req.body.hidden;
+  record.hiddenBy = req.body.hidden ? req.auth.sub : null;
+  record.hiddenAt = req.body.hidden ? new Date() : null;
+  await record.save();
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.NEWS_UPDATE,
+    resourceType: AUDIT_RESOURCE_TYPES.NEWS_ITEM,
+    resourceId: record._id,
+    outcome: 'success',
+    metadata: { previous, hidden: record.hidden },
+  });
+  itemResponse(res, toClientObject(record));
+}));
+
+adminApiRouter.get('/testimonials/pending-count', requireAdminOrStaffAuth, requireScreen('testimonials', 'view'), requirePortalRoles(...TESTIMONIAL_VIEW_ROLES), asyncHandler(async (req, res) => { const count = await Testimonial.countDocuments({ status: 'pending' });
+  itemResponse(res, { count });
+}));
+
+adminApiRouter.get('/testimonials', requireAdminOrStaffAuth, requireScreen('testimonials', 'view'), requirePortalRoles(...TESTIMONIAL_VIEW_ROLES), asyncHandler(async (req, res) => {
+  const filter = {};
+  if (req.query.status && TESTIMONIAL_STATUSES.includes(String(req.query.status).toLowerCase())) {
+    filter.status = String(req.query.status).toLowerCase();
+  }
+
+  if (req.query.search) {
+    const regex = new RegExp(escapedRegex(req.query.search.trim()), 'i');
+    filter.$or = [{ name: regex }, { email: regex }, { comment: regex }, { role: regex }];
+  }
+
+  if (req.query.page || req.query.limit) {
+    const { page, skip, limit } = pageOptions(req.query);
+    const [total, records] = await Promise.all([
+      Testimonial.countDocuments(filter),
+      Testimonial.find(filter)
+        .populate('decidedBy', 'name fullName email')
+        .populate('moderatedBy', 'name fullName email')
+        .sort({ submittedAt: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+    ]);
+    return listResponse(res, records.map(toTestimonialAdminObject), total, page, limit);
+  }
+
+  const records = await Testimonial.find(filter)
+    .populate('decidedBy', 'name fullName email')
+    .populate('moderatedBy', 'name fullName email')
+    .sort({ submittedAt: -1, createdAt: -1 });
+  listResponse(res, records.map(toTestimonialAdminObject));
+}));
+
+adminApiRouter.get('/testimonials/:id', requireAdminOrStaffAuth, requireScreen('testimonials', 'view'), requirePortalRoles(...TESTIMONIAL_VIEW_ROLES), asyncHandler(async (req, res) => {
+  const record = await Testimonial.findById(validId(req.params.id, 'Testimonial'))
+    .populate('decidedBy', 'name fullName email')
+    .populate('moderatedBy', 'name fullName email');
+  if (!record) throw notFound('Testimonial');
+  itemResponse(res, toTestimonialAdminObject(record));
+}));
+
+adminApiRouter.post('/testimonials/:id/moderate', requireAdminOrStaffAuth, requireScreen('testimonials', 'edit'), requirePortalRoles(...TESTIMONIAL_EDIT_ROLES), validate(testimonialModerateSchema), asyncHandler(async (req, res) => {
   const record = await Testimonial.findById(validId(req.params.id, 'Testimonial'));
   if (!record) throw notFound('Testimonial');
-  record.status = status;
+
+  const previousStatus = record.status;
+  const target = req.body.action || req.body.status;
+  const nextStatus = resolveTestimonialTransition(previousStatus, target);
+
+  const now = new Date();
+  record.status = nextStatus;
+  record.decidedAt = now;
+  record.decidedBy = req.auth.sub;
+  record.moderatedAt = now;
   record.moderatedBy = req.auth.sub;
-  record.moderatedAt = new Date();
+  if (req.body.rejectionReason !== undefined) {
+    record.rejectionReason = req.body.rejectionReason;
+  }
   await record.save();
-  await logActivity(req.auth.sub, status, 'testimonials', record);
-  itemResponse(res, toClientObject(record));
+
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.TESTIMONIAL_MODERATE,
+    resourceType: AUDIT_RESOURCE_TYPES.TESTIMONIAL,
+    resourceId: record._id,
+    outcome: 'success',
+    metadata: {
+      previousStatus,
+      status: nextStatus,
+      action: req.body.action,
+    },
+  });
+
+  await logActivity(req.auth.sub, nextStatus, 'testimonials', record);
+  itemResponse(res, toTestimonialAdminObject(record));
+}));
+
+adminApiRouter.post('/testimonials', requireAdminOrStaffAuth, requireScreen('testimonials', 'edit'), requirePortalRoles(...TESTIMONIAL_EDIT_ROLES), validate(testimonialCreateSchema), asyncHandler(async (req, res) => {
+  const name = String(req.body.name || req.body.author).trim();
+  const email = String(req.body.email).trim().toLowerCase();
+  const comment = String(req.body.comment || req.body.quote).trim();
+  const role = req.body.role ? String(req.body.role).trim() : '';
+  const photo = req.body.photo ? String(req.body.photo).trim() : undefined;
+  const status = req.body.status || 'pending';
+  const submittedAt = req.body.submittedAt ? new Date(req.body.submittedAt) : new Date();
+
+  const record = await Testimonial.create({
+    name,
+    email,
+    comment,
+    role,
+    photo,
+    status,
+    submittedAt,
+  });
+
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.TESTIMONIAL_CREATE,
+    resourceType: AUDIT_RESOURCE_TYPES.TESTIMONIAL,
+    resourceId: record._id,
+    outcome: 'success',
+    metadata: {
+      name,
+      email,
+      status,
+    },
+  });
+
+  await logActivity(req.auth.sub, 'created', 'testimonials', record);
+  res.status(201).json({ data: toTestimonialAdminObject(record) });
+}));
+
+adminApiRouter.patch('/testimonials/:id', requireAdminOrStaffAuth, requireScreen('testimonials', 'edit'), requirePortalRoles(...TESTIMONIAL_EDIT_ROLES), validate(testimonialUpdateSchema), asyncHandler(async (req, res) => {
+  const record = await Testimonial.findById(validId(req.params.id, 'Testimonial'));
+  if (!record) throw notFound('Testimonial');
+
+  const previousStatus = record.status;
+  if (req.body.status || req.body.action) {
+    const target = req.body.action || req.body.status;
+    const nextStatus = resolveTestimonialTransition(previousStatus, target);
+    const now = new Date();
+    record.status = nextStatus;
+    record.decidedAt = now;
+    record.decidedBy = req.auth.sub;
+    record.moderatedAt = now;
+    record.moderatedBy = req.auth.sub;
+  }
+
+  if (req.body.name !== undefined || req.body.author !== undefined) {
+    record.name = String(req.body.name || req.body.author).trim();
+  }
+  if (req.body.email !== undefined) {
+    record.email = String(req.body.email).trim().toLowerCase();
+  }
+  if (req.body.comment !== undefined || req.body.quote !== undefined) {
+    record.comment = String(req.body.comment || req.body.quote).trim();
+  }
+  if (req.body.role !== undefined) {
+    record.role = String(req.body.role).trim();
+  }
+  if (req.body.photo !== undefined) {
+    record.photo = req.body.photo ? String(req.body.photo).trim() : null;
+  }
+  if (req.body.rejectionReason !== undefined) {
+    record.rejectionReason = req.body.rejectionReason ? String(req.body.rejectionReason).trim() : undefined;
+  }
+
+  await record.save();
+
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.TESTIMONIAL_UPDATE,
+    resourceType: AUDIT_RESOURCE_TYPES.TESTIMONIAL,
+    resourceId: record._id,
+    outcome: 'success',
+    metadata: {
+      status: record.status,
+      previousStatus,
+    },
+  });
+
+  itemResponse(res, toTestimonialAdminObject(record));
+}));
+
+adminApiRouter.delete('/testimonials/:id', requireAdminOrStaffAuth, requireScreen('testimonials', 'edit'), requirePortalRoles(...TESTIMONIAL_EDIT_ROLES), asyncHandler(async (req, res) => {
+  const record = await Testimonial.findById(validId(req.params.id, 'Testimonial'));
+  if (!record) throw notFound('Testimonial');
+
+  await Testimonial.findByIdAndDelete(record._id);
+
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.TESTIMONIAL_DELETE,
+    resourceType: AUDIT_RESOURCE_TYPES.TESTIMONIAL,
+    resourceId: record._id,
+    outcome: 'success',
+    metadata: {
+      name: record.name,
+      status: record.status,
+    },
+  });
+
+  await logActivity(req.auth.sub, 'deleted', 'testimonials', record);
+  itemResponse(res, { deleted: true, id: req.params.id });
+}));
+
+const formatMonthLabel = (monthStr) => {
+  try {
+    const [year, month] = monthStr.split('-').map(Number);
+    const date = new Date(Date.UTC(year, month - 1, 1));
+    return date.toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  } catch {
+    return monthStr;
+  }
+};
+
+const buildPartnerReport = async (month, now = new Date()) => {
+  const { start, end } = monthBounds(month);
+  const previousDate = new Date(start);
+  previousDate.setUTCMonth(previousDate.getUTCMonth() - 1);
+  const previousMonth = previousDate.toISOString().slice(0, 7);
+  const previousBounds = monthBounds(previousMonth);
+
+  const [
+    metrics,
+    previousMetrics,
+    targets,
+    pipeline,
+    networkSize,
+    socialAgg,
+    recordsBySource,
+    activityCount,
+    websiteAudienceDoc,
+    previousWebsiteAudienceDoc,
+    socialPlatformAgg,
+    audienceTrendDocs,
+    newAmbassadorsCount,
+    prevNewAmbassadorsCount,
+  ] = await Promise.all([
+    dashboardMetrics(month),
+    dashboardMetrics(previousMonth),
+    MonthlyTarget.find({ month }),
+    partnerPipelineHealth(month),
+    Ambassador.countDocuments({ status: 'active' }),
+    SocialPost.aggregate([
+      { $match: { status: 'published', postedAt: { $gte: start, $lt: end } } },
+      { $group: { _id: null, reach: { $sum: '$reach' }, engagement: { $sum: '$engagement' } } },
+    ]),
+    Beneficiary.aggregate([
+      { $match: { createdAt: { $gte: start, $lt: end } } },
+      { $group: { _id: '$sourceType', count: { $sum: 1 } } },
+    ]),
+    AmbassadorAmplification.distinct('ambassadorId', { createdAt: { $gte: start, $lt: end } }),
+    WebsiteMonth.findOne({ month }),
+    WebsiteMonth.findOne({ month: previousMonth }),
+    SocialPost.aggregate([
+      {
+        $match: {
+          status: 'published',
+          $or: [
+            { postedAt: { $gte: start, $lt: end } },
+            { postedAtDate: { $gte: start.toISOString().slice(0, 10), $lt: end.toISOString().slice(0, 10) } },
+          ],
+        },
+      },
+      {
+        $group: {
+          _id: '$platform',
+          posts: { $sum: 1 },
+          reach: { $sum: '$reach' },
+          engagement: { $sum: '$engagement' },
+        },
+      },
+      { $sort: { reach: -1, posts: -1 } },
+    ]),
+    WebsiteMonth.find({ month: { $lte: month } }).sort({ month: -1 }).limit(6),
+    Ambassador.countDocuments({
+      status: { $ne: 'applicant' },
+      $or: [
+        { joinedAt: { $gte: start.toISOString().slice(0, 10), $lt: end.toISOString().slice(0, 10) } },
+        { joinedAt: { $gte: start, $lt: end } },
+        { createdAt: { $gte: start, $lt: end } },
+      ],
+    }),
+    Ambassador.countDocuments({
+      status: { $ne: 'applicant' },
+      $or: [
+        { joinedAt: { $gte: previousBounds.start.toISOString().slice(0, 10), $lt: previousBounds.end.toISOString().slice(0, 10) } },
+        { joinedAt: { $gte: previousBounds.start, $lt: previousBounds.end } },
+        { createdAt: { $gte: previousBounds.start, $lt: previousBounds.end } },
+      ],
+    }),
+  ]);
+
+  const targetsByMetric = new Map(targets.map((target) => [target.metric, target]));
+  const percentGrowth = (value, prior) => prior ? Math.round(((value - prior) / prior) * 100) : null;
+
+  const nowMonth = now.toISOString().slice(0, 7);
+  const isCurrentMonth = month === nowMonth;
+  const currentMonthDays = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate();
+  const elapsedDays = isCurrentMonth ? Math.min(now.getUTCDate(), currentMonthDays) : currentMonthDays;
+
+  const prevMonthDays = new Date(Date.UTC(Number(previousMonth.slice(0, 4)), Number(previousMonth.slice(5, 7)), 0)).getUTCDate();
+  const prevShare = isCurrentMonth ? Math.min(1, elapsedDays / prevMonthDays) : 1;
+  const prevDaysCount = Math.round(prevMonthDays * prevShare);
+
+  const dailyFirstVisitsSum = Math.round((websiteAudienceDoc?.dailyFirstVisits || 0) * elapsedDays);
+  const prevDailyFirstVisitsSum = previousWebsiteAudienceDoc ? Math.round((previousWebsiteAudienceDoc.dailyFirstVisits || 0) * prevDaysCount) : null;
+
+  const dailyVisitorsSum = Math.round((websiteAudienceDoc?.dailyVisitors || 0) * elapsedDays);
+  const prevDailyVisitorsSum = previousWebsiteAudienceDoc ? Math.round((previousWebsiteAudienceDoc.dailyVisitors || 0) * prevDaysCount) : null;
+
+  const againstLabel = isCurrentMonth ? 'the same period last month, estimated' : formatMonthLabel(previousMonth);
+
+  const computeDelta = (val, prevVal) => {
+    if (prevVal === null || prevVal === undefined) return { kind: 'none', text: '—', percent: null };
+    if (prevVal === 0) return { kind: 'na', text: 'n/a', percent: null };
+    const pct = Math.round(((val - prevVal) / prevVal) * 100);
+    const sign = pct > 0 ? '+' : '';
+    const kind = pct > 0 ? 'up' : pct < 0 ? 'down' : 'flat';
+    return { kind, text: `${sign}${pct}% vs ${againstLabel}`, percent: pct };
+  };
+
+  const partnerMetrics = [
+    { id: 'website_views', label: 'Website views', description: 'Pages opened across the Desk website', value: metrics.website_views, previous: previousMetrics.website_views !== null ? Math.round(previousMetrics.website_views * prevShare) : null, delta: computeDelta(metrics.website_views, previousMetrics.website_views !== null ? Math.round(previousMetrics.website_views * prevShare) : null) },
+    { id: 'daily_first_visits', label: 'Daily first visits (sum)', description: 'Daily counts; returning people can appear again on another day', value: dailyFirstVisitsSum, previous: prevDailyFirstVisitsSum, delta: computeDelta(dailyFirstVisitsSum, prevDailyFirstVisitsSum) },
+    { id: 'daily_visitors', label: 'Daily visitors (sum)', description: 'Visitor-days, not unique monthly people; cached page loads may be missed', value: dailyVisitorsSum, previous: prevDailyVisitorsSum, delta: computeDelta(dailyVisitorsSum, prevDailyVisitorsSum) },
+    { id: 'social_reach', label: 'Social reach', description: 'People reached across our channels', value: metrics.social_reach, previous: previousMetrics.social_reach !== null ? Math.round(previousMetrics.social_reach * prevShare) : null, delta: computeDelta(metrics.social_reach, previousMetrics.social_reach !== null ? Math.round(previousMetrics.social_reach * prevShare) : null) },
+    { id: 'social_engagement', label: 'Social engagement', description: 'Likes, shares, comments and saves', value: metrics.social_engagement, previous: previousMetrics.social_engagement !== null ? Math.round(previousMetrics.social_engagement * prevShare) : null, delta: computeDelta(metrics.social_engagement, previousMetrics.social_engagement !== null ? Math.round(previousMetrics.social_engagement * prevShare) : null) },
+    { id: 'posts_published', label: 'Posts published', description: 'Across all social channels', value: metrics.posts_published, previous: Math.round(previousMetrics.posts_published * prevShare), delta: computeDelta(metrics.posts_published, Math.round(previousMetrics.posts_published * prevShare)) },
+    { id: 'new_ambassadors', label: 'New ambassadors', description: 'Young people who joined the network', value: newAmbassadorsCount, previous: Math.round(prevNewAmbassadorsCount * prevShare), delta: computeDelta(newAmbassadorsCount, Math.round(prevNewAmbassadorsCount * prevShare)) },
+    { id: 'new_partners', label: 'New partners', description: 'Organisations that came on board', value: metrics.partnersClosed, previous: Math.round(previousMetrics.partnersClosed * prevShare), delta: computeDelta(metrics.partnersClosed, Math.round(previousMetrics.partnersClosed * prevShare)) },
+    { id: 'opportunities_published', label: 'Opportunities published', description: 'Scholarships, grants and roles shared publicly', value: metrics.opportunitiesPublished, previous: Math.round(previousMetrics.opportunitiesPublished * prevShare), delta: computeDelta(metrics.opportunitiesPublished, Math.round(previousMetrics.opportunitiesPublished * prevShare)) },
+    { id: 'projects_organised', label: 'Projects organised', description: 'Trainings, workshops and projects GOD ran', value: metrics.programsDelivered, previous: Math.round(previousMetrics.programsDelivered * prevShare), delta: computeDelta(metrics.programsDelivered, Math.round(previousMetrics.programsDelivered * prevShare)) },
+  ];
+
+  const trend = [...audienceTrendDocs].reverse().map((doc) => ({ month: doc.month, value: doc.views }));
+  const channels = socialPlatformAgg.map((item) => ({
+    channel: item._id,
+    platform: item._id,
+    posts: item.posts,
+    reach: item.reach,
+    engagement: item.engagement,
+  }));
+
+  return {
+    month,
+    audience: 'partner',
+    audienceTrend: trend,
+    trend,
+    metrics: partnerMetrics,
+    channels,
+    kpis: (await getKpiCardsForMonth(month, now)).kpis,
+    pipeline,
+    databasePace: await databasePace(month, targetsByMetric),
+    recordsBySource: recordsBySource.map((item) => ({ sourceType: item._id, count: item.count })),
+    ambassadorNetwork: { size: networkSize, activityRate: networkSize ? Math.round((activityCount.length / networkSize) * 100) : 0 },
+    social: socialAgg[0] || { reach: 0, engagement: 0 },
+    websiteAudience: websiteAudienceDoc ? toClientObject(websiteAudienceDoc) : null,
+    monthOverMonthGrowth: {
+      opportunitiesPublished: percentGrowth(metrics.opportunitiesPublished, previousMetrics.opportunitiesPublished),
+      beneficiariesAdded: percentGrowth(metrics.beneficiariesAdded, previousMetrics.beneficiariesAdded),
+      socialReach: percentGrowth(metrics.socialReach, previousMetrics.socialReach),
+      websiteViews: percentGrowth(metrics.websiteViews, previousMetrics.websiteViews),
+    },
+  };
+};
+
+const buildTeamReport = async (month, now = new Date()) => {
+  const { start, end } = monthBounds(month);
+  const previousDate = new Date(start);
+  previousDate.setUTCMonth(previousDate.getUTCMonth() - 1);
+  const previousMonth = previousDate.toISOString().slice(0, 7);
+
+  const [
+    metrics,
+    previousMetrics,
+    targets,
+    pipeline,
+    networkSize,
+    socialAgg,
+    recordsBySource,
+    topFive,
+    activityCount,
+    websiteAudienceDoc,
+    socialPlatformAgg,
+    staffMembers,
+  ] = await Promise.all([
+    dashboardMetrics(month),
+    dashboardMetrics(previousMonth),
+    MonthlyTarget.find({ month }),
+    partnerPipelineHealth(month),
+    Ambassador.countDocuments({ status: 'active' }),
+    SocialPost.aggregate([
+      { $match: { status: 'published', postedAt: { $gte: start, $lt: end } } },
+      { $group: { _id: null, reach: { $sum: '$reach' }, engagement: { $sum: '$engagement' } } },
+    ]),
+    Beneficiary.aggregate([
+      { $match: { createdAt: { $gte: start, $lt: end } } },
+      { $group: { _id: '$sourceType', count: { $sum: 1 } } },
+    ]),
+    leaderboardEntries(month, 5),
+    AmbassadorAmplification.distinct('ambassadorId', { createdAt: { $gte: start, $lt: end } }),
+    WebsiteMonth.findOne({ month }),
+    SocialPost.aggregate([
+      {
+        $match: {
+          status: 'published',
+          $or: [
+            { postedAt: { $gte: start, $lt: end } },
+            { postedAtDate: { $gte: start.toISOString().slice(0, 10), $lt: end.toISOString().slice(0, 10) } },
+          ],
+        },
+      },
+      {
+        $group: {
+          _id: '$platform',
+          posts: { $sum: 1 },
+          reach: { $sum: '$reach' },
+          engagement: { $sum: '$engagement' },
+        },
+      },
+      { $sort: { reach: -1, posts: -1 } },
+    ]),
+    StaffMember.find({ status: 'active' }),
+  ]);
+
+  const targetsByMetric = new Map(targets.map((target) => [target.metric, target]));
+  const percentGrowth = (value, prior) => prior ? Math.round(((value - prior) / prior) * 100) : null;
+  const nowMonth = now.toISOString().slice(0, 7);
+  const isCurrentMonth = month === nowMonth;
+  const tooEarly = isCurrentMonth && now.getUTCDate() < 5;
+
+  const pipelineTarget = targetsByMetric.get('partners_onboarded')?.target || 0;
+  const pace = await databasePace(month, targetsByMetric);
+  const rawScorecards = await Promise.all(staffMembers.map((staff) => scorecardForStaff(staff, month, targetsByMetric, { metricValues: metrics })));
+  const teamScorecards = sortTeamScorecards(rawScorecards);
+
+  return {
+    month,
+    audience: 'team',
+    kpis: (await getKpiCardsForMonth(month, now)).kpis,
+    pipeline,
+    pipelineTarget,
+    pace,
+    databasePace: pace,
+    sources: recordsBySource.map((item) => ({ sourceType: item._id, count: item.count })),
+    recordsBySource: recordsBySource.map((item) => ({ sourceType: item._id, count: item.count })),
+    network: {
+      size: networkSize,
+      active: activityCount.length,
+      activityRate: networkSize ? Math.round((activityCount.length / networkSize) * 100) : 0,
+    },
+    ambassadorNetwork: {
+      size: networkSize,
+      activityRate: networkSize ? Math.round((activityCount.length / networkSize) * 100) : 0,
+    },
+    top: topFive,
+    topAmbassadors: topFive,
+    social: {
+      reach: socialAgg[0]?.reach || 0,
+      engagement: socialAgg[0]?.engagement || 0,
+      posts: metrics.posts_published,
+      platforms: socialPlatformAgg.map((item) => ({
+        channel: item._id,
+        platform: item._id,
+        posts: item.posts,
+        reach: item.reach,
+        engagement: item.engagement,
+      })),
+    },
+    people: teamScorecards,
+    teamScorecards,
+    tooEarly,
+    websiteAudience: websiteAudienceDoc ? toClientObject(websiteAudienceDoc) : null,
+    monthOverMonthGrowth: {
+      opportunitiesPublished: percentGrowth(metrics.opportunitiesPublished, previousMetrics.opportunitiesPublished),
+      beneficiariesAdded: percentGrowth(metrics.beneficiariesAdded, previousMetrics.beneficiariesAdded),
+      socialReach: percentGrowth(metrics.socialReach, previousMetrics.socialReach),
+      websiteViews: percentGrowth(metrics.websiteViews, previousMetrics.websiteViews),
+    },
+  };
+};
+
+// BE-013: Monthly reports endpoints
+adminApiRouter.get('/reports/partner', requireAdminOrStaffAuth, requireScreen('monthly_report', 'view'), asyncHandler(async (req, res) => {
+  const { month } = monthBounds(req.query.month);
+  const report = await buildPartnerReport(month);
+  itemResponse(res, report);
+}));
+
+adminApiRouter.get('/reports/team', requireAdminOrStaffAuth, requirePortalRoles('super_admin', 'desk_lead', 'Super Admin', 'Desk Lead'), asyncHandler(async (req, res) => {
+  const { month } = monthBounds(req.query.month);
+  const report = await buildTeamReport(month);
+  itemResponse(res, report);
 }));
 
 adminApiRouter.get('/reports/monthly', requireAdminOrStaffAuth, requirePortalRoles(...ALL_PORTAL_ROLES), asyncHandler(async (req, res) => {
   const { month } = monthBounds(req.query.month);
   const audience = req.query.audience === 'partner' ? 'partner' : 'internal';
-  const { start, end } = monthBounds(month);
-  const previousDate = new Date(start);
-  previousDate.setUTCMonth(previousDate.getUTCMonth() - 1);
-  const previousMonth = previousDate.toISOString().slice(0, 7);
-  const [metrics, pipeline, networkSize, social, targets, recordsBySource, topFive, activityCount, previousMetrics] = await Promise.all([
-    dashboardMetrics(month), partnerPipelineHealth(month), Ambassador.countDocuments({ status: 'active' }), SocialPost.aggregate([{ $match: { status: 'published', postedAt: { $gte: start, $lt: end } } }, { $group: { _id: null, reach: { $sum: '$reach' }, engagement: { $sum: '$engagement' } } }]),
-    MonthlyTarget.find({ month }),
-    Beneficiary.aggregate([{ $match: { createdAt: { $gte: start, $lt: end } } }, { $group: { _id: '$sourceType', count: { $sum: 1 } } }]),
-    leaderboardEntries(month, 5),
-    AmbassadorAmplification.distinct('ambassadorId', { createdAt: { $gte: start, $lt: end } }),
-    dashboardMetrics(previousMonth),
-  ]);
-  const targetsByMetric = new Map(targets.map((target) => [target.metric, target]));
-  const percentGrowth = (value, prior) => prior ? Math.round(((value - prior) / prior) * 100) : null;
-  const report = {
-    month,
-    audience,
-    kpis: targetProgress(metrics, targets),
-    pipeline,
-    databasePace: await databasePace(month, targetsByMetric),
-    recordsBySource: recordsBySource.map((item) => ({ sourceType: item._id, count: item.count })),
-    ambassadorNetwork: { size: networkSize, activityRate: networkSize ? Math.round((activityCount.length / networkSize) * 100) : 0 },
-    social: social[0] || { reach: 0, engagement: 0 },
-    monthOverMonthGrowth: {
-      opportunitiesPublished: percentGrowth(metrics.opportunitiesPublished, previousMetrics.opportunitiesPublished),
-      beneficiariesAdded: percentGrowth(metrics.beneficiariesAdded, previousMetrics.beneficiariesAdded),
-      socialReach: percentGrowth(metrics.socialReach, previousMetrics.socialReach),
-    },
-  };
-  if (audience === 'internal') {
-    const staffMembers = await StaffMember.find({ status: 'active' });
-    report.topAmbassadors = topFive;
-    report.teamScorecards = await Promise.all(staffMembers.map((staff) => scorecardForStaff(staff, month, targetsByMetric)));
+  if (audience === 'partner') {
+    const report = await buildPartnerReport(month);
+    return itemResponse(res, report);
   }
+  const report = await buildTeamReport(month);
   itemResponse(res, report);
+}));
+
+adminApiRouter.post('/monthly-reports', requireAdminOrStaffAuth, requireScreen('monthly_report', 'view'), validate(monthlyReportCreateSchema), asyncHandler(async (req, res) => {
+  const { reportMonth, view } = req.body;
+  const now = req.body.generatedAt ? new Date(req.body.generatedAt) : new Date();
+
+  const genYear = now.getUTCFullYear();
+  const genMonth = now.getUTCMonth();
+  const startOfCalendarMonth = new Date(Date.UTC(genYear, genMonth, 1));
+  const endOfCalendarMonth = new Date(Date.UTC(genYear, genMonth + 1, 1));
+
+  const existing = await MonthlyReport.findOne({
+    reportMonth,
+    view,
+    generatedAt: { $gte: startOfCalendarMonth, $lt: endOfCalendarMonth },
+  });
+
+  if (existing) {
+    return itemResponse(res, toClientObject(existing), 200);
+  }
+
+  const report = await MonthlyReport.create({
+    reportMonth,
+    view,
+    generatedAt: now,
+    generatedBy: req.auth.sub,
+    generatedByName: req.auth.name || req.auth.email || 'Admin',
+  });
+
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.MONTHLY_REPORT_GENERATE,
+    resourceType: AUDIT_RESOURCE_TYPES.MONTHLY_REPORT,
+    resourceId: report._id,
+    outcome: 'success',
+    metadata: {
+      reportMonth,
+      view,
+      generatedAt: report.generatedAt.toISOString(),
+    },
+  });
+
+  res.status(201).json({ data: toClientObject(report) });
+}));
+
+adminApiRouter.get('/monthly-reports', requireAdminOrStaffAuth, requireScreen('monthly_report', 'view'), validate(monthlyReportQuerySchema), asyncHandler(async (req, res) => {
+  const filter = {};
+  if (req.query.reportMonth) {
+    filter.reportMonth = req.query.reportMonth;
+  }
+  if (req.query.view) {
+    filter.view = req.query.view;
+  }
+  if (req.query.month) {
+    const { start, end } = monthBounds(req.query.month);
+    filter.generatedAt = { $gte: start, $lt: end };
+  }
+  const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 50));
+  const records = await MonthlyReport.find(filter).sort({ generatedAt: -1 }).limit(limit);
+  listResponse(res, records.map(toClientObject));
 }));
 
 adminApiRouter.get('/roles-permissions', requireAdminOrStaffAuth, requireScreen('roles_permissions', 'view'), asyncHandler(async (req, res) => {
@@ -2785,4 +3882,960 @@ adminApiRouter.put('/roles-permissions', requireAdminOrStaffAuth, requireScreen(
 
   const matrix = computeFullMatrix(toggles);
   itemResponse(res, { toggles, matrix });
+}));
+
+// BE-012: Website audience endpoints
+adminApiRouter.get('/website-audience', requireAdminOrStaffAuth, requireScreen(['insights', 'overview', 'monthly_report'], 'view'), validate(websiteAudienceQuerySchema), asyncHandler(async (req, res) => {
+  const months = Math.min(36, Math.max(1, Number.parseInt(req.query.months, 10) || 6));
+  const order = req.query.order === 'desc' ? 'desc' : 'asc';
+  const filter = {};
+  if (req.query.month) {
+    filter.month = { $lte: req.query.month };
+  }
+  let records = await WebsiteMonth.find(filter).sort({ month: -1 }).limit(months);
+  if (order === 'asc') {
+    records = records.reverse();
+  }
+  listResponse(res, records.map(toClientObject));
+}));
+
+adminApiRouter.get('/website-audience/:month', requireAdminOrStaffAuth, requireScreen(['insights', 'overview', 'monthly_report'], 'view'), asyncHandler(async (req, res) => {
+  const { month } = req.params;
+  if (!/^\d{4}-\d{2}$/.test(month)) {
+    throw new ApiError(400, 'Invalid month format (expected YYYY-MM)');
+  }
+  const record = await WebsiteMonth.findOne({ month });
+  if (!record) {
+    throw notFound(`Website audience for month ${month}`);
+  }
+  itemResponse(res, toClientObject(record));
+}));
+
+const handleWebsiteMonthSave = async (req, res) => {
+  const month = req.params.month || req.body.month;
+  if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+    throw new ApiError(400, 'Valid month is required (YYYY-MM)');
+  }
+
+  const existing = await WebsiteMonth.findOne({ month });
+  const previous = existing ? {
+    views: existing.views,
+    dailyFirstVisits: existing.dailyFirstVisits,
+    dailyVisitors: existing.dailyVisitors,
+    channels: existing.channels,
+    source: existing.source,
+  } : null;
+
+  let staffName = 'Admin';
+  if (req.portalStaff?.name) staffName = req.portalStaff.name;
+  else if (req.auth?.name) staffName = req.auth.name;
+
+  let document;
+  if (existing) {
+    if (req.body.views !== undefined) existing.views = req.body.views;
+    if (req.body.channels !== undefined) existing.channels = req.body.channels;
+    if (req.body.dailyFirstVisits !== undefined) existing.dailyFirstVisits = req.body.dailyFirstVisits;
+    if (req.body.dailyVisitors !== undefined) existing.dailyVisitors = req.body.dailyVisitors;
+    existing.source = req.body.source || 'manual';
+    existing.updatedBy = req.auth.sub;
+    existing.updatedByName = staffName;
+    document = await existing.save();
+  } else {
+    document = new WebsiteMonth({
+      month,
+      views: req.body.views,
+      dailyFirstVisits: req.body.dailyFirstVisits,
+      dailyVisitors: req.body.dailyVisitors,
+      channels: req.body.channels,
+      source: req.body.source || 'manual',
+      updatedBy: req.auth.sub,
+      updatedByName: staffName,
+    });
+    document = await document.save();
+  }
+
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.WEBSITE_AUDIENCE_UPDATE,
+    resourceType: AUDIT_RESOURCE_TYPES.WEBSITE_AUDIENCE,
+    resourceId: document._id,
+    outcome: 'success',
+    metadata: {
+      month,
+      previous,
+      updated: {
+        views: document.views,
+        dailyFirstVisits: document.dailyFirstVisits,
+        dailyVisitors: document.dailyVisitors,
+        channels: document.channels,
+        source: document.source,
+      },
+    },
+  });
+
+  await logActivity(req.auth.sub, existing ? 'updated' : 'created', 'website_audience', {
+    _id: document._id,
+    title: `Website audience for ${month}`,
+  });
+
+  itemResponse(res, toClientObject(document));
+};
+
+adminApiRouter.put('/website-audience/:month', requireAdminOrStaffAuth, requireScreen('insights', 'edit'), validate(websiteMonthInputSchema), asyncHandler(handleWebsiteMonthSave));
+adminApiRouter.post('/website-audience', requireAdminOrStaffAuth, requireScreen('insights', 'edit'), validate(websiteMonthInputSchema), asyncHandler(handleWebsiteMonthSave));
+
+adminApiRouter.post('/website-audience/sync', requireAdminOrStaffAuth, requireScreen('insights', 'edit'), asyncHandler(async (req, res) => {
+  const month = req.body?.month || req.query?.month || new Date().toISOString().slice(0, 7);
+  let staffName = 'Admin';
+  if (req.portalStaff?.name) staffName = req.portalStaff.name;
+  else if (req.auth?.name) staffName = req.auth.name;
+
+  const result = await syncWebsiteAudienceFromGa4(month, req.auth.sub, staffName);
+
+  if (result.status === 'synced') {
+    await auditReq(req, {
+      action: AUDIT_ACTIONS.WEBSITE_AUDIENCE_SYNC,
+      resourceType: AUDIT_RESOURCE_TYPES.WEBSITE_AUDIENCE,
+      resourceId: result.document._id,
+      outcome: 'success',
+      metadata: { month, source: 'ga4', views: result.document.views },
+    });
+
+    await logActivity(req.auth.sub, 'synced', 'website_audience', {
+      _id: result.document._id,
+      title: `GA4 sync for ${month}`,
+    });
+
+    return itemResponse(res, {
+      status: 'synced',
+      month,
+      record: toClientObject(result.document),
+    });
+  }
+
+  itemResponse(res, {
+    status: result.status,
+    message: result.message,
+    month,
+  });
+}));
+
+// ============================================================================
+// BE-014: Overview activity feed and attention counts
+// ============================================================================
+
+export async function getAttentionCounts() {
+  const [
+    pendingVerifications,
+    openReports,
+    pendingTestimonials,
+    unvettedDrafts,
+    pendingRecords,
+    pendingAmbassadorRequests,
+  ] = await Promise.all([
+    CompanyVerification.countDocuments({ overallStatus: 'pending' }),
+    Report.countDocuments({ status: 'open' }),
+    Testimonial.countDocuments({ status: 'pending' }),
+    Opportunity.countDocuments({ status: 'draft', vetted: false }),
+    Beneficiary.countDocuments({ verified: false }),
+    AmbassadorRequest.countDocuments({ status: 'pending' }),
+  ]);
+
+  return {
+    pendingVerifications,
+    openReports,
+    pendingTestimonials,
+    draftListings: unvettedDrafts,
+    unvettedDrafts,
+    pendingRecords,
+    pendingAmbassadorRequests,
+  };
+}
+
+const MONTH_NAMES_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+export function formatActivityTime(input) {
+  if (!input) return 'Not recorded';
+  if (typeof input === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input.slice(0, 10))) {
+    const parts = input.slice(0, 10).split('-');
+    const year = Number(parts[0]);
+    const month = Number(parts[1]) - 1;
+    const day = Number(parts[2]);
+    return `${day} ${MONTH_NAMES_SHORT[month]} ${year}`;
+  }
+  const d = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(d.getTime())) return String(input);
+  return `${d.getUTCDate()} ${MONTH_NAMES_SHORT[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
+const STAGE_LABELS_FALLBACK = {
+  prospect: 'Prospect',
+  outreach: 'Outreach',
+  proposal: 'Proposal',
+  mou: 'MOU',
+  MOU: 'MOU',
+  onboard: 'Onboarded',
+  renew: 'Renewed',
+};
+
+export async function buildOverviewActivity(limit) {
+  // 1. Ambassador: joined as an ambassador (at most 2)
+  const ambassadors = await Ambassador.find({
+    status: { $ne: 'applicant' },
+    joinedAt: { $exists: true, $ne: null },
+  })
+    .sort({ joinedAt: -1, createdAt: -1 })
+    .limit(2)
+    .lean();
+
+  const ambassadorItems = ambassadors.map((amb) => {
+    const at = amb.joinedAt ? String(amb.joinedAt).slice(0, 10) : (amb.createdAt ? new Date(amb.createdAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
+    return {
+      key: `amb-${amb._id}`,
+      kind: 'ambassador',
+      title: `${amb.fullName || amb.name || 'Ambassador'} joined as an ambassador`,
+      description: amb.campus || amb.city || amb.country || 'Ambassador network',
+      at,
+      time: formatActivityTime(at),
+    };
+  });
+
+  // 2. Partner: moved to a stage (at most 2)
+  const partners = await Partner.find({
+    $or: [
+      { 'stageHistory.1': { $exists: true } },
+      { 'stageHistory.from': { $exists: true } },
+    ],
+  })
+    .sort({ updatedAt: -1 })
+    .limit(10)
+    .lean();
+
+  const partnerMoves = [];
+  for (const partner of partners) {
+    const history = Array.isArray(partner.stageHistory) ? partner.stageHistory : [];
+    const candidateMoves = history.filter((entry, idx) => idx > 0 || Boolean(entry.from));
+    candidateMoves.forEach((entry, idx) => {
+      const at = entry.at ? String(entry.at).slice(0, 10) : (partner.updatedAt ? new Date(partner.updatedAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
+      const stageKey = String(entry.stage || '').toLowerCase();
+      const label = STAGE_LABELS_FALLBACK[entry.stage] || STAGE_LABELS_FALLBACK[stageKey] || DEFAULT_PIPELINE_STAGE_LABELS[stageKey] || entry.stage;
+      partnerMoves.push({
+        key: `par-${partner._id}-${idx}`,
+        kind: 'partner',
+        title: `${partner.organizationName || partner.name || 'Partner'} moved to ${label}`,
+        description: partner.sector || partner.partnerType || 'Partner',
+        at,
+        time: formatActivityTime(at),
+      });
+    });
+  }
+  partnerMoves.sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')) || String(a.key).localeCompare(String(b.key)));
+  const partnerItems = partnerMoves.slice(0, 2);
+
+  // 3. Listing: published (at most 2)
+  const listings = await Opportunity.find({
+    status: 'published',
+    vetted: true,
+    publishedAt: { $exists: true, $ne: null },
+  })
+    .sort({ publishedAt: -1, createdAt: -1 })
+    .limit(2)
+    .lean();
+
+  const listingItems = listings.map((listing) => {
+    const at = listing.publishedAt ? new Date(listing.publishedAt).toISOString().slice(0, 10) : (listing.createdAt ? new Date(listing.createdAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
+    return {
+      key: `lst-${listing._id}`,
+      kind: 'listing',
+      title: `${listing.title} was published`,
+      description: listing.organization || listing.organisation || listing.location || listing.type || 'Listing',
+      at,
+      time: formatActivityTime(at),
+    };
+  });
+
+  // 4. Program: delivered (at most 2)
+  const programs = await Program.find({
+    status: 'delivered',
+    deliveredAt: { $exists: true, $ne: null },
+  })
+    .sort({ deliveredAt: -1, updatedAt: -1 })
+    .limit(2)
+    .lean();
+
+  const programItems = programs.map((program) => {
+    const at = program.deliveredAt ? new Date(program.deliveredAt).toISOString().slice(0, 10) : (program.updatedAt ? new Date(program.updatedAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
+    return {
+      key: `prg-${program._id}`,
+      kind: 'program',
+      title: `${program.title || program.name} was delivered`,
+      description: `${program.participantCount || 0} of ${program.participantTarget || 0} participants`,
+      at,
+      time: formatActivityTime(at),
+    };
+  });
+
+  // 5. Record: verified (at most 2)
+  const records = await Beneficiary.find({
+    verified: true,
+    verifiedAt: { $exists: true, $ne: null },
+  })
+    .sort({ verifiedAt: -1, updatedAt: -1 })
+    .limit(2)
+    .lean();
+
+  const recordItems = records.map((record) => {
+    const at = record.verifiedAt ? new Date(record.verifiedAt).toISOString().slice(0, 10) : (record.updatedAt ? new Date(record.updatedAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
+    return {
+      key: `rec-${record._id}`,
+      kind: 'record',
+      title: `${record.fullName || record.name} was verified`,
+      description: record.institution || record.organization || record.country || 'Database record',
+      at,
+      time: formatActivityTime(at),
+    };
+  });
+
+  // 6. Testimonial: approved (at most 2)
+  const testimonials = await Testimonial.find({
+    status: 'approved',
+  })
+    .sort({ decidedAt: -1, updatedAt: -1, createdAt: -1 })
+    .limit(2)
+    .lean();
+
+  const testimonialItems = testimonials.map((testimonial) => {
+    const at = testimonial.decidedAt ? new Date(testimonial.decidedAt).toISOString().slice(0, 10) : (testimonial.submittedAt ? new Date(testimonial.submittedAt).toISOString().slice(0, 10) : (testimonial.createdAt ? new Date(testimonial.createdAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)));
+    const authorName = testimonial.author || testimonial.name || 'someone';
+    return {
+      key: `tes-${testimonial._id}`,
+      kind: 'testimonial',
+      title: `A testimonial from ${authorName} was approved`,
+      description: testimonial.role || testimonial.organization || 'Testimonial',
+      at,
+      time: formatActivityTime(at),
+    };
+  });
+
+  // Combine at most 2 of each kind (up to 12 items total)
+  const combined = [
+    ...ambassadorItems,
+    ...partnerItems,
+    ...listingItems,
+    ...programItems,
+    ...recordItems,
+    ...testimonialItems,
+  ];
+
+  // Sort newest first
+  combined.sort((a, b) => {
+    const dayCompare = String(b.at || '').slice(0, 10).localeCompare(String(a.at || '').slice(0, 10));
+    if (dayCompare !== 0) return dayCompare;
+    return String(a.key).localeCompare(String(b.key));
+  });
+
+  if (typeof limit === 'number' && limit > 0) {
+    return combined.slice(0, limit);
+  }
+
+  return combined;
+}
+
+adminApiRouter.get('/overview/attention', requireAdminOrStaffAuth, requireScreen('overview', 'view'), asyncHandler(async (req, res) => {
+  const counts = await getAttentionCounts();
+  itemResponse(res, counts);
+}));
+
+adminApiRouter.get('/overview/activity', requireAdminOrStaffAuth, requireScreen('overview', 'view'), validate(overviewActivityQuerySchema), asyncHandler(async (req, res) => {
+  const limit = req.query?.limit ? Number.parseInt(req.query.limit, 10) : undefined;
+  const activity = await buildOverviewActivity(limit);
+  itemResponse(res, activity);
+}));
+
+// ============================================================================
+// BE-017: Remaining Collections (Staff, Notifications, Reference Data, Channels Moderation)
+// ============================================================================
+
+// --- 1. Staff Collection & Invitations --------------------------------------
+
+adminApiRouter.get('/staff', requireAdminOrStaffAuth, requireScreen('team', 'view'), asyncHandler(async (req, res) => {
+  const { page, skip, limit } = pageOptions(req.query);
+  const filter = {};
+
+  if (req.query.status) {
+    filter.status = req.query.status;
+  }
+  if (req.query.role) {
+    filter.$or = [
+      { roles: req.query.role },
+      { role: new RegExp(escapedRegex(req.query.role), 'i') },
+    ];
+  }
+  const q = req.query.q || req.query.search;
+  if (q) {
+    const escaped = escapedRegex(q);
+    filter.$or = [
+      { name: new RegExp(escaped, 'i') },
+      { email: new RegExp(escaped, 'i') },
+    ];
+  }
+
+  const [items, total] = await Promise.all([
+    StaffMember.find(filter).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit),
+    StaffMember.countDocuments(filter),
+  ]);
+
+  listResponse(res, items.map(toClientObject), total, page, limit);
+}));
+
+adminApiRouter.get('/staff/:id', requireAdminOrStaffAuth, requireScreen('team', 'view'), asyncHandler(async (req, res) => {
+  let staff = null;
+  if (mongoose.isValidObjectId(req.params.id)) {
+    staff = await StaffMember.findById(req.params.id);
+  }
+  if (!staff) {
+    staff = await StaffMember.findOne({ $or: [{ email: req.params.id }, { userId: req.params.id }] });
+  }
+  if (!staff) throw notFound('Staff member');
+  itemResponse(res, toClientObject(staff));
+}));
+
+adminApiRouter.post('/staff/invite', requireAdminOrStaffAuth, requireScreen('team', 'edit'), validate(staffInviteSchema), asyncHandler(async (req, res) => {
+  const emailNorm = req.body.email.trim().toLowerCase();
+  let user = await User.findOne({ emailNormalized: emailNorm, role: { $ne: 'deleted' } });
+
+  if (!user) {
+    // SEC-077: without a full name the invite must reference an existing
+    // account — fabricating an account from a bare email is rejected (404).
+    // With a name (the admin UI requires one) the invite provisions the account.
+    if (!req.body.name?.trim()) throw notFound('User');
+    const name = req.body.name.trim();
+    const randomPassword = crypto.randomBytes(16).toString('hex');
+    const passwordHash = await bcrypt.hash(randomPassword, 12);
+    user = await User.create({
+      name,
+      email: req.body.email.trim(),
+      emailNormalized: emailNorm,
+      role: 'seeker',
+      emailVerified: true,
+      passwordHash,
+    });
+  } else if (req.body.name && req.body.name.trim() !== user.name) {
+    user.name = req.body.name.trim();
+    await user.save();
+  }
+
+  if (await StaffMember.exists({ userId: user._id })) {
+    throw new ApiError(409, 'That account is already on the staff list');
+  }
+
+  const roles = req.body.roles && req.body.roles.length > 0
+    ? req.body.roles
+    : normalizeLegacyRole(req.body.role);
+
+  const staff = await StaffMember.create({
+    userId: user._id,
+    name: user.name,
+    email: user.email,
+    roles,
+    role: req.body.role || roles.join(','),
+    status: 'active',
+    joinedDate: new Date().toISOString().slice(0, 10),
+  });
+
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.ADMIN_USER_UPDATE,
+    resourceType: AUDIT_RESOURCE_TYPES.USER,
+    resourceId: user._id,
+    outcome: 'success',
+    metadata: { staffInvite: true, roles, role: req.body.role || roles.join(',') },
+  });
+
+  res.status(201).json({ data: toClientObject(staff) });
+}));
+
+adminApiRouter.patch('/staff/:id', requireAdminOrStaffAuth, requireScreen('team', 'edit'), validate(staffUpdateSchema), asyncHandler(async (req, res) => {
+  let staff = null;
+  if (mongoose.isValidObjectId(req.params.id)) {
+    staff = await StaffMember.findById(req.params.id);
+  }
+  if (!staff) {
+    staff = await StaffMember.findOne({ email: req.params.id });
+  }
+  if (!staff) throw notFound('Staff member');
+
+  const previous = toClientObject(staff);
+
+  if (req.body.name) {
+    staff.name = req.body.name.trim();
+    await User.findByIdAndUpdate(staff.userId, { name: staff.name });
+  }
+
+  if (req.body.status) {
+    staff.status = req.body.status;
+  }
+
+  if (req.body.roles && req.body.roles.length > 0) {
+    staff.roles = req.body.roles.slice(0, 2);
+    staff.role = staff.roles.join(',');
+  } else if (req.body.role) {
+    staff.roles = normalizeLegacyRole(req.body.role);
+    staff.role = req.body.role;
+  }
+
+  await staff.save();
+
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.ADMIN_USER_UPDATE,
+    resourceType: AUDIT_RESOURCE_TYPES.USER,
+    resourceId: staff._id,
+    outcome: 'success',
+    metadata: { staffUpdate: true, previous, updated: toClientObject(staff), updatedFields: Object.keys(req.body) },
+  });
+
+  itemResponse(res, toClientObject(staff));
+}));
+
+adminApiRouter.put('/staff/:id', requireAdminOrStaffAuth, requireScreen('team', 'edit'), validate(staffUpdateSchema), asyncHandler(async (req, res) => {
+  let staff = null;
+  if (mongoose.isValidObjectId(req.params.id)) {
+    staff = await StaffMember.findById(req.params.id);
+  }
+  if (!staff) {
+    staff = await StaffMember.findOne({ email: req.params.id });
+  }
+  if (!staff) throw notFound('Staff member');
+
+  if (req.body.name) {
+    staff.name = req.body.name.trim();
+    await User.findByIdAndUpdate(staff.userId, { name: staff.name });
+  }
+  if (req.body.status) {
+    staff.status = req.body.status;
+  }
+  if (req.body.roles && req.body.roles.length > 0) {
+    staff.roles = req.body.roles.slice(0, 2);
+    staff.role = staff.roles.join(',');
+  } else if (req.body.role) {
+    staff.roles = normalizeLegacyRole(req.body.role);
+    staff.role = req.body.role;
+  }
+
+  await staff.save();
+
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.ADMIN_USER_UPDATE,
+    resourceType: AUDIT_RESOURCE_TYPES.USER,
+    resourceId: staff._id,
+    outcome: 'success',
+    metadata: { staffUpdate: true, updated: toClientObject(staff), updatedFields: Object.keys(req.body) },
+  });
+
+  itemResponse(res, toClientObject(staff));
+}));
+
+adminApiRouter.delete('/staff/:id', requireAdminOrStaffAuth, requireScreen('team', 'edit'), asyncHandler(async (req, res) => {
+  let staff = null;
+  if (mongoose.isValidObjectId(req.params.id)) {
+    staff = await StaffMember.findById(req.params.id);
+  }
+  if (!staff) {
+    staff = await StaffMember.findOne({ email: req.params.id });
+  }
+  if (!staff) throw notFound('Staff member');
+
+  await StaffMember.findByIdAndDelete(staff._id);
+
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.ADMIN_USER_UPDATE,
+    resourceType: AUDIT_RESOURCE_TYPES.USER,
+    resourceId: staff.userId,
+    outcome: 'success',
+    metadata: { staffRemoval: true, email: staff.email },
+  });
+
+  res.json({ data: { id: String(staff._id), removed: true } });
+}));
+
+// --- 2. Notifications Collection (Compose, Schedule, History) ---------------
+
+adminApiRouter.get('/notifications', requireAdminOrStaffAuth, requireScreen('notifications', 'view'), validate(notificationQuerySchema), asyncHandler(async (req, res) => {
+  const { page, skip, limit } = pageOptions(req.query);
+  const filter = { userId: null };
+
+  if (req.query.audience) {
+    filter.audience = req.query.audience;
+  }
+  if (req.query.status) {
+    filter.status = req.query.status;
+  }
+  const q = req.query.q || req.query.search;
+  if (q) {
+    const escaped = escapedRegex(q);
+    filter.$or = [
+      { title: new RegExp(escaped, 'i') },
+      { message: new RegExp(escaped, 'i') },
+    ];
+  }
+
+  const [items, total] = await Promise.all([
+    Notification.find(filter).sort({ sentAt: -1, createdAt: -1 }).skip(skip).limit(limit),
+    Notification.countDocuments(filter),
+  ]);
+
+  listResponse(res, items.map(toClientObject), total, page, limit);
+}));
+
+adminApiRouter.get('/notifications/:id', requireAdminOrStaffAuth, requireScreen('notifications', 'view'), asyncHandler(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Notification');
+  const notification = await Notification.findById(req.params.id);
+  if (!notification) throw notFound('Notification');
+  itemResponse(res, toClientObject(notification));
+}));
+
+adminApiRouter.post('/notifications', requireAdminOrStaffAuth, requireScreen('notifications', 'edit'), validate(notificationBroadcastSchema), asyncHandler(async (req, res) => {
+  const { title, message, audience, type = 'general', priority = 'normal', scheduledFor } = req.body;
+
+  let isScheduled = false;
+  let scheduledDate = null;
+  if (scheduledFor) {
+    const parsedDate = new Date(scheduledFor);
+    if (!isNaN(parsedDate.getTime()) && parsedDate.getTime() > Date.now()) {
+      isScheduled = true;
+      scheduledDate = parsedDate;
+    }
+  }
+
+  const notification = await Notification.create({
+    title,
+    message,
+    audience,
+    type,
+    priority,
+    status: isScheduled ? 'scheduled' : 'sent',
+    scheduledFor: scheduledDate,
+    sentAt: isScheduled ? null : new Date(),
+    isActive: true,
+    createdBy: req.auth?.sub || null,
+    userId: null,
+  });
+
+  await auditReq(req, {
+    action: 'notification.broadcast',
+    resourceType: 'Notification',
+    resourceId: notification._id,
+    outcome: 'success',
+    metadata: { title, audience, isScheduled, scheduledFor: scheduledDate },
+  });
+
+  res.status(201).json({ data: toClientObject(notification) });
+}));
+
+adminApiRouter.delete('/notifications/:id', requireAdminOrStaffAuth, requireScreen('notifications', 'edit'), asyncHandler(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Notification');
+  const notification = await Notification.findById(req.params.id);
+  if (!notification) throw notFound('Notification');
+
+  await Notification.findByIdAndDelete(notification._id);
+
+  await auditReq(req, {
+    action: 'notification.delete',
+    resourceType: 'Notification',
+    resourceId: notification._id,
+    outcome: 'success',
+    metadata: { title: notification.title, audience: notification.audience },
+  });
+
+  res.json({ data: { id: String(notification._id), removed: true } });
+}));
+
+// --- 3. Reference Data Lists Collection -------------------------------------
+
+adminApiRouter.get('/reference-data', requireAdminOrStaffAuth, requireScreen('reference_data', 'view'), asyncHandler(async (req, res) => {
+  const groups = await getReferenceDataGroups(req.query.group || null);
+  itemResponse(res, groups);
+}));
+
+adminApiRouter.get('/reference-data/:group/:key', requireAdminOrStaffAuth, requireScreen('reference_data', 'view'), asyncHandler(async (req, res) => {
+  const { group, key } = req.params;
+  const list = await getReferenceDataList(group, key);
+  if (!list) throw notFound(`Reference list "${group}/${key}"`);
+
+  let items = list.items || [];
+  const q = req.query.q || req.query.search;
+  if (q) {
+    items = items.filter((item) => item.toLowerCase().includes(q.toLowerCase()));
+  }
+
+  const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+  const limit = req.query.limit ? Math.min(500, Math.max(1, Number.parseInt(req.query.limit, 10))) : items.length;
+  const skip = (page - 1) * limit;
+  const paginatedItems = req.query.page || req.query.limit ? items.slice(skip, skip + limit) : items;
+
+  itemResponse(res, {
+    group,
+    key,
+    label: list.label,
+    singular: list.singular,
+    items: paginatedItems,
+    total: items.length,
+    page,
+    limit,
+  });
+}));
+
+adminApiRouter.put('/reference-data/:group/:key', requireAdminOrStaffAuth, requireScreen('reference_data', 'edit'), validate(referenceListUpdateSchema), asyncHandler(async (req, res) => {
+  const { group, key } = req.params;
+  const { items, label, singular } = req.body;
+
+  const previous = await getReferenceDataList(group, key);
+  const updated = await updateReferenceDataList(group, key, items, req.auth?.sub, { label, singular });
+
+  await auditReq(req, {
+    action: 'reference_data.update',
+    resourceType: 'ReferenceDataList',
+    resourceId: updated._id,
+    outcome: 'success',
+    metadata: {
+      group,
+      key,
+      previousCount: previous?.items?.length || 0,
+      newCount: updated.items.length,
+    },
+  });
+
+  itemResponse(res, toClientObject(updated));
+}));
+
+// --- BE-021: website category taxonomy + live tally ---------------------------
+// The mapping table curates website category names onto app opportunity
+// types; the tally compares both sides live (502 when the website is
+// unreachable, mirroring the news feed pattern).
+
+adminApiRouter.get('/sync/taxonomy', requireAdminOrStaffAuth, requireScreen('settings_admin', 'view'), asyncHandler(async (req, res) => {
+  const rows = await CategoryMap.find({}).sort({ websiteCategory: 1 }).lean();
+  listResponse(res, rows.map(toClientObject));
+}));
+
+adminApiRouter.put('/sync/taxonomy', requireAdminOrStaffAuth, requireScreen('settings_admin', 'edit'), validate(taxonomyUpsertSchema), asyncHandler(async (req, res) => {
+  const websiteCategory = String(req.body.websiteCategory).trim();
+  const previous = await CategoryMap.findOne({ websiteCategory }).lean();
+  const row = await CategoryMap.findOneAndUpdate(
+    { websiteCategory },
+    {
+      $set: {
+        ...(req.body.appCategory !== undefined ? { appCategory: req.body.appCategory } : {}),
+        ...(req.body.note !== undefined ? { note: req.body.note } : {}),
+        updatedBy: req.auth.sub,
+      },
+    },
+    { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true },
+  );
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.SETTINGS_UPDATE,
+    resourceType: AUDIT_RESOURCE_TYPES.SETTINGS,
+    resourceId: row._id,
+    outcome: 'success',
+    metadata: {
+      setting: 'category_taxonomy',
+      websiteCategory,
+      previous: previous?.appCategory ?? null,
+      appCategory: row.appCategory ?? null,
+    },
+  });
+  itemResponse(res, toClientObject(row));
+}));
+
+adminApiRouter.get('/sync/tally', requireAdminOrStaffAuth, requireScreen('settings_admin', 'view'), asyncHandler(async (req, res) => {
+  const { opportunities: websiteOpportunities, categories: websiteCategories } = await fetchWebsiteSnapshot();
+  const [appOpportunities, mappings] = await Promise.all([
+    Opportunity.find({}).select('title type wordpressSync').lean(),
+    CategoryMap.find({}).lean(),
+  ]);
+  const report = buildTallyReport({ websiteOpportunities, websiteCategories, appOpportunities, mappings });
+  itemResponse(res, {
+    websiteOpportunities: websiteOpportunities.length,
+    appOpportunities: appOpportunities.length,
+    report,
+  });
+}));
+
+// --- 4. Community Channels Moderation ---------------------------------------
+
+adminApiRouter.get('/community/channels', requireAdminOrStaffAuth, requireScreen('channels', 'view'), asyncHandler(async (req, res) => {
+  const { page, skip, limit } = pageOptions(req.query);
+  const filter = {};
+
+  if (req.query.status) {
+    filter.status = req.query.status;
+  }
+  if (req.query.category) {
+    filter.category = req.query.category;
+  }
+  if (req.query.visibility) {
+    filter.visibility = req.query.visibility;
+  }
+  const q = req.query.q || req.query.search;
+  if (q) {
+    const escaped = escapedRegex(q);
+    filter.$or = [
+      { name: new RegExp(escaped, 'i') },
+      { category: new RegExp(escaped, 'i') },
+    ];
+  }
+
+  const [items, total] = await Promise.all([
+    Channel.find(filter).sort({ createdAt: -1, _id: -1 }).skip(skip).limit(limit),
+    Channel.countDocuments(filter),
+  ]);
+
+  listResponse(res, items.map(toClientObject), total, page, limit);
+}));
+
+adminApiRouter.get('/community/channels/:id', requireAdminOrStaffAuth, requireScreen('channels', 'view'), asyncHandler(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Channel');
+  const channel = await Channel.findById(req.params.id);
+  if (!channel) throw notFound('Channel');
+  itemResponse(res, toClientObject(channel));
+}));
+
+adminApiRouter.post('/community/channels', requireAdminOrStaffAuth, requireScreen('channels', 'edit'), validate(createAdminChannelSchema), asyncHandler(async (req, res) => {
+  const channel = await Channel.create({
+    name: req.body.name,
+    category: req.body.category || 'General',
+    bio: req.body.bio,
+    visibility: req.body.visibility,
+    requiresApproval: req.body.visibility === 'private',
+    owner: 'Kredibble',
+    createdBy: req.auth.sub,
+  });
+  await CommunityMembership.create({ channelId: channel._id, userId: req.auth.sub, role: 'admin', status: 'active', reviewedBy: req.auth.sub, reviewedAt: new Date() });
+  await auditReq(req, { action: AUDIT_ACTIONS.ADMIN_USER_UPDATE, resourceType: AUDIT_RESOURCE_TYPES.COMMUNITY_CHANNEL, resourceId: channel._id, outcome: 'success', metadata: { created: true } });
+  res.status(201).json({ data: toClientObject(channel) });
+}));
+
+adminApiRouter.patch('/community/channels/:id', requireAdminOrStaffAuth, requireScreen('channels', 'edit'), validate(channelModerateSchema), asyncHandler(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Channel');
+  const channel = await Channel.findById(req.params.id);
+  if (!channel) throw notFound('Channel');
+
+  const previousStatus = channel.status;
+  if (req.body.status) channel.status = req.body.status;
+  if (req.body.name) channel.name = req.body.name.trim();
+  if (req.body.bio !== undefined) channel.bio = req.body.bio;
+  if (req.body.category) channel.category = req.body.category.trim();
+
+  await channel.save();
+
+  await auditReq(req, {
+    action: 'channel.moderate',
+    resourceType: 'Channel',
+    resourceId: channel._id,
+    outcome: 'success',
+    metadata: { previousStatus, newStatus: channel.status },
+  });
+
+  itemResponse(res, toClientObject(channel));
+}));
+
+adminApiRouter.delete('/community/channels/:id', requireAdminOrStaffAuth, requireScreen('channels', 'edit'), asyncHandler(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Channel');
+  const channel = await Channel.findById(req.params.id);
+  if (!channel) throw notFound('Channel');
+
+  channel.status = 'removed';
+  await channel.save();
+
+  await auditReq(req, {
+    action: 'channel.remove',
+    resourceType: 'Channel',
+    resourceId: channel._id,
+    outcome: 'success',
+    metadata: { name: channel.name },
+  });
+
+  res.json({ data: { id: String(channel._id), status: 'removed' } });
+}));
+
+adminApiRouter.get('/community/channels/:channelId/posts', requireAdminOrStaffAuth, requireScreen('channels', 'view'), asyncHandler(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.channelId)) throw notFound('Channel');
+  const { page, skip, limit } = pageOptions(req.query);
+
+  const filter = { channelId: req.params.channelId };
+  const q = req.query.q || req.query.search;
+  if (q) {
+    const escaped = escapedRegex(q);
+    filter.$or = [
+      { title: new RegExp(escaped, 'i') },
+      { body: new RegExp(escaped, 'i') },
+    ];
+  }
+
+  const [posts, total] = await Promise.all([
+    ChannelPost.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit)
+      .populate({ path: 'authorId', select: 'name email avatarUrl' }),
+    ChannelPost.countDocuments(filter),
+  ]);
+
+  listResponse(res, posts.map(toClientObject), total, page, limit);
+}));
+
+adminApiRouter.delete('/community/channels/:channelId/posts/:postId', requireAdminOrStaffAuth, requireScreen('channels', 'edit'), asyncHandler(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.channelId) || !mongoose.isValidObjectId(req.params.postId)) {
+    throw notFound('Channel post');
+  }
+  const post = await ChannelPost.findOne({ _id: req.params.postId, channelId: req.params.channelId });
+  if (!post) throw notFound('Channel post');
+
+  await ChannelPost.findByIdAndDelete(post._id);
+  await Channel.findByIdAndUpdate(req.params.channelId, { $inc: { postsCount: -1 } });
+
+  await auditReq(req, {
+    action: 'channel_post.remove',
+    resourceType: 'ChannelPost',
+    resourceId: post._id,
+    outcome: 'success',
+    metadata: { channelId: req.params.channelId, authorId: post.authorId },
+  });
+
+  res.json({ data: { id: String(post._id), removed: true } });
+}));
+
+adminApiRouter.patch('/community/posts/:id', requireAdminOrStaffAuth, requireScreen('channels', 'edit'), validate(postModerateSchema), asyncHandler(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Post');
+  const post = await ChannelPost.findById(req.params.id);
+  if (!post) throw notFound('Post');
+
+  if (req.body.flagged !== undefined) post.flagged = req.body.flagged;
+  await post.save();
+
+  await auditReq(req, {
+    action: 'channel_post.moderate',
+    resourceType: 'ChannelPost',
+    resourceId: post._id,
+    outcome: 'success',
+    metadata: { flagged: post.flagged },
+  });
+
+  itemResponse(res, toClientObject(post));
+}));
+
+adminApiRouter.delete('/community/posts/:id', requireAdminOrStaffAuth, requireScreen('channels', 'edit'), asyncHandler(async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Post');
+  const post = await ChannelPost.findById(req.params.id);
+  if (!post) throw notFound('Post');
+
+  await ChannelPost.findByIdAndDelete(post._id);
+  if (post.channelId) {
+    await Channel.findByIdAndUpdate(post.channelId, { $inc: { postsCount: -1 } });
+  }
+
+  await auditReq(req, {
+    action: 'channel_post.remove',
+    resourceType: 'ChannelPost',
+    resourceId: post._id,
+    outcome: 'success',
+    metadata: { channelId: post.channelId, authorId: post.authorId },
+  });
+
+  res.status(204).send();
 }));

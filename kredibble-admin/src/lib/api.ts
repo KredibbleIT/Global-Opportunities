@@ -1,3 +1,5 @@
+import type { ScorecardPerson, CompositePoint } from "./scorecard";
+
 export type AuthRole = "admin" | "seeker" | "hirer";
 
 export type AuthUser = {
@@ -130,6 +132,7 @@ export type StaffMember = {
   name: string;
   email: string;
   role: string;
+  roles?: string[];
   status: string;
   joinedDate?: string;
   createdAt: string;
@@ -211,27 +214,53 @@ export type OpportunityRecord = {
   title: string;
   type: string;
   company: string;
+  organisation?: string;
   offeringOrganization?: string;
   organizationLogo?: string;
+  logoUrl?: string;
+  imageUrl?: string;
+  coverImage?: string;
+  images?: string[];
   location: string;
   description: string;
   workType?: string;
   salary?: string;
   date?: string;
+  eventAt?: string;
   eventDateTime?: string;
   eventRegion?: string;
   eventCategory?: string;
   grantBudgetRange?: string;
   grantSector?: string;
   deadline?: string;
+  closesAt?: string;
   eligibility?: string;
   benefits?: string;
   applicationUrl?: string;
   applicationLink?: string;
+  applyUrl?: string;
+  costLabel?: string;
+  durationLabel?: string;
+  format?: string;
+  country?: string;
   applicantsCount: number;
+  status?: string;
+  publish?: boolean;
   moderationStatus: string;
   vetted: boolean;
+  vettedBy?: string;
+  vettedById?: string;
+  vettedByName?: string;
   vettedAt?: string;
+  vettedOn?: string;
+  publishedAt?: string;
+  writerId?: string;
+  assignedWriterId?: string;
+  writerName?: string;
+  referralOnApply?: boolean;
+  referralCodeOnApply?: boolean;
+  views?: { website: number; app: number };
+  applications?: { website: number; app: number };
   createdAt: string;
   updatedAt: string;
 };
@@ -421,8 +450,39 @@ export const getDashboardSummary = async <T = Record<string, unknown>>() => {
 };
 
 /** The desk dashboard: month KPIs against targets, priorities, trend and pipeline (GET /admin/dashboard). */
-export const getAdminDashboard = async <T = Record<string, unknown>>() => {
-  return request<T>("/admin/dashboard");
+export const getAdminDashboard = async <T = Record<string, unknown>>(month?: string) => {
+  const query = month ? `?month=${month}` : "";
+  return request<T>(`/admin/dashboard${query}`);
+};
+
+/** BE-004: The 10 KPI cards for a month with value, target, pro-rated target, pace, and status (GET /admin/kpis). */
+export const getKpiCardsApi = async <T = Record<string, unknown>>(month?: string, today?: string) => {
+  const params = new URLSearchParams();
+  if (month) params.set("month", month);
+  if (today) params.set("today", today);
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return request<T>(`/admin/kpis${query}`);
+};
+
+/** BE-004: Ranked priority KPIs sorted by lowest attainment against pro-rated target (GET /admin/kpis/priorities). */
+export const getKpiPrioritiesApi = async <T = Record<string, unknown>>(month?: string, count?: number, today?: string) => {
+  const params = new URLSearchParams();
+  if (month) params.set("month", month);
+  if (count) params.set("count", String(count));
+  if (today) params.set("today", today);
+  const query = params.toString() ? `?${params.toString()}` : "";
+  return request<T>(`/admin/kpis/priorities${query}`);
+};
+
+/** BE-004: 6-month historical trend series across KPIs (GET /admin/kpis/trend). */
+export const getKpiTrendApi = async <T = Record<string, unknown>>(params?: { month?: string; kpi?: string; months?: number; today?: string }) => {
+  const search = new URLSearchParams();
+  if (params?.month) search.set("month", params.month);
+  if (params?.kpi) search.set("kpi", params.kpi);
+  if (params?.months) search.set("months", String(params.months));
+  if (params?.today) search.set("today", params.today);
+  const query = search.toString() ? `?${search.toString()}` : "";
+  return request<T>(`/admin/kpis/trend${query}`);
 };
 
 export const getVerifications = async <T = Record<string, unknown>>(status?: string) => {
@@ -721,7 +781,7 @@ export const deleteCommunityPost = async (id: string) => {
 };
 
 // Staff
-export const inviteStaff = async (data: { email: string; role: string }) => {
+export const inviteStaff = async (data: { email: string; role?: string; roles?: string[]; name?: string }) => {
   return request<StaffMember>(`/admin/staff/invite`, { method: "POST", body: JSON.stringify(data) });
 };
 
@@ -745,6 +805,85 @@ export const getOpportunityById = async (id: string) => {
 export const moderateOpportunity = async (id: string, decision: "approve" | "reject") => {
   const body = decision === "approve" ? { vetted: true, moderationStatus: "published" } : { moderationStatus: "rejected" };
   return request<OpportunityRecord>(`/admin/opportunities/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+};
+
+export interface OpportunityCountsRecord {
+  unvettedDrafts: number;
+  drafts: number;
+  published: number;
+  pending: number;
+  vetted: number;
+  total: number;
+}
+
+export const getOpportunityCountsApi = async () => {
+  return request<OpportunityCountsRecord>("/admin/opportunities/counts");
+};
+
+export const createOpportunityApi = async (data: Partial<OpportunityRecord>) => {
+  return request<OpportunityRecord>("/admin/opportunities", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+export const updateOpportunityApi = async (id: string, data: Partial<OpportunityRecord>) => {
+  return request<OpportunityRecord>(`/admin/opportunities/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+};
+
+export const unpublishOpportunityApi = async (id: string) => {
+  return request<OpportunityRecord>(`/admin/opportunities/${id}/unpublish`, {
+    method: "POST",
+  });
+};
+
+export const getOpportunityMetricsApi = async (id: string) => {
+  return request<{ listingId: string; views: { website: number; app: number }; applications: { website: number; app: number } }>(`/admin/opportunities/${id}/metrics`);
+};
+
+// BE-012: Website Audience API
+export interface WebsiteChannelRecord {
+  channel: string;
+  views: number;
+}
+
+export interface WebsiteMonthRecord {
+  id?: string;
+  month: string;
+  views: number;
+  dailyFirstVisits: number;
+  dailyVisitors: number;
+  channels: WebsiteChannelRecord[];
+  source?: "manual" | "ga4";
+  updatedBy?: string;
+  updatedByName?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export const getWebsiteAudienceApi = async (months: number = 6, order: "asc" | "desc" = "asc") => {
+  return request<WebsiteMonthRecord[]>(`/admin/website-audience?months=${months}&order=${order}`);
+};
+
+export const getWebsiteMonthApi = async (month: string) => {
+  return request<WebsiteMonthRecord>(`/admin/website-audience/${month}`);
+};
+
+export const updateWebsiteMonthApi = async (month: string, data: Partial<WebsiteMonthRecord>) => {
+  return request<WebsiteMonthRecord>(`/admin/website-audience/${month}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+};
+
+export const syncWebsiteAudienceApi = async (month?: string) => {
+  return request<{ status: string; message?: string; month?: string; record?: WebsiteMonthRecord }>(`/admin/website-audience/sync`, {
+    method: "POST",
+    body: JSON.stringify(month ? { month } : {}),
+  });
 };
 
 export interface RolesPermissionsPayload {
@@ -1406,6 +1545,99 @@ export const getSocialMonthlyTotalsApi = async (month?: string) => {
   return request<SocialMonthlyTotalsApiRecord>(`/admin/social-posts/monthly-totals${query}`);
 };
 
+// --- Testimonials ---------------------------------------------------------------------------------
+
+export type TestimonialStatusApi = "pending" | "approved" | "unpublished" | "rejected";
+export type TestimonialActionApi = "approve" | "reject" | "unpublish" | "reapprove";
+
+export interface TestimonialApiRecord {
+  id: string;
+  name: string;
+  author: string;
+  email: string;
+  role: string;
+  comment: string;
+  quote: string;
+  photo: string | null;
+  status: TestimonialStatusApi;
+  submittedAt: string;
+  decidedAt: string | null;
+  decidedBy: string | null;
+  decidedByName: string | null;
+  rejectionReason?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface TestimonialModeratePayload {
+  action?: TestimonialActionApi;
+  status?: TestimonialStatusApi;
+  rejectionReason?: string;
+}
+
+export interface TestimonialPayload {
+  name?: string;
+  author?: string;
+  email?: string;
+  comment?: string;
+  quote?: string;
+  role?: string;
+  photo?: string;
+  status?: TestimonialStatusApi;
+  submittedAt?: string;
+}
+
+export const getTestimonialsApi = async (params?: {
+  status?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+}) => {
+  const query = new URLSearchParams();
+  if (params?.status) query.set("status", params.status);
+  if (params?.search) query.set("search", params.search);
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  const queryString = query.toString() ? `?${query.toString()}` : "";
+  return requestPage<TestimonialApiRecord>(`/admin/testimonials${queryString}`);
+};
+
+export const getTestimonialByIdApi = async (id: string) => {
+  return request<TestimonialApiRecord>(`/admin/testimonials/${id}`);
+};
+
+export const getTestimonialPendingCountApi = async () => {
+  return request<{ count: number }>("/admin/testimonials/pending-count");
+};
+
+export const moderateTestimonialApi = async (id: string, data: TestimonialModeratePayload) => {
+  return request<TestimonialApiRecord>(`/admin/testimonials/${id}/moderate`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+export const createTestimonialApi = async (data: TestimonialPayload) => {
+  return request<TestimonialApiRecord>("/admin/testimonials", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+export const updateTestimonialApi = async (id: string, data: Partial<TestimonialPayload>) => {
+  return request<TestimonialApiRecord>(`/admin/testimonials/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+};
+
+export const deleteTestimonialApi = async (id: string) => {
+  return request<{ id: string; deleted: boolean }>(`/admin/testimonials/${id}`, {
+    method: "DELETE",
+  });
+};
+
+
 
 // There is deliberately no admin self-service signup. Public registration
 // cannot mint the 'admin' role, so admins are provisioned server-side with
@@ -1532,3 +1764,436 @@ export const setPostAllowReplies = async (channelId: string, messageId: string, 
 
 export const getChannelThread = async (channelId: string, messageId: string) =>
   request<{ post: ChatMessageRecord; replies: ChatMessageRecord[] }>(`/admin/channels/${channelId}/messages/${messageId}/replies`);
+
+// BE-013: Monthly Reports
+export interface MonthlyReportRecord {
+  id: string;
+  reportMonth: string;
+  view: "partner" | "team";
+  generatedAt: string;
+  generatedBy?: string;
+  generatedByName?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PartnerReportMetricRecord {
+  id: string;
+  label: string;
+  value: number;
+  previous: number | null;
+  delta: {
+    kind: "up" | "down" | "flat" | "na" | "none";
+    text: string;
+    percent: number | null;
+  };
+  description: string;
+}
+
+export interface PartnerReportResponse {
+  month: string;
+  audience: "partner";
+  metrics: PartnerReportMetricRecord[];
+  trend?: { month: string; value: number }[];
+  audienceTrend?: { month: string; value: number }[];
+  channels?: { channel: string; platform: string; posts: number; reach: number; engagement: number }[];
+  kpis: unknown[];
+  pipeline: unknown;
+  databasePace: unknown;
+  recordsBySource: { sourceType: string; count: number }[];
+  ambassadorNetwork: { size: number; activityRate: number };
+  social: { reach: number; engagement: number };
+  websiteAudience: unknown;
+  monthOverMonthGrowth: {
+    opportunitiesPublished: number | null;
+    beneficiariesAdded: number | null;
+    socialReach: number | null;
+    websiteViews: number | null;
+  };
+}
+
+export interface TeamReportResponse {
+  month: string;
+  audience: "team";
+  kpis: unknown[];
+  pipeline: unknown;
+  pipelineTarget: number;
+  pace: unknown;
+  databasePace: unknown;
+  sources: { sourceType: string; count: number }[];
+  recordsBySource: { sourceType: string; count: number }[];
+  network: { size: number; active: number; activityRate: number };
+  ambassadorNetwork: { size: number; activityRate: number };
+  top: unknown[];
+  topAmbassadors: unknown[];
+  social: {
+    reach: number;
+    engagement: number;
+    posts: number;
+    platforms: { channel: string; platform: string; posts: number; reach: number; engagement: number }[];
+  };
+  people: unknown[];
+  teamScorecards: unknown[];
+  tooEarly: boolean;
+  websiteAudience: unknown;
+  monthOverMonthGrowth: {
+    opportunitiesPublished: number | null;
+    beneficiariesAdded: number | null;
+    socialReach: number | null;
+    websiteViews: number | null;
+  };
+}
+
+export const recordMonthlyReportApi = async (data: { reportMonth: string; view: "partner" | "team"; generatedAt?: string }) =>
+  request<MonthlyReportRecord>("/admin/monthly-reports", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+
+export const getMonthlyReportsApi = async (params?: { reportMonth?: string; month?: string; view?: "partner" | "team"; limit?: number }) => {
+  const query = new URLSearchParams();
+  if (params?.reportMonth) query.set("reportMonth", params.reportMonth);
+  if (params?.month) query.set("month", params.month);
+  if (params?.view) query.set("view", params.view);
+  if (params?.limit) query.set("limit", String(params.limit));
+  const queryString = query.toString() ? `?${query.toString()}` : "";
+  return request<MonthlyReportRecord[]>(`/admin/monthly-reports${queryString}`);
+};
+
+export const getPartnerReportApi = async (month?: string) => {
+  const queryString = month ? `?month=${encodeURIComponent(month)}` : "";
+  return request<PartnerReportResponse>(`/admin/reports/partner${queryString}`);
+};
+
+export const getTeamReportApi = async (month?: string) => {
+  const queryString = month ? `?month=${encodeURIComponent(month)}` : "";
+  return request<TeamReportResponse>(`/admin/reports/team${queryString}`);
+};
+
+// BE-014: Overview feed and attention types and API callers
+export interface AttentionCountsResponse {
+  pendingVerifications: number;
+  openReports: number;
+  pendingTestimonials: number;
+  draftListings: number;
+  unvettedDrafts?: number;
+  pendingRecords: number;
+  pendingAmbassadorRequests: number;
+}
+
+export interface OverviewFeedItem {
+  key: string;
+  kind: "ambassador" | "partner" | "listing" | "program" | "record" | "testimonial";
+  title: string;
+  description: string;
+  at: string;
+  time: string;
+}
+
+export const getOverviewAttentionApi = async (): Promise<AttentionCountsResponse> => {
+  return request<AttentionCountsResponse>("/admin/overview/attention");
+};
+
+export const getOverviewActivityApi = async (limit?: number): Promise<OverviewFeedItem[]> => {
+  const query = new URLSearchParams();
+  if (typeof limit === "number") query.set("limit", String(limit));
+  const queryString = query.toString() ? `?${query.toString()}` : "";
+  return request<OverviewFeedItem[]>(`/admin/overview/activity${queryString}`);
+};
+
+// BE-015: Scorecard types and API callers
+export interface ScorecardResponseData {
+  month: string;
+  isPast: boolean;
+  notConnected: boolean;
+  tooEarly: boolean;
+  people: ScorecardPerson[];
+  series: CompositePoint[] | null;
+  summary?: {
+    scored: number;
+    average: number | null;
+    belowAmber: number;
+  };
+}
+
+export const getMyScorecardApi = async (month?: string): Promise<ScorecardResponseData> => {
+  const query = new URLSearchParams();
+  if (month) query.set("month", month);
+  const queryString = query.toString() ? `?${query.toString()}` : "";
+  return request<ScorecardResponseData>(`/admin/scorecards/me${queryString}`);
+};
+
+export const getTeamScorecardApi = async (month?: string): Promise<ScorecardResponseData> => {
+  const query = new URLSearchParams();
+  if (month) query.set("month", month);
+  const queryString = query.toString() ? `?${query.toString()}` : "";
+  return request<ScorecardResponseData>(`/admin/scorecards/team${queryString}`);
+};
+
+// BE-016: Settings & Integrations API callers
+export interface IntegrationStatusApi {
+  saved: boolean;
+  tail: string;
+  identifier: string;
+}
+
+export interface IntegrationsSettingsResponse {
+  wordpress: IntegrationStatusApi;
+  analytics: IntegrationStatusApi;
+  [key: string]: unknown;
+}
+
+export interface AccountProfileApi {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  roles?: string[];
+  notificationPreferences: {
+    digest?: boolean;
+    verifications?: boolean;
+    reports?: boolean;
+    testimonials?: boolean;
+  };
+}
+
+export const getIntegrationsSettingsApi = async (): Promise<IntegrationsSettingsResponse> => {
+  return request<IntegrationsSettingsResponse>("/admin/settings/integrations");
+};
+
+export const updateIntegrationApi = async (
+  kind: string,
+  data: { identifier?: string; secret?: string }
+): Promise<IntegrationStatusApi> => {
+  return request<IntegrationStatusApi>(`/admin/settings/integrations/${kind}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+};
+
+export const testIntegrationApi = async (
+  kind: string
+): Promise<{ success: boolean; message: string; kind: string }> => {
+  return request<{ success: boolean; message: string; kind: string }>(`/admin/settings/integrations/${kind}/test`, {
+    method: "POST",
+  });
+};
+
+export const getAccountProfileApi = async (): Promise<AccountProfileApi> => {
+  return request<AccountProfileApi>("/admin/settings/account");
+};
+
+export const updateAccountProfileApi = async (data: {
+  name?: string;
+  notificationPreferences?: Record<string, boolean>;
+}): Promise<AccountProfileApi> => {
+  return request<AccountProfileApi>("/admin/settings/account", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+};
+
+export const changePasswordApi = async (data: {
+  currentPassword?: string;
+  current?: string;
+  newPassword?: string;
+  next?: string;
+}): Promise<{ success: boolean; message: string }> => {
+  return request<{ success: boolean; message: string }>("/admin/settings/password", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+// --- BE-017: Community Posts Moderation -------------------------------------
+
+export const deleteCommunityChannelPost = async (channelId: string, postId: string) => {
+  return request<{ data: { id: string; removed: boolean } }>(`/admin/community/channels/${channelId}/posts/${postId}`, {
+    method: "DELETE",
+  });
+};
+
+export const moderateCommunityPost = async (postId: string, data: { flagged: boolean }) => {
+  return request<ChannelPost>(`/admin/community/posts/${postId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+};
+
+// --- BE-017: Notifications Broadcasts ---------------------------------------
+
+export interface SentNotificationRecord {
+  id: string;
+  title: string;
+  message: string;
+  audience: "seekers" | "hirers" | "both" | "all";
+  type?: string;
+  priority?: string;
+  status: "sent" | "scheduled" | "cancelled";
+  scheduledFor?: string | null;
+  sentAt: string;
+  createdAt: string;
+}
+
+export const getAdminNotifications = async (params?: {
+  page?: number;
+  limit?: number;
+  q?: string;
+  audience?: string;
+  status?: string;
+}) => {
+  const query = new URLSearchParams();
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  if (params?.q) query.set("q", params.q);
+  if (params?.audience) query.set("audience", params.audience);
+  if (params?.status) query.set("status", params.status);
+  const queryString = query.toString() ? `?${query.toString()}` : "";
+  return requestPage<SentNotificationRecord>(`/admin/notifications${queryString}`);
+};
+
+export const sendAdminNotification = async (data: {
+  title: string;
+  message: string;
+  audience: "seekers" | "hirers" | "both" | "all";
+  scheduledFor?: string;
+  type?: string;
+  priority?: string;
+}) => {
+  return request<SentNotificationRecord>(`/admin/notifications`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+};
+
+export const deleteAdminNotification = async (id: string) => {
+  return request<{ data: { id: string; removed: boolean } }>(`/admin/notifications/${id}`, {
+    method: "DELETE",
+  });
+};
+
+// --- BE-017: Reference Data Lists -------------------------------------------
+
+export interface ReferenceListApi {
+  key: string;
+  label: string;
+  singular: string;
+  items: string[];
+  updatedAt?: string | null;
+}
+
+export interface ReferenceGroupApi {
+  key: "seeker" | "hirer" | "grants";
+  label: string;
+  description: string;
+  lists: ReferenceListApi[];
+}
+
+export const getAdminReferenceData = async (group?: string): Promise<ReferenceGroupApi[]> => {
+  const query = group ? `?group=${encodeURIComponent(group)}` : "";
+  return request<ReferenceGroupApi[]>(`/admin/reference-data${query}`);
+};
+
+export const getAdminReferenceList = async (
+  group: string,
+  key: string,
+  params?: { q?: string; page?: number; limit?: number }
+): Promise<{
+  group: string;
+  key: string;
+  label: string;
+  singular: string;
+  items: string[];
+  total: number;
+}> => {
+  const query = new URLSearchParams();
+  if (params?.q) query.set("q", params.q);
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  const queryString = query.toString() ? `?${query.toString()}` : "";
+  return request(`/admin/reference-data/${group}/${key}${queryString}`);
+};
+
+export const updateAdminReferenceList = async (
+  group: string,
+  key: string,
+  data: { items: string[]; label?: string; singular?: string }
+): Promise<ReferenceListApi> => {
+  return request<ReferenceListApi>(`/admin/reference-data/${group}/${key}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+};
+
+// BE-021: website category taxonomy + live tally.
+export type CategoryMapRecord = {
+  id: string;
+  websiteCategory: string;
+  appCategory: string | null;
+  note?: string;
+  updatedAt: string;
+};
+
+export type TallyReport = {
+  websiteOpportunities: number;
+  appOpportunities: number;
+  report: {
+    opportunities: { inBoth: unknown[]; onlyWebsite: unknown[]; onlyApp: unknown[] };
+    categories: {
+      inBoth: unknown[];
+      onlyWebsite: unknown[];
+      onlyApp: unknown[];
+      differing: unknown[];
+      unmapped: unknown[];
+    };
+  };
+};
+
+export const getCategoryTaxonomyApi = async (): Promise<CategoryMapRecord[]> => {
+  return request<CategoryMapRecord[]>(`/admin/sync/taxonomy`);
+};
+
+export const updateCategoryMappingApi = async (data: { websiteCategory: string; appCategory?: string | null; note?: string }): Promise<CategoryMapRecord> => {
+  return request<CategoryMapRecord>(`/admin/sync/taxonomy`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+};
+
+export const getWebsiteTallyApi = async (): Promise<TallyReport> => {
+  return request<TallyReport>(`/admin/sync/tally`);
+};
+
+// BE-022: ingested news moderation (hide/show re-ingest-proof items).
+export type NewsItemRecord = {
+  id: string;
+  externalId: string;
+  source: "insight_ghana" | "african_journal";
+  title: string;
+  summary?: string;
+  content?: string;
+  link?: string;
+  imageUrl?: string | null;
+  publishedAt?: string | null;
+  hidden: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const getAdminNewsApi = async (params?: { source?: "insight_ghana" | "african_journal"; hidden?: boolean; q?: string; page?: number; limit?: number }) => {
+  const query = new URLSearchParams();
+  if (params?.source) query.set("source", params.source);
+  if (params?.hidden !== undefined) query.set("hidden", String(params.hidden));
+  if (params?.q) query.set("q", params.q);
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  const queryString = query.toString() ? `?${query.toString()}` : "";
+  return requestPage<NewsItemRecord>(`/admin/news${queryString}`);
+};
+
+export const moderateNewsItemApi = async (id: string, data: { hidden: boolean }) =>
+  request<NewsItemRecord>(`/admin/news/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+
+
+
+

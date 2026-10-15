@@ -8,15 +8,13 @@
  * - Mock mode: worked out from the shared in-memory store with the same functions as the Overview, so a card, a priority and a scorecard
  *   row always agree. The first load takes a moment (skeletons); later ones are instant.
  * - Dev only: ?state=loading|error|empty on the page URL forces that state (mock mode, never in production).
- * - Real-API mode: the monthly figures have no live source yet, so `notConnected` is true and nothing is calculated.
- *
- * TODO(backend): the scorecard needs monthly figures per KPI from the API.
+ * - Real-API mode: the figures come from the live scorecard API (BE-015); `notConnected` is false once it answers.
  */
 import type { Role } from "@/config/roles";
 import { currentMonth, isPastMonth } from "@/lib/kpi";
 import type { MonthKey } from "@/lib/mock-entities";
 import { compositeSeries, isTooEarly, scorecardFor, teamScorecards, type CompositePoint, type ScorecardPerson } from "@/lib/scorecard";
-import { getAdminUser } from "@/lib/api";
+import { getAdminUser, getMyScorecardApi, getTeamScorecardApi } from "@/lib/api";
 import type { OverviewIssue } from "./dashboard-types";
 import { isMockMode } from "./mock-mode";
 
@@ -74,6 +72,11 @@ function load(month: MonthKey, build: () => ScorecardData): Promise<ScorecardRes
 
 /** The viewer's own scorecard for a month. `roles` are the viewer's CURRENT roles (the role context). */
 export function getMyScorecard(roles: readonly Role[], month: MonthKey = currentMonth()): Promise<ScorecardResult> {
+  if (!isMockMode()) {
+    return getMyScorecardApi(month)
+      .then((data) => ({ data: { ...data, month, isPast: isPastMonth(month), notConnected: false }, issue: null }))
+      .catch((err) => ({ data: nothing(month), issue: { kind: "failed" as const, message: err?.message || "Could not load the scorecard." } }));
+  }
   return load(month, () => {
     // "Me" is the SIGNED-IN user (the session), never a staff member picked from the collection.
     const name = getAdminUser()?.name ?? "You";
@@ -84,5 +87,11 @@ export function getMyScorecard(roles: readonly Role[], month: MonthKey = current
 
 /** Everyone, scored and ranked, for a month. Only for roles that may view the team scorecard. */
 export function getTeamScorecard(month: MonthKey = currentMonth()): Promise<ScorecardResult> {
+  if (!isMockMode()) {
+    return getTeamScorecardApi(month)
+      .then((data) => ({ data: { ...data, month, isPast: isPastMonth(month), notConnected: false }, issue: null }))
+      .catch((err) => ({ data: nothing(month), issue: { kind: "failed" as const, message: err?.message || "Could not load the team scorecard." } }));
+  }
   return load(month, () => ({ month, isPast: isPastMonth(month), notConnected: false, tooEarly: isTooEarly(month), people: teamScorecards(month), series: null }));
 }
+

@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { app } from '../src/app.js';
-import { User, StaffMember, AuditLog } from '../src/models/User.js';
+import { User, AuditLog } from '../src/models/User.js';
 import { Partner, PipelineStageConfig } from '../src/models/AdminPortal.js';
 import { signAdminToken } from '../src/middleware/auth.js';
 import { preparePartner, toPartnerClientObject } from '../src/routes/admin-api.js';
@@ -107,14 +107,12 @@ describe('BE-006: Partners Model & Unit Logic', () => {
 describe('BE-006: Partner Moves & Pipeline API', () => {
   let adminUser;
   let adminCookie;
-  let partnershipsOfficer;
 
   beforeEach(async () => {
     await Partner.deleteMany({});
     await PipelineStageConfig.deleteMany({});
     await AuditLog.deleteMany({});
     await User.deleteMany({});
-    await StaffMember.deleteMany({});
 
     adminUser = await User.create({
       name: 'Desk Lead Admin',
@@ -123,20 +121,6 @@ describe('BE-006: Partner Moves & Pipeline API', () => {
       passwordHash: 'hashed_pw_test',
     });
     adminCookie = `kredibble_admin_token=${signAdminToken(adminUser)}`;
-
-    partnershipsOfficer = await User.create({
-      name: 'Abena Osei',
-      email: 'abena@kredibble.com',
-      role: 'hirer',
-      passwordHash: 'hashed_pw_test',
-    });
-    await StaffMember.create({
-      userId: partnershipsOfficer._id,
-      name: partnershipsOfficer.name,
-      email: partnershipsOfficer.email,
-      roles: ['partnerships_officer'],
-      status: 'active',
-    });
   });
 
   it('POST /admin/partners creates a partner with initialized stage history', async () => {

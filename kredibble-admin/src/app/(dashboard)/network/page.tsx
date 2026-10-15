@@ -22,6 +22,7 @@ import { DataTable } from "@/components/list/DataTable";
 import { ListPage } from "@/components/list/ListPage";
 import { TableToolbar } from "@/components/list/TableToolbar";
 import type { Column } from "@/components/list/types";
+import { AmbassadorBulkActions } from "@/components/network/AmbassadorBulkActions";
 import { NetworkSummary } from "@/components/network/NetworkSummary";
 import { Select, type SelectOption } from "@/components/ui/form/Select";
 import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
@@ -60,6 +61,8 @@ export default function NetworkPage() {
   const [tier, setTier] = useState<string>(ALL);
   const [country, setCountry] = useState<string>(ALL);
   const [search, setSearch] = useState("");
+  // Rows ticked for "Export selected" (by id). They stay ticked while the filters change.
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
 
   const all = useMemo(() => rows ?? [], [rows]);
   const tierOptions: SelectOption<string>[] = [{ value: ALL, label: "All tiers" }, ...AMBASSADOR_TIERS.map((value) => ({ value, label: AMBASSADOR_TIER_LABELS[value] }))];
@@ -102,6 +105,13 @@ export default function NetworkPage() {
           >
             <Select options={tierOptions} value={tier} onChange={setTier} ariaLabel="Filter by tier" sheetTitle="Tier" className="w-fit" />
             <Select options={countryOptions} value={country} onChange={setCountry} ariaLabel="Filter by country" sheetTitle="Country" className="w-fit" />
+            {/* Export, Import and History: each only for a role that has the permission (see AmbassadorBulkActions). */}
+            <AmbassadorBulkActions
+              filteredRows={visible}
+              selectedIds={selected}
+              filters={{ status, tier, country, search: term }}
+              onClearSelection={() => setSelected(new Set())}
+            />
           </TableToolbar>
         </div>
       }
@@ -117,6 +127,11 @@ export default function NetworkPage() {
         onRetry={retry}
         isFiltered={filtered}
         resetKey={`${status}|${tier}|${country}|${term}`}
+        selection={
+          can("ambassadors.export", "edit")
+            ? { selected, onChange: (next) => setSelected(next), itemLabel: (row) => `Select ${row.name}` }
+            : undefined
+        }
         emptyNoData={{ icon: NetworkIcon, title: "No ambassadors yet", description: "People who share listings with their referral code appear here." }}
         emptyNoResults={{ icon: NetworkIcon, title: "No ambassadors match these filters", description: "Try another status, tier, country or search." }}
       />

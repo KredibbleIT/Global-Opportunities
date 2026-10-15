@@ -47,6 +47,7 @@ import { TagPill } from "@/components/ui/TagPill";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { TruncatedLink, TruncatedText } from "@/components/ui/TruncatedText";
 import type { Column, EmptyCopy } from "./types";
+import { SelectionCheckbox } from "./SelectionCheckbox";
 
 const SKELETON_ROWS = 5;
 const DEFAULT_PAGE_SIZE = 10;
@@ -72,6 +73,16 @@ interface DataTableProps<T> {
    * "after:absolute after:inset-0" so the whole card opens the row, and put any other control above it with "relative z-10".
    */
   renderCard?: (row: T) => ReactNode;
+  /**
+   * Optional row selection: a checkbox column on the left (and "select this page" in the header). The page owns the set of
+   * selected row keys. `itemLabel` names a row for screen readers ("Select Ama Mensah"). Without this prop the table has no
+   * checkbox column and looks and behaves exactly as before.
+   */
+  selection?: {
+    selected: ReadonlySet<string>;
+    onChange: (next: Set<string>) => void;
+    itemLabel: (row: T) => string;
+  };
 }
 
 // Narrowest a progress column may get: the 180px cell plus its 12px side padding.
@@ -92,6 +103,7 @@ export function DataTable<T>({
   resetKey = "",
   pageSize = DEFAULT_PAGE_SIZE,
   renderCard,
+  selection,
 }: DataTableProps<T>) {
   // With renderCard, a phone gets the card INSTEAD of the cells (one set of elements in the page, never both).
   const phoneCards = useMediaQuery("(max-width: 639px)") && !!renderCard;
@@ -106,6 +118,18 @@ export function DataTable<T>({
   const lastStatusKey = [...columns].reverse().find((column) => column.type === "status")?.key;
 
   const showRows = !loading && !error && rows.length > 0;
+  // "Select this page" in the header: all, some or none of the rows shown on this page.
+  const pageKeys = visibleRows.map((row) => getRowKey(row));
+  const pageSelected = selection ? pageKeys.filter((key) => selection.selected.has(key)).length : 0;
+  const toggleKeys = (keys: string[], on: boolean) => {
+    if (!selection) return;
+    const next = new Set(selection.selected);
+    for (const key of keys) {
+      if (on) next.add(key);
+      else next.delete(key);
+    }
+    selection.onChange(next);
+  };
   const message = error
     ? null
     : loading
@@ -135,6 +159,7 @@ export function DataTable<T>({
           aria-busy={loading || undefined}
         >
           <colgroup className="max-sm:hidden">
+            {selection && <col className="w-10" />}
             {columns.map((column) => (
               <col key={column.key} style={column.width ? { width: column.width } : undefined} />
             ))}
@@ -144,13 +169,23 @@ export function DataTable<T>({
           {/* Header band: 36px, surface-2, 10px radius. Hidden visually on mobile, still read by screen readers. */}
           <thead className="max-sm:sr-only">
             <tr className="bg-surface-2">
+              {selection && (
+                <th scope="col" className="h-9 w-10 rounded-l-inset pl-3 text-left">
+                  <SelectionCheckbox
+                    label="Select all rows on this page"
+                    checked={showRows && pageSelected === pageKeys.length && pageKeys.length > 0}
+                    indeterminate={showRows && pageSelected > 0 && pageSelected < pageKeys.length}
+                    onChange={(on) => toggleKeys(pageKeys, on)}
+                  />
+                </th>
+              )}
               {columns.map((column, index) => (
                 <th
                   key={column.key}
                   scope="col"
                   className={cn(
                     "table-head h-9 px-3 font-semibold",
-                    index === 0 && "rounded-l-inset",
+                    index === 0 && !selection && "rounded-l-inset",
                   )}
                 >
                   {column.header}
@@ -168,6 +203,7 @@ export function DataTable<T>({
             {loading &&
               Array.from({ length: SKELETON_ROWS }, (_, i) => (
                 <tr key={i} className="border-b border-line last:border-b-0 max-sm:block max-sm:py-4">
+                  {selection && <td className="h-14 w-10 pl-3 max-sm:hidden" />}
                   {columns.map((column) => (
                     <td key={column.key} className="h-14 px-3 max-sm:flex max-sm:h-auto max-sm:px-0 max-sm:py-1">
                       <Skeleton className="h-4 w-3/4" />
@@ -191,6 +227,16 @@ export function DataTable<T>({
                       : "max-sm:grid max-sm:grid-cols-[1fr_auto] max-sm:items-center max-sm:gap-x-3 max-sm:gap-y-1.5 max-sm:px-3 max-sm:py-3",
                   )}
                 >
+                  {selection && (
+                    // Above the row's stretched link (z-10), so the click selects instead of opening the row.
+                    <td className="relative z-10 h-14 w-10 pl-3 align-middle max-sm:absolute max-sm:bottom-1 max-sm:right-1 max-sm:h-auto max-sm:p-0">
+                      <SelectionCheckbox
+                        label={selection.itemLabel(row)}
+                        checked={selection.selected.has(getRowKey(row))}
+                        onChange={(on) => toggleKeys([getRowKey(row)], on)}
+                      />
+                    </td>
+                  )}
                   {!phoneCards && columns.map((column) => (
                     <Cell
                       key={column.key}

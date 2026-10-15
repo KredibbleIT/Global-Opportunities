@@ -4,13 +4,14 @@ import { authRouter } from './auth.js';
 import { uploadRouter, createUploadRouter, IMAGE_MIME_TYPES } from './upload.js';
 import { assistantRouter } from './assistant.js';
 import { newsRouter } from './news.js';
-import { adminApiRouter } from './admin-api.js';
+import { adminApiRouter, getAttentionCounts } from './admin-api.js';
 import { ambassadorRouter } from './ambassador.js';
 import { asyncHandler, itemResponse, listResponse, notFound, stripSensitive, ApiError, parsePagination } from '../utils/http.js';
 import { requireAuth, requireAdminAuth, optionalAuth, requireEmailVerified } from '../middleware/auth.js';
 import { env } from '../config/env.js';
 import { validate } from '../middleware/validate.js';
 import { staffInviteSchema } from '../schemas/admin.js';
+import { pushTokenSchema } from '../schemas/auth.js';
 import {
   RESOURCE_POLICIES,
   ADMIN,
@@ -29,13 +30,14 @@ import {
 } from '../models/Platform.js';
 import { Channel, ChannelPost, CommunityMembership, Report } from '../models/Community.js';
 import { Article, Notification } from '../models/Content.js';
-import { Ambassador, AmbassadorRequest, OpportunityEngagement, Testimonial, Beneficiary } from '../models/AdminPortal.js';
+import { Ambassador, OpportunityEngagement, Testimonial } from '../models/AdminPortal.js';
 import { auditReq, AUDIT_ACTIONS, AUDIT_RESOURCE_TYPES } from '../lib/audit.js';
-import { searchLimiter, chatLimiter } from '../lib/rate-limiters.js';
+import { searchLimiter, chatLimiter, testimonialLimiter } from '../lib/rate-limiters.js';
 import { normalizeLegacyRole } from '../lib/permissions.js';
 import { postChannelMessage, listChannelMessages, getThread, findPost } from '../lib/chat.js';
 import { evictFromChannelRoom } from '../socket.js';
 import { chatMessageSchema } from '../schemas/ambassador.js';
+import { getReferenceDataGroups, getReferenceDataList } from '../lib/reference-data.js';
 
 const parseJson = (value, fallback = []) => {
   if (!value) return fallback;
@@ -599,8 +601,25 @@ const CHANNEL_POST_FIELDS = ['body', 'title', 'bannerImage', 'link', 'linkText',
 const CHANNEL_UPDATE_FIELDS = ['name', 'category', 'bio', 'avatar', 'visibility', 'status', 'requiresApproval'];
 
 const publicTestimonial = (testimonial) => {
-  const { email, ...visible } = toClientObject(testimonial);
-  return visible;
+  if (!testimonial) return null;
+  const raw = testimonial.toJSON ? testimonial.toJSON({ virtuals: true }) : testimonial;
+  const rawSubmitted = raw.submittedAt || raw.createdAt;
+  const submittedAt = rawSubmitted
+    ? (typeof rawSubmitted === 'string' ? rawSubmitted : new Date(rawSubmitted).toISOString())
+    : new Date().toISOString();
+
+  return {
+    id: raw.id || raw._id?.toString(),
+    name: raw.name,
+    author: raw.name,
+    role: raw.role || '',
+    comment: raw.comment,
+    quote: raw.comment,
+    photo: raw.photo || null,
+    status: raw.status || 'approved',
+    submittedAt,
+    createdAt: raw.createdAt ? new Date(raw.createdAt).toISOString() : submittedAt,
+  };
 };
 
 const ADMIN_USER_FIELDS = 'name email avatarUrl emailVerified createdAt';
@@ -846,6 +865,17 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
   // After the staff-portal router, so its paths (e.g. /admin/reports/monthly) match first.
   mountAdminDataRoutes(router);
 
+  router.get('/reference-data', asyncHandler(async (req, res) => {
+    const groups = await getReferenceDataGroups(req.query.group || null);
+    itemResponse(res, groups);
+  }));
+
+  router.get('/reference-data/:group/:key', asyncHandler(async (req, res) => {
+    const list = await getReferenceDataList(req.params.group, req.params.key);
+    if (!list) throw notFound('Reference list');
+    itemResponse(res, list);
+  }));
+
   router.get('/health', (req, res) => {
     const dbStatus = mongoose.connection.readyState;
     const statusMap = {
@@ -874,12 +904,11 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
   // SEC-003: platform-wide counts are admin-only. `requireAdminAuth` validates the
   // admin cookie or header and enforces role=admin + audience=kredibble-admin.
   router.get('/dashboard/summary', requireAdminAuth, asyncHandler(async (req, res) => {
+    const attentionCounts = await getAttentionCounts();
     const [
-      pendingVerifications,
       pendingOpportunities,
       activeSeekers,
       activeHirers,
-      openReports,
       totalUsers,
       totalSeekers,
       totalHirers,
@@ -888,14 +917,10 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
       totalEvents,
       totalGrants,
       totalGrantApplications,
-      pendingAmbassadorRequests,
-      pendingRecords,
     ] = await Promise.all([
-      CompanyVerification.countDocuments({ overallStatus: 'pending' }),
       Opportunity.countDocuments({ moderationStatus: 'pending' }),
       SeekerProfile.countDocuments({ status: 'active' }),
       HirerAccount.countDocuments({ status: 'active' }),
-      Report.countDocuments({ status: 'open' }),
       User.countDocuments(),
       SeekerProfile.countDocuments(),
       HirerAccount.countDocuments(),
@@ -904,19 +929,14 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
       Event.countDocuments(),
       Grant.countDocuments(),
       GrantApplication.countDocuments(),
-      AmbassadorRequest.countDocuments({ status: 'pending' }),
-      Beneficiary.countDocuments({ verified: false }),
     ]);
 
     itemResponse(res, {
-      // Keys read by the admin dashboard.
-      pendingVerifications,
-      pendingAmbassadorRequests,
+      // Keys read by the admin dashboard from single shared source of truth.
+      ...attentionCounts,
       pendingOpportunities,
-      pendingRecords,
       activeSeekers,
       activeHirers,
-      openReports,
       totalUsers,
       totalOpportunities,
       // Totals added with API versioning (SEC-019).
@@ -959,16 +979,38 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
 
   // Only approved testimonials are public, and never with the submitter's email.
   router.get('/testimonials', asyncHandler(async (req, res) => {
-    const testimonials = await Testimonial.find({ status: 'approved' }).sort({ createdAt: -1 });
+    const testimonials = await Testimonial.find({ status: 'approved' }).sort({ submittedAt: -1, createdAt: -1 });
     listResponse(res, testimonials.map(publicTestimonial));
   }));
 
-  router.post('/testimonials', requireAuth, asyncHandler(async (req, res) => {
-    const name = String(req.body.name || '').trim();
-    const email = String(req.body.email || '').trim().toLowerCase();
-    const comment = String(req.body.comment || '').trim();
-    if (!name || !/^\S+@\S+\.\S+$/.test(email) || !comment) throw new ApiError(400, 'name, a valid email, and comment are required');
-    const testimonial = await Testimonial.create({ name, email, comment, photo: req.body.photo });
+  // Public submission of testimonials (rate limited with testimonialLimiter)
+  router.post('/testimonials', optionalAuth, testimonialLimiter, asyncHandler(async (req, res) => {
+    const name = String(req.body.name || req.body.author || '').trim();
+    const email = String(req.body.email || (req.auth?.email) || '').trim().toLowerCase();
+    const comment = String(req.body.comment || req.body.quote || '').trim();
+    const role = req.body.role ? String(req.body.role).trim() : '';
+    const photo = req.body.photo ? String(req.body.photo).trim() : undefined;
+
+    if (!name || name.length < 2) {
+      throw new ApiError(400, 'name is required and must be at least 2 characters');
+    }
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+      throw new ApiError(400, 'a valid email is required');
+    }
+    if (!comment || comment.length < 5) {
+      throw new ApiError(400, 'comment is required and must be at least 5 characters');
+    }
+
+    const testimonial = await Testimonial.create({
+      name,
+      email,
+      comment,
+      role,
+      photo,
+      status: 'pending',
+      submittedAt: new Date(),
+    });
+
     res.status(201).json({ data: publicTestimonial(testimonial) });
   }));
 
@@ -1026,15 +1068,17 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
     const opportunity = await Opportunity.findById(req.params.opportunityId);
     if (!opportunity) throw notFound('Opportunity');
     const { referralCode, ambassador } = await findReferringAmbassador(req.body.referralCode);
+    const source = req.body.source === 'website' ? 'website' : 'app';
     await OpportunityEngagement.create({
       opportunityId: opportunity._id,
       event: 'view',
-      source: req.body.source === 'website' ? 'website' : 'app',
+      source,
       userId: req.auth?.sub,
       ambassadorId: ambassador?._id,
       referralCode,
       visitorId: String(req.body.visitorId || '').trim() || undefined,
     });
+    await Opportunity.findByIdAndUpdate(opportunity._id, { $inc: { [`views.${source}`]: 1 } });
     res.status(202).json({ data: { recorded: true } });
   }));
 
@@ -1311,6 +1355,21 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
     itemResponse(res, { channel: toClientObject(channel), post: toClientObject(post) });
   }));
 
+  // Push notification token registration
+  router.post('/users/me/push-token', requireAuth, validate(pushTokenSchema), asyncHandler(async (req, res) => {
+    const userId = req.auth.sub || req.auth.id || req.auth.userId;
+    const { token, platform } = req.body;
+    const update = {
+      pushToken: token,
+      pushTokenUpdatedAt: new Date(),
+    };
+    if (platform) {
+      update.pushPlatform = platform;
+    }
+    await User.findByIdAndUpdate(userId, { $set: update });
+    itemResponse(res, { success: true });
+  }));
+
   // Collection routes with populate option
   router.use('/users', collectionRoutes({ Model: User, resourceName: 'User', policyKey: 'users', searchFields: ['name', 'email'], enablePopulate }));
   router.use('/staff', collectionRoutes({ Model: StaffMember, resourceName: 'Staff', policyKey: 'staff', searchFields: ['name', 'email'], enablePopulate }));
@@ -1417,7 +1476,7 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
       applicant.set('ambassadorId', ambassador._id);
     }
     await applicant.save();
-    await Opportunity.findByIdAndUpdate(opportunity._id, { $inc: { applicantsCount: 1 } });
+    await Opportunity.findByIdAndUpdate(opportunity._id, { $inc: { applicantsCount: 1, 'applications.app': 1 } });
     await OpportunityEngagement.create({
       opportunityId: opportunity._id,
       event: 'application',
