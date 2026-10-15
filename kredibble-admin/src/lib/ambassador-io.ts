@@ -651,8 +651,8 @@ const cellFor = (ambassador: Ambassador, key: ImportField): string => {
     case "city":
       return ambassador.city;
     case "pictureUrl":
-      // A picked image in the browser is a temporary blob: address, which means nothing outside this tab.
-      return ambassador.photoUrl && !ambassador.photoUrl.startsWith("blob:") ? ambassador.photoUrl : "";
+      // A picked image in the browser is a temporary blob: or data: address, which means nothing outside this tab.
+      return ambassador.photoUrl && !/^(blob|data):/.test(ambassador.photoUrl) ? ambassador.photoUrl : "";
     case "pictureSourceUrl":
       return ambassador.pictureSourceUrl ?? "";
     case "bio":
