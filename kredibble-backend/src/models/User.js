@@ -21,6 +21,10 @@ const userSchema = new mongoose.Schema({
     }
   },
   role: { type: String, required: true, enum: ['seeker', 'hirer', 'admin', 'deleted'] },
+  // BE-023: stakeholder segment. Everyone starts as 'general'; approved
+  // ambassadors move to 'ambassador' (and still belong to the general
+  // community). Moves are audited via user.segment.change.
+  segment: { type: String, enum: ['general', 'ambassador'], default: 'general', index: true },
   passwordHash: { type: String },
   avatarUrl: { type: String },
   // SEC-009: token version for refresh rotation & forced logout
