@@ -58,6 +58,7 @@ const STATUS_MAP: Record<string, StatusMeta> = {
   healthy: { tone: "success", label: "Healthy" },
   on_pace: { tone: "success", label: KPI_STATUS_LABELS.green },
   open: { tone: "success", label: "Open" },
+  visible: { tone: "success", label: "Visible" },
   // info
   running: { tone: "info", label: "Running" },
   outreach: { tone: "info", label: "Outreach" },
@@ -86,6 +87,7 @@ const STATUS_MAP: Record<string, StatusMeta> = {
   applicant: { tone: "neutral", label: "Applicant" },
   deactivated: { tone: "neutral", label: "Deactivated" },
   unpublished: { tone: "neutral", label: "Unpublished" },
+  hidden: { tone: "neutral", label: "Hidden" },
   draft: { tone: "neutral", label: "Draft" },
   past: { tone: "neutral", label: "Past" },
   closed: { tone: "neutral", label: "Closed" },

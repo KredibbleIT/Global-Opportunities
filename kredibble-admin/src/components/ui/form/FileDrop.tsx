@@ -10,13 +10,14 @@
  * Only images are accepted (accept="image/*"); anything else shows an inline message and is ignored.
  *
  * Props:
- * - value: the current image URL (an object URL for a new pick, or the saved URL), or undefined
- * - onChange(url | undefined): called with a new object URL, or undefined after Remove
+ * - value: the current image URL (a data: URL for a new pick, or the saved URL), or undefined
+ * - onChange(url | undefined): called with the picked image as a data: URL, or undefined after Remove
  * - alt: description of the image for screen readers ("Article cover image")
  * - emptyLabel: text in the empty drop area
- * Object URLs created here are revoked when replaced, removed or unmounted.
+ * A new pick is read into a data: URL, NOT a blob: URL: the site's Content-Security-Policy (next.config.ts) allows img-src 'self' data: https:, so a
+ * blob: picture would be blocked and never show. TODO(backend): the page uploads the file and stores the returned https URL instead.
  */
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import { useRef, useState, type DragEvent } from "react";
 import { ImagePlus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/cn";
@@ -32,22 +33,8 @@ interface FileDropProps {
 export function FileDrop({ value, onChange, alt, emptyLabel = "Click to upload or drag an image here" }: FileDropProps) {
   const fieldProps = useFieldControlProps();
   const inputRef = useRef<HTMLInputElement>(null);
-  const ownedUrls = useRef(new Set<string>());
   const [dragging, setDragging] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-
-  // Free the browser memory of every object URL made here when the form closes.
-  useEffect(() => {
-    const urls = ownedUrls.current;
-    return () => urls.forEach((url) => URL.revokeObjectURL(url));
-  }, []);
-
-  const release = (url: string | undefined) => {
-    if (url && ownedUrls.current.has(url)) {
-      URL.revokeObjectURL(url);
-      ownedUrls.current.delete(url);
-    }
-  };
 
   const accept = (file: File | undefined) => {
     if (!file) return;
@@ -56,14 +43,15 @@ export function FileDrop({ value, onChange, alt, emptyLabel = "Click to upload o
       return;
     }
     setMessage(null);
-    release(value);
-    const url = URL.createObjectURL(file);
-    ownedUrls.current.add(url);
-    onChange(url);
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") onChange(reader.result);
+    };
+    reader.onerror = () => setMessage("That picture could not be read. Try another file.");
+    reader.readAsDataURL(file);
   };
 
   const remove = () => {
-    release(value);
     setMessage(null);
     onChange(undefined);
   };
