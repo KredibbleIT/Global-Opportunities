@@ -2601,7 +2601,7 @@ const NAV_ORDER = [
   'Partners', 'Network', 'Ambassadors', 'Leaderboard',
   'Seekers', 'Hirers', 'Channels', 'Database',
   'Verification Queue', 'Reports Queue',
-  'Career Resources', 'Reference data', 'Social', 'Testimonials',
+  'Career Resources', 'Reference data', 'Social', 'Testimonials', 'Showcase',
   'Notifications', 'Team', 'Settings',
 ];
 const slugOf = (label: string) => label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -2613,15 +2613,15 @@ const EXPECTED_NAV: Record<string, string[]> = {
   desk_lead: NAV_ORDER,
   moderator: ['Overview', 'Scorecard', 'Seekers', 'Hirers', 'Channels', 'Verification Queue', 'Reports Queue', 'Opportunities Queue', 'Settings'],
   support: ['Overview', 'Scorecard', 'Seekers', 'Hirers', 'Settings'],
-  partnerships_officer: ['Overview', 'Monthly report', 'Scorecard', 'Partners', 'Network', 'Ambassadors', 'Leaderboard', 'Settings'],
+  partnerships_officer: ['Overview', 'Monthly report', 'Scorecard', 'Partners', 'Network', 'Ambassadors', 'Leaderboard', 'Showcase', 'Settings'],
   opportunities_officer: ['Overview', 'Scorecard', 'Opportunities Queue', 'Events', 'Grants', 'Career Resources', 'Settings'],
   training_officer: ['Overview', 'Scorecard', 'Events', 'Programs', 'Network', 'Ambassadors', 'Settings'],
   database_officer: ['Overview', 'Scorecard', 'Network', 'Ambassadors', 'Database', 'Settings'],
-  communications_officer: ['Overview', 'Monthly report', 'Scorecard', 'Career Resources', 'Social', 'Testimonials', 'Notifications', 'Settings'],
+  communications_officer: ['Overview', 'Monthly report', 'Scorecard', 'Career Resources', 'Social', 'Testimonials', 'Showcase', 'Notifications', 'Settings'],
   social_media_manager: ['Overview', 'Scorecard', 'Social', 'Testimonials', 'Settings'],
-  country_lead: ['Overview', 'Scorecard', 'Partners', 'Network', 'Ambassadors', 'Leaderboard', 'Programs', 'Database', 'Settings'],
+  country_lead: ['Overview', 'Scorecard', 'Partners', 'Network', 'Ambassadors', 'Leaderboard', 'Programs', 'Database', 'Showcase', 'Settings'],
   admin_support: ['Overview', 'Scorecard', 'Team', 'Settings'],
-  'moderator,communications_officer': ['Overview', 'Monthly report', 'Scorecard', 'Seekers', 'Hirers', 'Channels', 'Verification Queue', 'Reports Queue', 'Career Resources', 'Social', 'Testimonials', 'Notifications', 'Settings', 'Opportunities Queue'],
+  'moderator,communications_officer': ['Overview', 'Monthly report', 'Scorecard', 'Seekers', 'Hirers', 'Channels', 'Verification Queue', 'Reports Queue', 'Career Resources', 'Social', 'Testimonials', 'Showcase', 'Notifications', 'Settings', 'Opportunities Queue'],
 };
 
 const setDateTime = async (page: import('@playwright/test').Page, label: string, date: string, time: string) => {
