@@ -32,7 +32,7 @@
 - **Architecture Decisions:** [Open Questions & Resolutions (Q1–Q11)](#open-questions)
 - **Execution & Audit History:** [Central Progress Log](#progress-log)
 - **Product Backlog:** [App and Website Integration (Items 1–8)](#product-backlog--app-and-website-integration-added-2026-10-08)
-- **Backend Work Plan:** [Backend Implementation Tasks (BE-001–BE-027)](#backend-work-plan--everything-the-backend-still-has-to-do-added-2026-10-08)
+- **Backend Work Plan:** [Backend Implementation Tasks (BE-001–BE-029)](#backend-work-plan--everything-the-backend-still-has-to-do-added-2026-10-08)
 
 ---
 
@@ -1939,6 +1939,8 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
 | BE-025 | Product item 6: AI assistant hardening | P2 | – | [ ] Open |
 | BE-026 | Product item 7: website to app sync (inbound) | P1 | BE-011, BE-007 | [ ] Open |
 | BE-027 | Product item 8: email verification screen support | P1 | – | [x] Done |
+| BE-028 | Team account creation: invites, roles, deactivate (backend for PR #103) | P1 | BE-001 | [ ] Open |
+| BE-029 | Ambassador CSV import/export backend (for PR #103 wizard) | P2 | BE-001, BE-007 | [ ] Open |
 
 (Product item 3, App Colours, is frontend only: no backend task.)
 
@@ -2216,6 +2218,16 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
 - **Today:** `EmailVerificationCode` and the `requireEmailVerified` gate exist (HTTP 403 `EMAIL_VERIFICATION_REQUIRED`).
 - **To do:** make sure the app's screen has what it needs: `POST /auth/email/send` (cooldown 60 seconds), `POST /auth/email/resend`, `POST /auth/email/verify { code }` (6 digits, expires, 5 attempts then locked for a while), `emailVerified` in `GET /me`; the email itself through the configured provider (Resend). Tests for expiry, attempts and the gate.
 
+#### BE-028 — Team account creation (backend for PR #103)
+- **Today:** PR #103 shipped the Team > Members UI on mock data. The handover is `kredibble-admin/docs/account-creation.md`; nothing is enforced by the server yet.
+- **To do:** implement the six endpoints from the handover under `/api/v1/admin` (admin session only, never public): `POST /accounts` (invited state; name, email, type `user`|`admin`, optional group; never a password), `POST /accounts/:id/invite` (resend: invalidate old token, 48h, invited-only), `PATCH /accounts/:id/role` (user<->admin + group), `POST /accounts/:id/deactivate` / `reactivate` (revoke sessions via `tokenVersion` + refresh tokens), public rate-limited `POST /auth/accept-invite` (token + password, policy check, bcrypt cost 12+, activates, burns token), `GET /audit-log?scope=accounts`. Enforce server-side: Super Admin only (role from the verified token, `accounts.create`), never create or promote `super_admin`, unique-email unique index (trimmed, lowercase), rate limits on create/resend/accept, 32-byte hashed single-use 48h invite tokens (constant-time compare, never logged, last-four only), self and last-Super-Admin guards inside a transaction, state machine (invited -> active <-> deactivated; invited cannot sign in), transactional audit rows, invite email via `lib/email.js` (link returned once until then), shared Zod `validate` on every route.
+- **Verify:** non-Super-Admin gets 403 on every route; `super_admin` type/group rejected; duplicate email rejected by the index; expired or reused token rejected; a deactivated account's sessions are dead; every action has an audit row with actor, target, old/new values and IP, and no token or password in it. New suite `tests/be-028-accounts.test.js` green; backend lint clean.
+
+#### BE-029 — Ambassador CSV import/export backend (for PR #103 wizard)
+- **Today:** PR #103 shipped the 4-step import wizard (preview, duplicate merge by email, skip/update, error report), the export column picker with Sensitive columns, and the history dialog on mock data. The pure rules live in `kredibble-admin/src/lib/ambassador-io.ts` (header aliases, row issues, in-file dedupe where latest wins, formula escaping); the server has no import endpoint (`TODO(backend)` in `services/ambassador-import.ts`).
+- **To do:** `POST /admin/ambassadors/import` (permission `ambassadors.import`, super admin and desk lead): takes the previewed rows and RE-VALIDATES everything server-side — 5 MB cap, required name/email, email format, bio over 1000 chars is an error, dedupe by email (trimmed, lowercase) against the DB plus latest-wins within the file, `skip`|`update` choice, file status column ignored (new people get the wizard status active/pending, existing people keep theirs), unique `GOD-XXXXXX` referral codes from the shared engine, background job downloading `pictureSourceUrl` (Google Drive links must be anyone-with-the-link) into our own storage, per-row error report, audit `ambassadors.import` with created/updated/skipped/failed/merged counts. Export endpoint honoring scope (filtered results, selected rows, everyone) plus column picker, sensitive columns (email, phone, WhatsApp) explicit opt-in only, formula-injection escaping, phones kept as text, audit `ambassadors.export`. Rate-limited, Zod-validated, permission-checked (never trust the client); reuse the fixtures in `kredibble-admin/tests/fixtures/ambassadors-*.csv` as server test vectors.
+- **Verify:** a row with an error never imports; duplicate email skips or updates per choice and never duplicates; file status never changes an existing ambassador; every import/export has an audit row; export without a sensitive opt-in omits those columns. New suite `tests/be-029-ambassador-io.test.js` green; backend lint clean.
+
 ### Suggested order
 1. **BE-001, BE-018** (roles and audit): everything else depends on who may do what.
 2. **BE-002, BE-003, BE-005 to BE-011** (targets, thresholds and the data the KPIs count).
@@ -2224,6 +2236,7 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
 5. **BE-027, BE-024, BE-023** (email verification, ambassador registration, segments): the app-facing items.
 6. **BE-026, BE-021, BE-022, BE-025** (website sync, tally, news, AI).
 7. **BE-017, BE-019, BE-020** alongside every step.
+8. **BE-028, BE-029** (account creation, ambassador import/export): after BE-001 and BE-007, when the Team and Network screens go live.
 
 ### Decisions needed from the product owner
 1. **Website views (BE-012):** pull from Google Analytics, or entered by hand each month?
@@ -2235,6 +2248,7 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
 7. **Stakeholder segments (BE-023):** can a user be in both segments at once (proposal: an ambassador is also in the general community)?
 
 - 2026-10-08 — Backend work plan written (BE-001 to BE-027).
+- 2026-10-14 — Backend work plan extended (BE-028 team account-creation backend, BE-029 ambassador import/export backend) from PR #103, which shipped both UIs on mock data; handover doc is kredibble-admin/docs/account-creation.md.
 - 2026-10-08 — BE-001 complete: Multi-role support (up to 2 roles per staff member), server-side permission matrix engine (12 roles x 28 screens), dynamic Moderator/Support toggles persistence in Mongo (`RolePermissionConfig`), `requireScreen` middleware, `/api/v1/admin/roles-permissions` GET/PUT with audit trail (`ROLES_PERMISSIONS_UPDATE`), and admin `RolesTab` wired to live API. All 22 test suites (247 tests) passing.
 - 2026-10-08 — BE-002 complete: Append-only TargetChange model with database-level immutability hooks, temporal target resolution by effectiveFrom month and sequence number (seq), GET /api/v1/admin/targets, GET /api/v1/admin/targets/history, POST /api/v1/admin/targets with Zod batch validation and audit logging (targets.update), and admin settings service sync. All 23 test suites (258 tests) passing.
 - 2026-10-08 — BE-003 complete: Dated status thresholds with shared monotonic sequence counter (seq), ThresholdChange model, GET /api/v1/admin/thresholds with effective-from temporal resolution, POST /api/v1/admin/thresholds with audit logging (thresholds.update), GET /api/v1/admin/targets/history unified feed sorted by seq, and admin settings service sync. All 24 test suites (269 tests) passing.
