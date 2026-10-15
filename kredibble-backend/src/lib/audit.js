@@ -56,6 +56,7 @@ export const AUDIT_ACTIONS = {
   OPPORTUNITY_VET: 'opportunity.vet',
   WEBSITE_AUDIENCE_UPDATE: 'website_audience.update',
   WEBSITE_AUDIENCE_SYNC: 'website_audience.sync',
+  WEBSITE_SYNC_EVENT: 'website_sync.event',
   MONTHLY_REPORT_GENERATE: 'monthly_report.generate',
   SETTINGS_UPDATE: 'settings.update',
 
