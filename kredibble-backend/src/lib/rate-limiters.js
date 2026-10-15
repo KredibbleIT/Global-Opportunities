@@ -359,3 +359,16 @@ export const chatLimiter = createRateLimiter({
   limit: 30,
   message: { error: { message: 'You are sending messages too quickly, please slow down' } },
 });
+
+/**
+ * BE-026: 120 inbound website-webhook deliveries per hour per IP. The website
+ * is effectively a single sender; the bucket is generous for catch-up bursts
+ * while still bounding replay floods. Authentication is the HMAC signature,
+ * so the limiter keys on IP only.
+ */
+export const webhookLimiter = createRateLimiter({
+  prefix: 'webhook',
+  windowMs: 60 * 60 * 1000,
+  limit: 120,
+  message: { error: { message: 'Too many webhook deliveries, please try again after an hour' } },
+});
