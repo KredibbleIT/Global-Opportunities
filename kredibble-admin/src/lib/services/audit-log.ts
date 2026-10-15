@@ -18,7 +18,17 @@ export type AuditAction =
   | "accounts.resend_invite"
   | "accounts.change_role"
   | "accounts.deactivate"
-  | "accounts.reactivate";
+  | "accounts.reactivate"
+  | "showcase.add"
+  | "showcase.edit"
+  | "showcase.show"
+  | "showcase.hide"
+  | "showcase.move"
+  | "showcase.delete"
+  | "showcase.category_add"
+  | "showcase.category_edit"
+  | "showcase.category_move"
+  | "showcase.category_delete";
 
 export interface AuditEntry {
   id: string;

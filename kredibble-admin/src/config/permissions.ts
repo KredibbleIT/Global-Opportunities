@@ -23,6 +23,11 @@
  *   super_admin and desk_lead only (they get every screen). No other role has them. Give them to country_lead later if wanted.
  * - accounts.create (Create account on Team > Members, and the account actions on its rows: resend invite, change role, deactivate,
  *   reactivate): SUPER ADMIN ONLY. desk_lead gets every screen through everything(), so it is removed for them below.
+ * - showcase (the Showcase page: the people and partners featured on the app): edit for super_admin, desk_lead and
+ *   communications_officer (every category, publishing directly); VIEW for country_lead and partnerships_officer, who can open the page.
+ *   showcase.ambassadors: edit for country_lead (the Ambassadors category only). showcase.partners: edit for partnerships_officer
+ *   (the Partners category only). showcase.manage (create, rename, reorder and delete categories such as "Developers"): super_admin
+ *   and desk_lead only. See canEditCategory in lib/showcase.ts.
  * - listings_curate (creating and editing curated listings): edit for opportunities_officer, desk_lead, super_admin.
  *   "opportunities_queue" stays the key for moderating listings that hirers submit.
  * - monthly_report: also view for partnerships_officer (the partner version only; the team version is gated by
@@ -70,6 +75,12 @@ export const SCREENS = [
   "ambassadors.import",
   // Creating and managing accounts (User and Admin, never Super Admin). Super admin only: see FIXED_PERMISSIONS.desk_lead.
   "accounts.create",
+  // The Showcase page (who is featured on the app). "showcase" opens the page and edits every category; the two scoped keys edit one category
+  // each; "showcase.manage" is for the categories themselves.
+  "showcase",
+  "showcase.ambassadors",
+  "showcase.partners",
+  "showcase.manage",
 ] as const;
 
 export type Screen = (typeof SCREENS)[number];
@@ -107,13 +118,13 @@ export const FIXED_PERMISSIONS: Record<Exclude<Role, "moderator" | "support">, G
   super_admin: everything(),
   // may read the roles matrix, not change it, and may NOT create or manage accounts (Super Admin only)
   desk_lead: { ...everything(), roles_permissions: "view", "accounts.create": undefined },
-  partnerships_officer: own({ partners: "edit", network: "view", leaderboard: "view", monthly_report: "view" }),
+  partnerships_officer: own({ partners: "edit", network: "view", leaderboard: "view", monthly_report: "view", showcase: "view", "showcase.partners": "edit" }),
   opportunities_officer: own({ opportunities_queue: "edit", career_resources: "edit", events: "view", grants: "view", listings_curate: "edit" }),
   training_officer: own({ programs: "edit", events: "edit", network: "view" }),
   database_officer: own({ database: "edit", network: "view" }),
-  communications_officer: own({ testimonials: "edit", notifications: "edit", career_resources: "edit", monthly_report: "view", social: "view" }),
+  communications_officer: own({ testimonials: "edit", notifications: "edit", career_resources: "edit", monthly_report: "view", social: "view", showcase: "edit" }),
   social_media_manager: own({ social: "edit", testimonials: "view" }),
-  country_lead: own({ network: "edit", programs: "view", partners: "view", database: "view", leaderboard: "view" }),
+  country_lead: own({ network: "edit", programs: "view", partners: "view", database: "view", leaderboard: "view", showcase: "view", "showcase.ambassadors": "edit" }),
   admin_support: own({ team: "edit" }),
 };
 
