@@ -724,7 +724,8 @@ const LIST_PAGES = [
   { path: '/opportunities', title: 'Opportunities Queue', mockOnly: true },
   { path: '/seekers', title: 'Seekers Directory' },
   { path: '/hirers', title: 'Hirers Directory' },
-  { path: '/community', title: 'Community Channels' },
+  // Channels come from the real API outside mock mode, and the e2e API has none, so rows only exist in mock mode.
+  { path: '/community', title: 'Community Channels', mockOnly: true },
   { path: '/reports', title: 'Reports Queue' },
   { path: '/content/articles', title: 'Career Resources' },
   { path: '/events', title: 'Events' },
@@ -737,8 +738,8 @@ test.describe('List pages: smoke', () => {
 
   for (const { path, title, mockOnly, detailBase = path } of LIST_PAGES) {
     test(`${title}: renders, logs no console errors, and a row opens its detail page`, async ({ page }) => {
-      // The two queues call the real API outside mock mode (and then show an inline error instead of rows).
-      test.skip(!!mockOnly && !MOCK_RUN, 'the queues need mock mode for rows');
+      // The queues and Channels call the real API outside mock mode (the queues then show an inline error instead of rows).
+      test.skip(!!mockOnly && !MOCK_RUN, 'these pages need mock mode for rows');
       const problems: string[] = [];
       page.on('pageerror', (error) => problems.push(error.message));
       page.on('console', (message) => {
