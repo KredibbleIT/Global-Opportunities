@@ -37,6 +37,7 @@ import {
   TESTIMONIAL_ACTIONS_MAP,
   WebsiteMonth,
   MonthlyReport,
+  SyncEvent,
   CategoryMap,
 } from '../models/AdminPortal.js';
 import { deleteFromWordpress, syncToWordpress } from '../lib/wordpress-sync.js';
@@ -132,6 +133,8 @@ import { notifyUser } from '../lib/user-notify.js';
 import { evictFromChannelRoom } from '../socket.js';
 import { toRequestResponse } from './ambassador.js';
 import { moveUserSegment, normalizeSegments, GENERAL_SEGMENT } from '../lib/segments.js';
+import { retrySyncEvent } from '../lib/website-sync.js';
+import { syncEventQuerySchema, syncEventRetrySchema } from '../schemas/website-sync.js';
 import { newsAdminQuerySchema, newsModerateSchema } from '../schemas/news.js';
 import {
   approveAmbassadorRequestSchema, rejectAmbassadorRequestSchema, chatMessageSchema,
@@ -3846,6 +3849,33 @@ adminApiRouter.get('/monthly-reports', requireAdminOrStaffAuth, requireScreen('m
   const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 50));
   const records = await MonthlyReport.find(filter).sort({ generatedAt: -1 }).limit(limit);
   listResponse(res, records.map(toClientObject));
+}));
+
+// BE-026: inbound website-sync event log (failures visible here) + retry.
+adminApiRouter.get('/sync/events', requireAdminOrStaffAuth, requireScreen('settings_admin', 'view'), validate(syncEventQuerySchema), asyncHandler(async (req, res) => {
+  const filter = {};
+  if (req.query.status) filter.status = req.query.status;
+  if (req.query.resource) filter.resource = req.query.resource;
+  const { page, skip, limit } = pageOptions(req.query);
+  const [events, total] = await Promise.all([
+    SyncEvent.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+    SyncEvent.countDocuments(filter),
+  ]);
+  listResponse(res, events.map(toClientObject), total, page, limit);
+}));
+
+adminApiRouter.post('/sync/events/:id/retry', requireAdminOrStaffAuth, requireScreen('settings_admin', 'edit'), validate(syncEventRetrySchema), asyncHandler(async (req, res) => {
+  const result = await retrySyncEvent(req.params.id, req.auditContext);
+  if (result.noop) {
+    return itemResponse(res, { ...toClientObject(result.event), retried: false });
+  }
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.WEBSITE_SYNC_EVENT,
+    resourceType: result.event.resource,
+    outcome: 'success',
+    metadata: { eventId: result.event.eventId, retried: true },
+  });
+  itemResponse(res, { ...toClientObject(result.event), retried: true });
 }));
 
 adminApiRouter.get('/roles-permissions', requireAdminOrStaffAuth, requireScreen('roles_permissions', 'view'), asyncHandler(async (req, res) => {

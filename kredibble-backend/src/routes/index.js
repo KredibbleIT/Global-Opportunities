@@ -6,6 +6,7 @@ import { assistantRouter } from './assistant.js';
 import { newsRouter } from './news.js';
 import { adminApiRouter, getAttentionCounts } from './admin-api.js';
 import { ambassadorRouter } from './ambassador.js';
+import { syncRouter } from './sync.js';
 import { asyncHandler, itemResponse, listResponse, notFound, stripSensitive, ApiError, parsePagination } from '../utils/http.js';
 import { requireAuth, requireAdminAuth, optionalAuth, requireEmailVerified } from '../middleware/auth.js';
 import { env } from '../config/env.js';
@@ -878,6 +879,9 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
   router.use('/news', newsRouter);
   router.use('/admin', adminApiRouter);
   router.use('/ambassador-requests', ambassadorRouter);
+  // BE-026: inbound website sync. The webhook authenticates via HMAC, not a
+  // user token (every verification failure answers 401 — see sync.js).
+  router.use('/sync', syncRouter);
   // After the staff-portal router, so its paths (e.g. /admin/reports/monthly) match first.
   mountAdminDataRoutes(router);
 
