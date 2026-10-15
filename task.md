@@ -259,7 +259,7 @@ Note: the audit's own text reached the same conclusion on #10 ("Actually this on
 | SEC-089 | Shared Redis, always-on hosting, database backups | P1 | Operations | 🟡 Redis configured; automated age backups and restore drill complete (Plan 4e); always-on hosting & multi-instance limits in Plans 4b, 4f |
 | SEC-090 | No error tracking or uptime monitoring | P1 | Operations | ✅ Done (Plan 4d: Sentry error tracking, pino-http logging, Better Stack monitoring runbook, Vector log pipeline) |
 | SEC-091 | Transactional email domain not verified (SPF/DKIM) | P2 | Operations | Open |
-| SEC-092 | No privacy policy / ToS; data-protection registration | P1 | Legal | Open |
+| SEC-092 | No privacy policy / ToS; data-protection registration | P1 | Legal | Open — in-app links live (`kredibble-app/src/lib/legal.ts`, signup + both security screens, MOB-015); Ghana DPC registration + retention periods still pending |
 | SEC-093 | No load test or external pen test | P2 | Operations | Open |
 | SEC-094 | README and `AGENTS.md` baseline are stale | P3 | Docs | ✅ Done (rewritten for current Mongoose 9, Node 22/24, no password123 or stale paths) |
 | SEC-095 | Request logging noise; moving `Sunset`; dead duplicate code | P3 | Backend | ✅ Done |
@@ -295,7 +295,8 @@ Note: the audit's own text reached the same conclusion on #10 ("Actually this on
 | SEC-125 | AI Assistant in mobile app is canned setTimeout demo disconnected from backend | P2 | Mobile assistant | ✅ Done |
 | SEC-126 | Mock data fallbacks in notifications, saved items, and hardcoded Wave job descriptions | P2 | Mobile app | ✅ Done |
 | SEC-127 | Hirer postings and managed channels rely on mock in-memory authStore data | P2 | Mobile hirer | ✅ Done |
-| SEC-128 | Mobile test coverage: 0 screen/UI component tests; 116 ESLint warnings across screens | P2 | Mobile tests | Open |
+| SEC-128 | Mobile test coverage: 0 screen/UI component tests; 116 ESLint warnings across screens | P2 | Mobile tests | ✅ Done (MOB-019 Completed on main; `kredibble-app/__tests__/screen-integration.test.ts` present, 95/95 per 2026-10-09 log) |
+| SEC-129 | SEC-002 manifest red on main: BE-017 public `GET /reference-data` routes not in `PUBLIC_ROUTES` | P1 | Backend tests | Open — filed 2026-10-11 on `feature/BE-026-website-inbound-sync`, not yet merged; verified present on `main` 2026-10-15 |
 
 ---
 
@@ -1522,6 +1523,14 @@ Found while planning the move to the company infrastructure platform (`Company_I
 - [ ] `npm run lint` passes with 0 errors and 0 warnings
 - [ ] All test suites pass in CI
 
+### SEC-129 — SEC-002 manifest red on main (BE-017 reference-data routes)
+**Priority:** P1
+**Evidence (verified 2026-10-15 on `main`):** `GET /reference-data` and `GET /reference-data/:group/:key` are mounted with no auth (`kredibble-backend/src/routes/index.js:868-877`, BE-017 public taxonomy by design), but neither is in `PUBLIC_ROUTES` / `PUBLIC_CONTENT_ROUTES` (`kredibble-backend/tests/security.p0.test.js:701-716,718-746`), so the manifest sweep (`rejects anonymous access to every route not declared public`) flags the anonymous 200 as a leak. Filed 2026-10-11 on `feature/BE-026-website-inbound-sync` (commit `4a09121`); not yet merged to `main`.
+**Risk:** CI gate is red; every subsequent PR trains the team to ignore a red security suite.
+**Fix:** Decide public-by-design (reference taxonomy is non-sensitive) and add both routes to `PUBLIC_ROUTES` + reachable check, or put them behind auth. Either way the sweep must be green.
+**Acceptance criteria:**
+- [ ] `npx jest tests/security.p0.test.js` is green on `main` (with and without a local `.env` AI key)
+
 # Execution Order
 
 Phases run in sequence per `AGENTS.md`. Within a phase, respect this dependency chain:
@@ -1890,7 +1899,7 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
 
 ## Backend Work Plan — everything the backend still has to do (added 2026-10-08)
 
-**Why this section exists.** The admin dashboard was rebuilt on a shared in-memory mock store (every write is marked `TODO(backend): persist this change`), and the product backlog above adds eight more requests. This section lists ALL the backend work, task by task, with ids `BE-001` to `BE-027`. It was written after reading `kredibble-backend/src/routes/admin-api.js`, `src/routes/index.js` and `src/models/AdminPortal.js` on 2026-10-08, so "Today" below is what the code does now.
+**Why this section exists.** The admin dashboard was rebuilt on a shared in-memory mock store (every write is marked `TODO(backend): persist this change`), and the product backlog above adds eight more requests. This section lists ALL the backend work, task by task, with ids `BE-001` to `BE-029`. It was written after reading `kredibble-backend/src/routes/admin-api.js`, `src/routes/index.js` and `src/models/AdminPortal.js` on 2026-10-08, so "Today" below is what the code does now.
 
 **Rules for these tasks** (same as the rest of this file): one branch per task (`feature/BE-0xx-slug`), validation with Zod, an audit entry for every change, tests with the change, and no task is done until the matching admin service switches from the mock store to the API and the real-mode Playwright run passes. The admin's pages do not change: each task swaps ONE file in `kredibble-admin/src/lib/services/`.
 
@@ -1945,6 +1954,15 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
 | BE-031 | Showcase photo upload and storage | P1 | BE-030 | [ ] Open |
 
 (Product item 3, App Colours, is frontend only: no backend task.)
+
+### Unmerged branch work — verified 2026-10-15 on `main` (code + tests exist on branches, NOT on `main`; rows above stay `Open` until merged)
+- **BE-021** (`feature/BE-021-website-tally`): `CategoryMap` taxonomy + tally kernel (`src/lib/website-tally.js`), `npm run sync:website-tally`, admin taxonomy/tally endpoints, `tests/be-021-website-tally.test.js` 7/7. Absent from `main` (no `website-tally.js`, no be-021 test).
+- **BE-022** (`feature/BE-022-news-ingest`, merged via PR #84 into that line only): `NewsItem` store, ingest kernel (`src/lib/news-ingest.js`), stored public feed + admin hide, `tests/be-022-news-ingest.test.js` 6/6. Absent from `main`.
+- **BE-023** (`feature/BE-023-stakeholder-segments`, `529c361`): `User.segment` + `Channel.segments`, `src/lib/segments.js`, audited moves, `tests/be-023-segments.test.js` 17/17. Branch-only.
+- **BE-025** (`security/SEC-041-ai-prompt-injection`, `8c023be`, stale since 2026-09-30): server-owned `ASSISTANT_SYSTEM_PROMPT`, Zod `schemas/assistant.js`, auth-before-limiter, 15 tests. `main` still has `aiLimiter` before `requireAuth` with no schema validation — assess, do not merge as-is.
+- **BE-026** (`feature/BE-026-website-inbound-sync`, `4a09121`): signed HMAC webhook + idempotent upserts + `SyncEvent` journal + pull safety net, `tests/be-026-website-sync.test.js` 10/10; also filed **SEC-129** (now tracked above). Branch-only.
+- **SEC-089 follow-up** (`f9f4282`, on BE-021/BE-022/BE-025 lines, not `main`): god-backup self-sufficient R2 uploads.
+- **BE-028/BE-029 spec** (`docs/be-028-be-029-backend-tasks`, `981ee4e`): task cards ported below from that branch; implementation still to do.
 
 ### Task cards
 
@@ -2291,6 +2309,7 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
 - 2026-10-08 — MOB-017 complete: Removed hardcoded Google LLC notifications from `mockNotifications.ts` and updated `notifications/index.tsx` with static imports and empty state sync; initialized `profileStore.saved` to empty array in `mockProfile.ts` and removed stale fallback guard in `profile/saved.tsx`; removed hardcoded Wave mission statement and static design responsibilities from `jobs/[id].tsx` in favor of live description and dynamic requirements parsing; wired native document picker (`pickDocument`) and Cloudinary upload (`uploadFile`) into `grants/apply.tsx` with file preview and payload attachment; added unit test suite (`__tests__/mock-fallback-removal.test.ts`) confirming empty initialization and dynamic requirements parsing (77/77 tests passing across 10 suites with 0 type errors).
 - 2026-10-08 — MOB-018 complete: Upgraded `hirer-profile/postings.tsx` to fetch caller-scoped opportunities via `getOpportunities()`, added live `deleteOpportunity` with confirmation alert and state sync, and added "Post an Opportunity" empty state action; upgraded `hirer-profile/channels.tsx` to fetch live channels via `getChannels()`, added live `deleteChannel`, added empty state and create banner; added `updateChannel` and `deleteChannel` API callers in `src/lib/api.ts`; cleaned up unused mock initial arrays in `authStore.ts`; added unit test suite (`__tests__/hirer-management.test.ts`) covering channel deletion/updates, opportunity scoping, and model mappings (83/83 tests passing across 11 suites with 0 type errors).
 - 2026-10-09 — MOB-019 complete: Swept all 95 ESLint warnings across the entire mobile codebase down to zero (0 errors, 0 warnings); resolved unused variables, duplicate imports, and forbidden require() calls with clean static imports; created comprehensive mobile screen integration test suite (`__tests__/screen-integration.test.ts`) covering login/registration validation, 6-digit email OTP verification, opportunity detail & job application submission, hirer listings deletion, applicant status reviews, and community channels CRUD; all 12 test suites (95/95 tests) passing with 0 TypeScript errors and 0 encoding issues.
+- 2026-10-15 — task.md sync vs `main` + branches (no code changes): resolved committed merge-conflict markers on SEC-119…SEC-127 in favour of Done (verified on `main`: `file-picker.ts`, `verify-email.tsx`, `legal.ts`, no `window.prompt`/`document.createElement` in feed, no card inputs in booking, `sendAssistantMessage` wired, empty `authStore`/`profileStore.saved`, `screen-integration.test.ts` present); flipped SEC-128 to Done to match MOB-019; added SEC-129 (public `reference-data` vs manifest, verified `routes/index.js:868-877` vs `security.p0.test.js:701-746`); ported BE-028/BE-029 spec from `docs/be-028-be-029-backend-tasks` (`981ee4e`); recorded unmerged branch work (BE-021/BE-022/BE-023/BE-025/BE-026, SEC-089 `f9f4282`) so rows stay Open until merged. SEC-037/041/089(partial)/091/092(partial)/093/114/117 re-verified still Open.
 
 ---
 
