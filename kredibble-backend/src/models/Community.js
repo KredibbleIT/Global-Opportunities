@@ -12,6 +12,12 @@ const channelSchema = new mongoose.Schema({
   avatar: { type: String },
   bio: { type: String },
   visibility: { type: String, enum: ['public', 'private'], default: 'public', index: true },
+  // BE-023: stakeholder segments this channel is visible to. 'general'
+  // channels are visible to everyone; 'ambassador' channels only to the
+  // ambassador segment (plus channel members, the creator and admins).
+  // An ambassador always belongs to the general community too, so
+  // ['general'] is visible to every signed-in caller.
+  segments: { type: [{ type: String, enum: ['general', 'ambassador'] }], default: ['general'], index: true },
   requiresApproval: { type: Boolean, default: false },
   memberIds: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], // Legacy member records
   pinnedPostId: { type: mongoose.Schema.Types.ObjectId, ref: 'ChannelPost', default: null },
