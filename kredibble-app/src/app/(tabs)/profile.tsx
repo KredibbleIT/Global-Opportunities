@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Image, Modal, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Settings, Bookmark, Target, Bell, Shield, LogOut, ChevronRight, Check } from 'lucide-react-native';
+import { Settings, Bookmark, Target, Bell, Shield, LogOut, ChevronRight, Check, Users } from 'lucide-react-native';
 import { profileStore } from '../../constants/mockProfile';
 import { authStore } from '../../constants/authStore';
 import { getMe } from '../../lib/api';
@@ -169,6 +169,21 @@ export default function ProfileScreen() {
               </View>
               <ChevronRight size={18} color="#8A8D9F" />
             </TouchableOpacity>
+
+            <View style={styles.divider} />
+
+              <TouchableOpacity
+              style={styles.menuItem}
+              activeOpacity={0.7}
+              onPress={() => router.push('/profile/people')}
+              accessibilityRole="button"
+            >
+              <View style={styles.menuItemLeft}>
+                <Users size={20} color="#8A8D9F" style={{ marginRight: 12 }} />
+                <Text style={styles.menuText} className="font-sans">Meet our people</Text>
+              </View>
+              <ChevronRight size={18} color="#8A8D9F" />
+            </TouchableOpacity>
           </View>
 
           {/* Settings Menu Card */}
@@ -316,6 +331,21 @@ export default function ProfileScreen() {
             <View style={styles.menuItemLeft}>
               <Target size={20} color="#8A8D9F" style={{ marginRight: 12 }} />
               <Text style={styles.menuText} className="font-sans">Applications Status</Text>
+            </View>
+            <ChevronRight size={18} color="#8A8D9F" />
+          </TouchableOpacity>
+
+          <View style={styles.divider} />
+
+          <TouchableOpacity
+            style={styles.menuItem}
+            activeOpacity={0.7}
+            onPress={() => router.push('/profile/people')}
+            accessibilityRole="button"
+          >
+            <View style={styles.menuItemLeft}>
+              <Users size={20} color="#8A8D9F" style={{ marginRight: 12 }} />
+              <Text style={styles.menuText} className="font-sans">Meet our people</Text>
             </View>
             <ChevronRight size={18} color="#8A8D9F" />
           </TouchableOpacity>

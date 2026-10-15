@@ -14,7 +14,7 @@
  */
 import {
   BarChart3, Bell, Briefcase, CalendarDays, CalendarRange, Building2, Database, FileText, Flag, GraduationCap, HandCoins, Handshake,
-  Hash, LayoutDashboard, Megaphone, Network, Quote, Settings, Settings2, Share2, ShieldCheck, Target, Trophy, UserCog, Users, type LucideIcon,
+  Hash, LayoutDashboard, Megaphone, Network, Quote, Settings, Settings2, Share2, ShieldCheck, Star, Target, Trophy, UserCog, Users, type LucideIcon,
 } from "lucide-react";
 import type { AccessLevel, Screen } from "@/config/permissions";
 
@@ -99,6 +99,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "Reference data", href: "/reference-data", icon: Database, screen: "reference_data" },
       { label: "Social", href: "/social", icon: Share2, screen: "social" },
       { label: "Testimonials", href: "/testimonials", icon: Quote, screen: "testimonials", countKey: "pendingTestimonials" },
+      // Who is featured on the app ("Meet our people"): ambassadors, team, partners, stakeholders and any custom category.
+      { label: "Showcase", href: "/showcase", icon: Star, screen: "showcase", accent: "purple" },
     ],
   },
   {
