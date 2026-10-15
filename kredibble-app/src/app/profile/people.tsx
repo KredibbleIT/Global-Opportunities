@@ -99,7 +99,7 @@ export default function MeetOurPeopleScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Go back">
+        <TouchableOpacity style={styles.backButton} onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/profile'))} accessibilityRole="button" accessibilityLabel="Go back">
           <ChevronLeft size={20} color={Colors.textDefault} />
         </TouchableOpacity>
         <Text style={styles.headerTitle} className="font-sans" accessibilityRole="header">Meet our people</Text>
