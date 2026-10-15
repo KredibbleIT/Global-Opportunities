@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import crypto from 'node:crypto';
+import { ROLE_IDS, normalizeLegacyRole } from '../lib/permissions.js';
 
 const normalizeEmail = (email) => String(email).trim().toLowerCase();
 
@@ -32,6 +33,17 @@ const userSchema = new mongoose.Schema({
   failedLoginAttempts: { type: Number, default: 0 },
   lockUntil: { type: Date },
   lastFailedLogin: { type: Date },
+  // Push notifications
+  pushToken: { type: String },
+  pushPlatform: { type: String, enum: ['ios', 'android', 'web', 'other'] },
+  pushTokenUpdatedAt: { type: Date },
+  // BE-016: Notification preferences
+  notificationPreferences: {
+    digest: { type: Boolean, default: true },
+    verifications: { type: Boolean, default: true },
+    reports: { type: Boolean, default: true },
+    testimonials: { type: Boolean, default: false },
+  },
 }, { timestamps: true });
 
 // Virtuals to mimic the previous Prisma/Native structure for the frontend
@@ -45,10 +57,37 @@ const staffMemberSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
-  role: { type: String, required: true }, // e.g. SUPER_ADMIN, MODERATOR
+  roles: {
+    type: [String],
+    default: [],
+    validate: {
+      validator: (roles) => {
+        if (!Array.isArray(roles)) return false;
+        if (roles.length < 1 || roles.length > 2) return false;
+        return roles.every((r) => ROLE_IDS.includes(r));
+      },
+      message: 'Staff member must have 1 or 2 valid roles from the 12 role IDs',
+    },
+  },
+  role: { type: String }, // maintained for backward compatibility
   status: { type: String, default: 'active' },
   joinedDate: String,
 }, { timestamps: true });
+
+staffMemberSchema.pre('validate', function() {
+  if ((!this.roles || this.roles.length === 0) && this.role) {
+    const normalized = normalizeLegacyRole(this.role);
+    if (normalized.length > 0) {
+      this.roles = normalized;
+    }
+  }
+  if (Array.isArray(this.roles) && this.roles.length > 0 && !this.role) {
+    this.role = this.roles.join(',');
+  }
+});
+
+staffMemberSchema.index({ status: 1, createdAt: -1 });
+staffMemberSchema.index({ roles: 1, status: 1 });
 
 export const User = mongoose.model('User', userSchema);
 export const StaffMember = mongoose.model('StaffMember', staffMemberSchema);
@@ -133,5 +172,7 @@ const auditLogSchema = new mongoose.Schema({
 
 // TTL index for retention (e.g., 1 year)
 auditLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 365 * 24 * 60 * 60 });
+auditLogSchema.index({ action: 1, createdAt: -1 });
+auditLogSchema.index({ resourceType: 1, resourceId: 1, createdAt: -1 });
 
 export const AuditLog = mongoose.model('AuditLog', auditLogSchema);

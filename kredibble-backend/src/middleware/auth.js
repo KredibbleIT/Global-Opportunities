@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'node:crypto';
 import { env } from '../config/env.js';
 import { ApiError } from '../utils/http.js';
-import { User } from '../models/User.js';
+import { User, StaffMember } from '../models/User.js';
 
 export const signToken = (user) => {
   const userId = user.id || user._id;
@@ -45,7 +45,7 @@ export const setAdminRefreshCookie = (res, token) => {
     secure: env.isProduction,
     sameSite: 'strict',
     maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-    path: '/auth/admin',
+    path: '/',
   });
 };
 
@@ -63,7 +63,7 @@ export const clearAdminRefreshCookie = (res) => {
     httpOnly: true,
     secure: env.isProduction,
     sameSite: 'strict',
-    path: '/auth/admin',
+    path: '/',
   });
 };
 
@@ -217,7 +217,20 @@ export const requireAdminOrStaffAuth = async (req, res, next) => {
 
   try {
     const payload = jwt.verify(userToken, env.jwtSecret);
-    
+
+    // SEC-077: an admin-realm route never accepts a user-realm token for an
+    // admin account without staff membership. Admin users must present the
+    // admin session (cookie or admin-audience JWT); a bare user Bearer token
+    // is the wrong credential (401). Staff members carrying a user Bearer
+    // token fall through and are authorized (403 when forbidden) downstream.
+    // Non-admin callers without staff access are likewise forbidden downstream.
+    if (payload.role === 'admin') {
+      const staff = await StaffMember.findOne({ userId: payload.sub, status: 'active' }).select('_id').lean();
+      if (!staff) {
+        return next(new ApiError(401, 'Admin authentication required'));
+      }
+    }
+
     const user = await User.findById(payload.sub).select('tokenVersion role').lean();
     if (!user || user.role === 'deleted' || (payload.tv !== undefined && payload.tv !== user.tokenVersion)) {
       return next(new ApiError(401, 'Account no longer active'));

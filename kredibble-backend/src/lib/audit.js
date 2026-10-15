@@ -1,4 +1,6 @@
+import mongoose from 'mongoose';
 import { AuditLog } from '../models/User.js';
+export { AuditLog };
 import logger from './logger.js';
 import crypto from 'node:crypto';
 
@@ -22,6 +24,40 @@ export const AUDIT_ACTIONS = {
   ADMIN_DELETE: 'admin.delete',
   ADMIN_USER_UPDATE: 'admin.user.update',
   ADMIN_OPPORTUNITY_MODERATE: 'admin.opportunity.moderate',
+  AMBASSADOR_REQUEST: 'ambassador.request',
+  ADMIN_AMBASSADOR_DECISION: 'admin.ambassador.decision',
+  ROLES_PERMISSIONS_UPDATE: 'ROLES_PERMISSIONS_UPDATE',
+  TARGETS_UPDATE: 'targets.update',
+  THRESHOLDS_UPDATE: 'thresholds.update',
+  PARTNER_MOVE: 'partner.move',
+  PIPELINE_STAGES_UPDATE: 'pipeline_stages.update',
+  AMBASSADOR_CREATE: 'ambassador.create',
+  AMBASSADOR_UPDATE: 'ambassador.update',
+  AMBASSADOR_DELETE: 'ambassador.delete',
+  AMBASSADOR_AMPLIFICATION: 'ambassador.amplification',
+  BENEFICIARY_CREATE: 'beneficiary.create',
+  BENEFICIARY_UPDATE: 'beneficiary.update',
+  BENEFICIARY_DELETE: 'beneficiary.delete',
+  BENEFICIARY_VERIFY: 'beneficiary.verify',
+  BENEFICIARY_UNDO_VERIFY: 'beneficiary.undo_verify',
+  SOCIAL_POST_CREATE: 'social_post.create',
+  SOCIAL_POST_UPDATE: 'social_post.update',
+  SOCIAL_POST_DELETE: 'social_post.delete',
+  TESTIMONIAL_CREATE: 'testimonial.create',
+  TESTIMONIAL_MODERATE: 'testimonial.moderate',
+  TESTIMONIAL_UPDATE: 'testimonial.update',
+  TESTIMONIAL_DELETE: 'testimonial.delete',
+  NEWS_UPDATE: 'news.update',
+  OPPORTUNITY_CREATE: 'opportunity.create',
+  OPPORTUNITY_UPDATE: 'opportunity.update',
+  OPPORTUNITY_DELETE: 'opportunity.delete',
+  OPPORTUNITY_PUBLISH: 'opportunity.publish',
+  OPPORTUNITY_UNPUBLISH: 'opportunity.unpublish',
+  OPPORTUNITY_VET: 'opportunity.vet',
+  WEBSITE_AUDIENCE_UPDATE: 'website_audience.update',
+  WEBSITE_AUDIENCE_SYNC: 'website_audience.sync',
+  MONTHLY_REPORT_GENERATE: 'monthly_report.generate',
+  SETTINGS_UPDATE: 'settings.update',
 
   // GDPR/CCPA
   DATA_EXPORT: 'data.export',
@@ -37,6 +73,14 @@ export const AUDIT_ACTIONS = {
 
 export const AUDIT_RESOURCE_TYPES = {
   USER: 'user',
+  SETTINGS: 'settings',
+  WEBSITE_AUDIENCE: 'website_audience',
+  MONTHLY_REPORT: 'monthly_report',
+  PARTNER: 'partner',
+  AMBASSADOR: 'ambassador',
+  BENEFICIARY: 'beneficiary',
+  SOCIAL_POST: 'social_post',
+  TESTIMONIAL: 'testimonial',
   SEEKER_PROFILE: 'seeker_profile',
   HIRER_ACCOUNT: 'hirer_account',
   OPPORTUNITY: 'opportunity',
@@ -50,9 +94,12 @@ export const AUDIT_RESOURCE_TYPES = {
   COMMUNITY_POST: 'community_post',
   REPORT: 'report',
   NOTIFICATION: 'notification',
+  NEWS_ITEM: 'news_item',
   ARTICLE: 'article',
   SAVED_ITEM: 'saved_item',
   EVENT_ATTENDEE: 'event_attendee',
+  AMBASSADOR_REQUEST: 'ambassador_request',
+  CHANNEL_MESSAGE: 'channel_message',
 };
 
 /**
@@ -72,17 +119,25 @@ export const AUDIT_RESOURCE_TYPES = {
  */
 export async function auditLog(params) {
   try {
+    const validResourceId = params.resourceId && mongoose.isValidObjectId(params.resourceId)
+      ? params.resourceId
+      : null;
+    const metadata = { ...(params.metadata || {}) };
+    if (params.resourceId && !validResourceId && !metadata.resourceIdentifier) {
+      metadata.resourceIdentifier = String(params.resourceId);
+    }
+
     await AuditLog.create({
       actorId: params.actorId || null,
       actorRole: params.actorRole,
       action: params.action,
       resourceType: params.resourceType || null,
-      resourceId: params.resourceId || null,
+      resourceId: validResourceId,
       ip: params.ip || null,
       userAgent: params.userAgent || null,
       requestId: params.requestId || null,
       outcome: params.outcome,
-      metadata: params.metadata || {},
+      metadata,
     });
   } catch (error) {
     // Audit logging must never break the main flow

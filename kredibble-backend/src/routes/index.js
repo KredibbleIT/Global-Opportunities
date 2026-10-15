@@ -4,12 +4,14 @@ import { authRouter } from './auth.js';
 import { uploadRouter, createUploadRouter, IMAGE_MIME_TYPES } from './upload.js';
 import { assistantRouter } from './assistant.js';
 import { newsRouter } from './news.js';
-import { adminApiRouter } from './admin-api.js';
+import { adminApiRouter, getAttentionCounts } from './admin-api.js';
+import { ambassadorRouter } from './ambassador.js';
 import { asyncHandler, itemResponse, listResponse, notFound, stripSensitive, ApiError, parsePagination } from '../utils/http.js';
 import { requireAuth, requireAdminAuth, optionalAuth, requireEmailVerified } from '../middleware/auth.js';
 import { env } from '../config/env.js';
 import { validate } from '../middleware/validate.js';
 import { staffInviteSchema } from '../schemas/admin.js';
+import { pushTokenSchema } from '../schemas/auth.js';
 import {
   RESOURCE_POLICIES,
   ADMIN,
@@ -30,7 +32,12 @@ import { Channel, ChannelPost, CommunityMembership, Report } from '../models/Com
 import { Article, Notification } from '../models/Content.js';
 import { Ambassador, OpportunityEngagement, Testimonial } from '../models/AdminPortal.js';
 import { auditReq, AUDIT_ACTIONS, AUDIT_RESOURCE_TYPES } from '../lib/audit.js';
-import { searchLimiter } from '../lib/rate-limiters.js';
+import { searchLimiter, chatLimiter, testimonialLimiter } from '../lib/rate-limiters.js';
+import { normalizeLegacyRole } from '../lib/permissions.js';
+import { postChannelMessage, listChannelMessages, getThread, findPost } from '../lib/chat.js';
+import { evictFromChannelRoom } from '../socket.js';
+import { chatMessageSchema } from '../schemas/ambassador.js';
+import { getReferenceDataGroups, getReferenceDataList } from '../lib/reference-data.js';
 
 const parseJson = (value, fallback = []) => {
   if (!value) return fallback;
@@ -477,9 +484,13 @@ const notificationReadScope = (req) => {
   } else if (req.auth?.role === HIRER) {
     allowedAudiences.push('hirers', 'hirer');
   }
+  // A person sees broadcasts for their audience plus anything addressed to them personally.
   return {
-    audience: { $in: allowedAudiences },
     isActive: { $ne: false },
+    $or: [
+      { audience: { $in: allowedAudiences } },
+      ...(req.auth?.sub ? [{ userId: req.auth.sub }] : []),
+    ],
   };
 };
 
@@ -590,8 +601,25 @@ const CHANNEL_POST_FIELDS = ['body', 'title', 'bannerImage', 'link', 'linkText',
 const CHANNEL_UPDATE_FIELDS = ['name', 'category', 'bio', 'avatar', 'visibility', 'status', 'requiresApproval'];
 
 const publicTestimonial = (testimonial) => {
-  const { email, ...visible } = toClientObject(testimonial);
-  return visible;
+  if (!testimonial) return null;
+  const raw = testimonial.toJSON ? testimonial.toJSON({ virtuals: true }) : testimonial;
+  const rawSubmitted = raw.submittedAt || raw.createdAt;
+  const submittedAt = rawSubmitted
+    ? (typeof rawSubmitted === 'string' ? rawSubmitted : new Date(rawSubmitted).toISOString())
+    : new Date().toISOString();
+
+  return {
+    id: raw.id || raw._id?.toString(),
+    name: raw.name,
+    author: raw.name,
+    role: raw.role || '',
+    comment: raw.comment,
+    quote: raw.comment,
+    photo: raw.photo || null,
+    status: raw.status || 'approved',
+    submittedAt,
+    createdAt: raw.createdAt ? new Date(raw.createdAt).toISOString() : submittedAt,
+  };
 };
 
 const ADMIN_USER_FIELDS = 'name email avatarUrl emailVerified createdAt';
@@ -686,11 +714,15 @@ const mountAdminDataRoutes = (router) => {
     if (await StaffMember.exists({ userId: user._id })) {
       throw new ApiError(409, 'That account is already on the staff list');
     }
+    const roles = req.body.roles && req.body.roles.length > 0
+      ? req.body.roles
+      : normalizeLegacyRole(req.body.role);
     const staff = await StaffMember.create({
       userId: user._id,
       name: user.name,
       email: user.email,
-      role: req.body.role,
+      roles,
+      role: req.body.role || roles.join(','),
       status: 'active',
       joinedDate: new Date().toISOString().slice(0, 10),
     });
@@ -699,7 +731,7 @@ const mountAdminDataRoutes = (router) => {
       resourceType: AUDIT_RESOURCE_TYPES.USER,
       resourceId: user._id,
       outcome: 'success',
-      metadata: { staffInvite: true, role: req.body.role },
+      metadata: { staffInvite: true, roles, role: req.body.role || roles.join(',') },
     });
     res.status(201).json({ data: toClientObject(staff) });
   }));
@@ -829,8 +861,20 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
   router.use('/assistant', assistantRouter);
   router.use('/news', newsRouter);
   router.use('/admin', adminApiRouter);
+  router.use('/ambassador-requests', ambassadorRouter);
   // After the staff-portal router, so its paths (e.g. /admin/reports/monthly) match first.
   mountAdminDataRoutes(router);
+
+  router.get('/reference-data', asyncHandler(async (req, res) => {
+    const groups = await getReferenceDataGroups(req.query.group || null);
+    itemResponse(res, groups);
+  }));
+
+  router.get('/reference-data/:group/:key', asyncHandler(async (req, res) => {
+    const list = await getReferenceDataList(req.params.group, req.params.key);
+    if (!list) throw notFound('Reference list');
+    itemResponse(res, list);
+  }));
 
   router.get('/health', (req, res) => {
     const dbStatus = mongoose.connection.readyState;
@@ -860,12 +904,11 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
   // SEC-003: platform-wide counts are admin-only. `requireAdminAuth` validates the
   // admin cookie or header and enforces role=admin + audience=kredibble-admin.
   router.get('/dashboard/summary', requireAdminAuth, asyncHandler(async (req, res) => {
+    const attentionCounts = await getAttentionCounts();
     const [
-      pendingVerifications,
       pendingOpportunities,
       activeSeekers,
       activeHirers,
-      openReports,
       totalUsers,
       totalSeekers,
       totalHirers,
@@ -875,11 +918,9 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
       totalGrants,
       totalGrantApplications,
     ] = await Promise.all([
-      CompanyVerification.countDocuments({ overallStatus: 'pending' }),
       Opportunity.countDocuments({ moderationStatus: 'pending' }),
       SeekerProfile.countDocuments({ status: 'active' }),
       HirerAccount.countDocuments({ status: 'active' }),
-      Report.countDocuments({ status: 'open' }),
       User.countDocuments(),
       SeekerProfile.countDocuments(),
       HirerAccount.countDocuments(),
@@ -891,12 +932,11 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
     ]);
 
     itemResponse(res, {
-      // Keys read by the admin dashboard.
-      pendingVerifications,
+      // Keys read by the admin dashboard from single shared source of truth.
+      ...attentionCounts,
       pendingOpportunities,
       activeSeekers,
       activeHirers,
-      openReports,
       totalUsers,
       totalOpportunities,
       // Totals added with API versioning (SEC-019).
@@ -939,16 +979,38 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
 
   // Only approved testimonials are public, and never with the submitter's email.
   router.get('/testimonials', asyncHandler(async (req, res) => {
-    const testimonials = await Testimonial.find({ status: 'approved' }).sort({ createdAt: -1 });
+    const testimonials = await Testimonial.find({ status: 'approved' }).sort({ submittedAt: -1, createdAt: -1 });
     listResponse(res, testimonials.map(publicTestimonial));
   }));
 
-  router.post('/testimonials', requireAuth, asyncHandler(async (req, res) => {
-    const name = String(req.body.name || '').trim();
-    const email = String(req.body.email || '').trim().toLowerCase();
-    const comment = String(req.body.comment || '').trim();
-    if (!name || !/^\S+@\S+\.\S+$/.test(email) || !comment) throw new ApiError(400, 'name, a valid email, and comment are required');
-    const testimonial = await Testimonial.create({ name, email, comment, photo: req.body.photo });
+  // Public submission of testimonials (rate limited with testimonialLimiter)
+  router.post('/testimonials', optionalAuth, testimonialLimiter, asyncHandler(async (req, res) => {
+    const name = String(req.body.name || req.body.author || '').trim();
+    const email = String(req.body.email || (req.auth?.email) || '').trim().toLowerCase();
+    const comment = String(req.body.comment || req.body.quote || '').trim();
+    const role = req.body.role ? String(req.body.role).trim() : '';
+    const photo = req.body.photo ? String(req.body.photo).trim() : undefined;
+
+    if (!name || name.length < 2) {
+      throw new ApiError(400, 'name is required and must be at least 2 characters');
+    }
+    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+      throw new ApiError(400, 'a valid email is required');
+    }
+    if (!comment || comment.length < 5) {
+      throw new ApiError(400, 'comment is required and must be at least 5 characters');
+    }
+
+    const testimonial = await Testimonial.create({
+      name,
+      email,
+      comment,
+      role,
+      photo,
+      status: 'pending',
+      submittedAt: new Date(),
+    });
+
     res.status(201).json({ data: publicTestimonial(testimonial) });
   }));
 
@@ -1006,15 +1068,17 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
     const opportunity = await Opportunity.findById(req.params.opportunityId);
     if (!opportunity) throw notFound('Opportunity');
     const { referralCode, ambassador } = await findReferringAmbassador(req.body.referralCode);
+    const source = req.body.source === 'website' ? 'website' : 'app';
     await OpportunityEngagement.create({
       opportunityId: opportunity._id,
       event: 'view',
-      source: req.body.source === 'website' ? 'website' : 'app',
+      source,
       userId: req.auth?.sub,
       ambassadorId: ambassador?._id,
       referralCode,
       visitorId: String(req.body.visitorId || '').trim() || undefined,
     });
+    await Opportunity.findByIdAndUpdate(opportunity._id, { $inc: { [`views.${source}`]: 1 } });
     res.status(202).json({ data: { recorded: true } });
   }));
 
@@ -1039,7 +1103,17 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
       Channel.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
       Channel.countDocuments(filter),
     ]);
-    listResponse(res, channels.map(toClientObject), total, page, limit);
+    // `followed`: the caller already belongs to it (so the app lists it under their channels, not under "find channels").
+    // `announcement`: an admin created it, so it opens as an announcement channel (posts, with optional replies).
+    const me = req.auth?.sub;
+    const memberOf = new Set(membershipChannelIds.map(String));
+    const creatorIds = [...new Set(channels.map((c) => toId(c.createdBy)).filter(Boolean))];
+    const adminCreators = new Set((await User.find({ _id: { $in: creatorIds }, role: ADMIN }).select('_id').lean()).map((u) => String(u._id)));
+    listResponse(res, channels.map((channel) => ({
+      ...toClientObject(channel),
+      followed: Boolean(me) && (memberOf.has(String(channel._id)) || isChannelCreator(channel, req.auth) || isLegacyMember(channel, me)),
+      announcement: adminCreators.has(toId(channel.createdBy)),
+    })), total, page, limit);
   }));
 
   router.post('/community/channels', requireAuth, asyncHandler(async (req, res) => {
@@ -1138,6 +1212,7 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
       { new: true },
     );
     if (!membership) throw notFound('Community member');
+    evictFromChannelRoom(channel._id, req.params.userId);
     itemResponse(res, toClientObject(membership));
   }));
 
@@ -1151,6 +1226,7 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
       { $set: { status: 'banned', reviewedBy: req.auth.sub, reviewedAt: new Date(), bannedReason: String(req.body.reason || '').trim() || undefined } },
       { new: true, upsert: true, setDefaultsOnInsert: true },
     );
+    evictFromChannelRoom(channel._id, req.params.userId);
     itemResponse(res, toClientObject(membership));
   }));
 
@@ -1164,6 +1240,52 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
     );
     if (!membership) throw new ApiError(404, 'Banned community member not found');
     itemResponse(res, toClientObject(membership));
+  }));
+
+  // Group chat. History and sending are limited to people who can access the channel and are not banned.
+  const assertCanChat = async (channel, auth) => {
+    assertChannelVisible(channel, auth);
+    if (!await canAccessChannel(channel, auth)) throw new ApiError(403, 'You do not have access to this group');
+    const membership = await getMembership(channel._id, auth.sub);
+    if (membership?.status === 'banned') throw new ApiError(403, 'You have been removed from this group');
+  };
+
+  // Announcements: members read them, only channel admins post them. Whether members may reply is chosen per post.
+  router.get('/community/channels/:channelId/messages', requireAuth, asyncHandler(async (req, res) => {
+    const channel = await getChannelOrThrow(req.params.channelId);
+    await assertCanChat(channel, req.auth);
+    const [posts, canPost] = await Promise.all([
+      listChannelMessages(channel._id, { before: req.query.before, limit: req.query.limit }),
+      canManageChannel(channel, req.auth),
+    ]);
+    itemResponse(res, { posts, canPost });
+  }));
+
+  router.get('/community/channels/:channelId/messages/:messageId/replies', requireAuth, asyncHandler(async (req, res) => {
+    const channel = await getChannelOrThrow(req.params.channelId);
+    await assertCanChat(channel, req.auth);
+    if (!mongoose.isValidObjectId(req.params.messageId)) throw notFound('Message');
+    const thread = await getThread(channel._id, req.params.messageId);
+    if (!thread) throw notFound('Message');
+    const isManager = await canManageChannel(channel, req.auth);
+    itemResponse(res, { ...thread, canReply: isManager || thread.post.allowReplies, canManage: isManager });
+  }));
+
+  router.post('/community/channels/:channelId/messages', requireAuth, chatLimiter, validate(chatMessageSchema), asyncHandler(async (req, res) => {
+    const channel = await getChannelOrThrow(req.params.channelId);
+    await assertCanChat(channel, req.auth);
+    const isManager = await canManageChannel(channel, req.auth);
+    const { parentId } = req.body;
+    if (parentId) {
+      const parent = await findPost(channel._id, parentId);
+      if (!parent) throw notFound('Message');
+      if (!isManager && !parent.allowReplies) throw new ApiError(403, 'Replies are turned off for this post');
+    } else if (!isManager) {
+      throw new ApiError(403, 'Only admins can post in this channel. You can reply to posts that allow replies.');
+    }
+    const sender = await User.findById(req.auth.sub).select('name role');
+    const message = await postChannelMessage({ channel, sender, body: req.body.body, parentId, allowReplies: req.body.allowReplies });
+    res.status(201).json({ data: message });
   }));
 
   router.get('/community/channels/:channelId/posts', optionalAuth, asyncHandler(async (req, res) => {
@@ -1233,6 +1355,21 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
     itemResponse(res, { channel: toClientObject(channel), post: toClientObject(post) });
   }));
 
+  // Push notification token registration
+  router.post('/users/me/push-token', requireAuth, validate(pushTokenSchema), asyncHandler(async (req, res) => {
+    const userId = req.auth.sub || req.auth.id || req.auth.userId;
+    const { token, platform } = req.body;
+    const update = {
+      pushToken: token,
+      pushTokenUpdatedAt: new Date(),
+    };
+    if (platform) {
+      update.pushPlatform = platform;
+    }
+    await User.findByIdAndUpdate(userId, { $set: update });
+    itemResponse(res, { success: true });
+  }));
+
   // Collection routes with populate option
   router.use('/users', collectionRoutes({ Model: User, resourceName: 'User', policyKey: 'users', searchFields: ['name', 'email'], enablePopulate }));
   router.use('/staff', collectionRoutes({ Model: StaffMember, resourceName: 'Staff', policyKey: 'staff', searchFields: ['name', 'email'], enablePopulate }));
@@ -1294,6 +1431,16 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
     publicRead: true,
     readScope: articleReadScope,
   }));
+  router.post('/notifications/:id/read', requireAuth, asyncHandler(async (req, res) => {
+    if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Notification');
+    const notification = await Notification.findOneAndUpdate(
+      { _id: req.params.id, userId: req.auth.sub },
+      { $set: { readAt: new Date() } },
+      { new: true },
+    );
+    if (!notification) throw notFound('Notification');
+    itemResponse(res, toClientObject(notification));
+  }));
   router.use('/notifications', collectionRoutes({ Model: Notification, resourceName: 'Notification', policyKey: 'notifications', searchFields: ['title', 'message'], enablePopulate, readScope: notificationReadScope }));
   router.use('/verification/companies', collectionRoutes({
     Model: CompanyVerification,
@@ -1329,7 +1476,7 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
       applicant.set('ambassadorId', ambassador._id);
     }
     await applicant.save();
-    await Opportunity.findByIdAndUpdate(opportunity._id, { $inc: { applicantsCount: 1 } });
+    await Opportunity.findByIdAndUpdate(opportunity._id, { $inc: { applicantsCount: 1, 'applications.app': 1 } });
     await OpportunityEngagement.create({
       opportunityId: opportunity._id,
       event: 'application',

@@ -26,9 +26,12 @@ import { IconButton } from "@/components/ui/IconButton";
 import { KeyValueList } from "@/components/ui/KeyValueList";
 import { MiniStat } from "@/components/ui/MiniStat";
 import { StatusBadge } from "@/components/ui/StatusBadge";
+import { RealChannelPage } from "@/components/community/RealChannelPage";
+import { isMockMode } from "@/lib/services/mock-mode";
+import { deleteCommunityChannelPost, updateCommunityChannel } from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
 
-export default function ChannelReviewPage() {
+function MockChannelReviewPage() {
   const { id } = useParams<{ id: string }>();
   const load = useCallback(() => Promise.resolve(channels.find((c) => c.id === id)), [id]);
   const { status, record: channel, setRecord, error, retry } = useDetailData(load, { collection: "channels" });
@@ -56,8 +59,10 @@ export default function ChannelReviewPage() {
       ),
       confirmLabel: "Remove post",
       onConfirm: () => {
-        // TODO(backend): persist this change
         setRecord((prev) => ({ ...prev, posts: prev.posts.filter((p) => p.id !== postId) }));
+        if (!isMockMode()) {
+          deleteCommunityChannelPost(channel.id, postId).catch(() => {});
+        }
         toast.success(`The post by ${post.authorName} was removed.`);
       },
     });
@@ -74,15 +79,19 @@ export default function ChannelReviewPage() {
       ),
       confirmLabel: "Remove channel",
       onConfirm: () => {
-        // TODO(backend): persist this change
         setRecord((prev) => ({ ...prev, status: "removed" }));
+        if (!isMockMode()) {
+          updateCommunityChannel(channel.id, { status: "removed" }).catch(() => {});
+        }
         toast.success(`${channel.name} was removed.`);
       },
     });
 
   const restoreChannel = () => {
-    // TODO(backend): persist this change
     setRecord((prev) => ({ ...prev, status: "active" }));
+    if (!isMockMode()) {
+      updateCommunityChannel(channel.id, { status: "active" }).catch(() => {});
+    }
     toast.success(`${channel.name} was restored.`);
   };
 
@@ -160,4 +169,9 @@ export default function ChannelReviewPage() {
       {dialog}
     </>
   );
+}
+
+/** Real mode shows the live channel (members and group chat); mock mode keeps the sample moderation view. */
+export default function ChannelReviewPage() {
+  return isMockMode() ? <MockChannelReviewPage /> : <RealChannelPage />;
 }

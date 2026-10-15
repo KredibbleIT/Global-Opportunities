@@ -3,7 +3,8 @@ import { View, Text, TouchableOpacity, ScrollView, TextInput, Modal, StyleSheet 
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft, Search, Clock, X, BookOpen } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import { Colors, FontSize, FontWeight, Radius, LineHeight, Size, Shadow } from '../../constants/design';
+import { Colors, FontSize, FontWeight, Radius, LineHeight, Size } from '../../constants/design';
+import { getArticles } from '../../lib/api';
 
 
 interface Article {
@@ -54,7 +55,6 @@ export default function CareerResourcesScreen() {
   React.useEffect(() => {
     const fetchArticles = async () => {
       try {
-        const { getArticles } = require('../../lib/api');
         const data = await getArticles();
         if (data && data.length > 0) {
           setArticles(data);
@@ -173,7 +173,7 @@ export default function CareerResourcesScreen() {
                   <Text style={styles.readMoreText} className="font-sans">
                     Read playbook
                   </Text>
-                  <BookOpen size={14} color="#6671E4" style={{ marginLeft: 4 }} />
+                  <BookOpen size={14} color={Colors.primary} style={{ marginLeft: 4 }} />
                 </View>
               </TouchableOpacity>
             ))
@@ -280,7 +280,6 @@ const styles = StyleSheet.create({
     borderRadius: Radius.searchBar,
     paddingHorizontal: 16,
     height: Size.searchBarHeight,
-    ...Shadow.searchBar,
   },
   input: {
     flex: 1,

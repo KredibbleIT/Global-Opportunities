@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import { Colors } from '../../constants/design';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Modal, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ChevronLeft, X } from 'lucide-react-native';
+import { ChevronLeft, ExternalLink } from 'lucide-react-native';
 import { profileStore, SecuritySettings } from '../../constants/mockProfile';
 import { changePassword, deleteMyAccount } from '../../lib/api';
 import { authStore } from '../../constants/authStore';
+import { openPrivacyPolicy, openTermsOfService } from '../../lib/legal';
 
 export default function ManageSecurityScreen() {
   const router = useRouter();
@@ -162,12 +164,24 @@ export default function ManageSecurityScreen() {
           <Switch
             value={security.showProfileToRecruiters}
             onValueChange={() => handleToggle('showProfileToRecruiters')}
-            trackColor={{ false: '#E5E6F2', true: '#6671E4' }}
+            trackColor={{ false: '#E5E6F2', true: Colors.primary }}
             thumbColor="#FFFFFF"
             ios_backgroundColor="#E5E6F2"
           />
         </View>
 
+        {/* Legal & Policies */}
+        <Text style={styles.sectionHeader} className="font-sans">Legal & Policies</Text>
+
+        <TouchableOpacity onPress={openPrivacyPolicy} style={styles.policyRow} activeOpacity={0.7}>
+          <Text style={styles.policyLabel} className="font-sans">Privacy Policy</Text>
+          <ExternalLink size={16} color="#8A8D9F" />
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={openTermsOfService} style={styles.policyRow} activeOpacity={0.7}>
+          <Text style={styles.policyLabel} className="font-sans">Terms of Service</Text>
+          <ExternalLink size={16} color="#8A8D9F" />
+        </TouchableOpacity>
       </ScrollView>
 
       {/* Delete Account bottom option */}
@@ -305,7 +319,7 @@ const styles = StyleSheet.create({
   },
   updateButton: {
     height: 52,
-    backgroundColor: '#6671E4',
+    backgroundColor: Colors.primary,
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
@@ -421,5 +435,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  policyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E5E6F2',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 8,
+  },
+  policyLabel: {
+    fontSize: 14,
+    color: '#1A1A1A',
+    fontWeight: '500',
   },
 });

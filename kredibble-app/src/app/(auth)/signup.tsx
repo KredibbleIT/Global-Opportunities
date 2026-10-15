@@ -1,4 +1,5 @@
-import { useState, useRef } from 'react';
+import { useState } from 'react';
+import { Colors } from '../../constants/design';
 import {
   View,
   Text,
@@ -14,11 +15,12 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Eye, EyeOff, ChevronDown, ChevronLeft, Search, Upload, Check, Home } from 'lucide-react-native';
-import Svg, { G, Rect, Defs, ClipPath } from 'react-native-svg';
+import { Eye, EyeOff, ChevronDown, ChevronLeft, Search, Upload, Check } from 'lucide-react-native';
 import { authStore } from '../../constants/authStore';
 import { profileStore } from '../../constants/mockProfile';
-import { signupMobile } from '../../lib/api';
+import { signupMobile, uploadFile } from '../../lib/api';
+import { pickDocument, pickImage, PickedFile } from '../../lib/file-picker';
+import { openPrivacyPolicy, openTermsOfService } from '../../lib/legal';
 
 type Country = { name: string; code: string; dialCode: string };
 type PickerType =
@@ -167,7 +169,6 @@ const getFlag = (code: string) =>
   code.toUpperCase().split('').map(c => String.fromCodePoint(c.charCodeAt(0) + 127397)).join('');
 
 const LOGO_CLEARANCE = 114;
-const TOTAL_STEPS = 4;
 
 const MULTI_PICKERS: PickerType[] = ['skills', 'prefCountries'];
 const isMulti = (t: PickerType) => MULTI_PICKERS.includes(t);
@@ -222,11 +223,11 @@ const Chip = ({ label, onRemove }: { label: string; onRemove: () => void }) => (
   <View
     style={{
       flexDirection: 'row', alignItems: 'center',
-      backgroundColor: 'rgba(102, 113, 228, 0.12)',
+      backgroundColor: 'rgba(121, 46, 164, 0.12)',
       borderRadius: 100, paddingHorizontal: 10, paddingVertical: 5, gap: 6,
     }}
   >
-    <Text style={{ fontSize: 12, color: '#6671E4' }} className="font-sans">{label}</Text>
+    <Text style={{ fontSize: 12, color: Colors.primary }} className="font-sans">{label}</Text>
     <TouchableOpacity
       onPress={onRemove}
       hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
@@ -234,11 +235,11 @@ const Chip = ({ label, onRemove }: { label: string; onRemove: () => void }) => (
       <View
         style={{
           width: 16, height: 16, borderRadius: 8,
-          borderWidth: 1.2, borderColor: '#6671E4',
+          borderWidth: 1.2, borderColor: Colors.primary,
           justifyContent: 'center', alignItems: 'center',
         }}
       >
-        <Text style={{ fontSize: 8, color: '#6671E4', lineHeight: 12, marginTop: 1 }}>✕</Text>
+        <Text style={{ fontSize: 8, color: Colors.primary, lineHeight: 12, marginTop: 1 }}>✕</Text>
       </View>
     </TouchableOpacity>
   </View>
@@ -286,11 +287,13 @@ const UploadCard = ({
   onPress,
   typesHint,
   isImage = false,
+  fileName,
 }: {
   status: 'idle' | 'loading' | 'done';
   onPress: () => void;
   typesHint: string;
   isImage?: boolean;
+  fileName?: string;
 }) => {
   return (
     <View
@@ -332,7 +335,7 @@ const UploadCard = ({
 
       {status === 'loading' && (
         <>
-          <ActivityIndicator size="small" color="#6671E4" />
+          <ActivityIndicator size="small" color={Colors.primary} />
           <Text style={{ fontSize: 12, color: '#8A8D9F', marginTop: 6 }} className="font-sans">
             uploading document...
           </Text>
@@ -344,13 +347,22 @@ const UploadCard = ({
           <View
             style={{
               width: 36, height: 36, borderRadius: 18,
-              backgroundColor: '#6671E4',
+              backgroundColor: Colors.primary,
               justifyContent: 'center', alignItems: 'center',
             }}
           >
             <Check size={18} color="#FFFFFF" strokeWidth={2.5} />
           </View>
-          <Text style={{ fontSize: 13, color: '#8A8D9F', marginTop: 4 }} className="font-sans">Uploaded</Text>
+          <Text
+            style={{ fontSize: 13, color: '#1A1A1A', fontWeight: '600', marginTop: 4, textAlign: 'center' }}
+            numberOfLines={1}
+            className="font-sans"
+          >
+            {fileName || 'Uploaded'}
+          </Text>
+          <TouchableOpacity onPress={onPress} style={{ marginTop: 2 }}>
+            <Text style={{ fontSize: 12, color: '#6671E4', fontWeight: '500' }} className="font-sans">Change file</Text>
+          </TouchableOpacity>
         </>
       )}
     </View>
@@ -367,21 +379,21 @@ const RoleCard = ({ label, active, onSelect }: { label: string; active: boolean;
     onPress={onSelect}
     style={{
       flex: 1, borderWidth: 1.5,
-      borderColor: active ? '#6671E4' : '#EBEBEE',
+      borderColor: active ? Colors.primary : '#EBEBEE',
       borderRadius: 12, padding: 14, backgroundColor: '#FFFFFF',
     }}
   >
     <View
       style={{
         width: 18, height: 18, borderRadius: 9,
-        borderWidth: 2, borderColor: active ? '#6671E4' : '#C4C4C4',
+        borderWidth: 2, borderColor: active ? Colors.primary : '#C4C4C4',
         justifyContent: 'center', alignItems: 'center', marginBottom: 10,
       }}
     >
-      {active && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#6671E4' }} />}
+      {active && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.primary }} />}
     </View>
     <Text
-      style={{ fontSize: 13, fontWeight: '600', color: active ? '#6671E4' : '#8A8D9F', lineHeight: 18 }}
+      style={{ fontSize: 13, fontWeight: '600', color: active ? Colors.primary : '#8A8D9F', lineHeight: 18 }}
       className="font-sans"
     >
       {label}
@@ -420,6 +432,7 @@ export default function SignupScreen() {
 
   // Step 4 (seeker)
   const [cvStatus, setCvStatus] = useState<'idle' | 'loading' | 'done'>('idle');
+  const [cvFile, setCvFile] = useState<PickedFile | null>(null);
 
   // Hirer Step 1 (Company Details)
   const [companyName, setCompanyName] = useState('');
@@ -440,9 +453,13 @@ export default function SignupScreen() {
 
   // Hirer Step 3 (Verification Documents)
   const [docBusinessRegStatus, setDocBusinessRegStatus] = useState<'idle' | 'loading' | 'done'>('idle');
+  const [docBusinessRegFile, setDocBusinessRegFile] = useState<PickedFile | null>(null);
   const [docOrgIdStatus, setDocOrgIdStatus] = useState<'idle' | 'loading' | 'done'>('idle');
+  const [docOrgIdFile, setDocOrgIdFile] = useState<PickedFile | null>(null);
   const [docCompanyLogoStatus, setDocCompanyLogoStatus] = useState<'idle' | 'loading' | 'done'>('idle');
+  const [docCompanyLogoFile, setDocCompanyLogoFile] = useState<PickedFile | null>(null);
   const [docProofOfOrgStatus, setDocProofOfOrgStatus] = useState<'idle' | 'loading' | 'done'>('idle');
+  const [docProofOfOrgFile, setDocProofOfOrgFile] = useState<PickedFile | null>(null);
   const [authError, setAuthError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -505,7 +522,7 @@ export default function SignupScreen() {
     }
   };
 
-  const getPickerItems = (): Array<Country | string> => {
+  const getPickerItems = (): (Country | string)[] => {
     const q = searchQuery.toLowerCase();
     switch (activePicker) {
       case 'country':
@@ -579,51 +596,48 @@ export default function SignupScreen() {
   const isNextActive = isStepValid();
 
   // Document upload handler for Hirer
-  const handleDocUpload = (docType: 'businessReg' | 'orgId' | 'companyLogo' | 'proofOfOrg') => {
-    if (Platform.OS === 'web') {
-      const input = document.createElement('input');
-      input.type = 'file';
+  const handleDocUpload = async (docType: 'businessReg' | 'orgId' | 'companyLogo' | 'proofOfOrg') => {
+    try {
+      setAuthError('');
       if (docType === 'companyLogo') {
-        input.accept = '.jpg,.jpeg,.png,.svg';
+        const file = await pickImage({ allowsEditing: true, aspect: [1, 1] });
+        if (!file) return;
+        setDocCompanyLogoFile(file);
+        setDocCompanyLogoStatus('loading');
+        setTimeout(() => setDocCompanyLogoStatus('done'), 500);
       } else {
-        input.accept = '.txt,.docx,.pdf';
-      }
-      (input as any).onchange = (e: any) => {
-        const file = e.target?.files?.[0];
-        if (file) {
-          if (docType === 'businessReg') {
-            setDocBusinessRegStatus('loading');
-            setTimeout(() => setDocBusinessRegStatus('done'), 2000);
-          } else if (docType === 'orgId') {
-            setDocOrgIdStatus('loading');
-            setTimeout(() => setDocOrgIdStatus('done'), 2000);
-          } else if (docType === 'companyLogo') {
-            setDocCompanyLogoStatus('loading');
-            setTimeout(() => setDocCompanyLogoStatus('done'), 2000);
-          } else if (docType === 'proofOfOrg') {
-            setDocProofOfOrgStatus('loading');
-            setTimeout(() => setDocProofOfOrgStatus('done'), 2000);
-          }
+        const file = await pickDocument();
+        if (!file) return;
+        if (docType === 'businessReg') {
+          setDocBusinessRegFile(file);
+          setDocBusinessRegStatus('loading');
+          setTimeout(() => setDocBusinessRegStatus('done'), 500);
+        } else if (docType === 'orgId') {
+          setDocOrgIdFile(file);
+          setDocOrgIdStatus('loading');
+          setTimeout(() => setDocOrgIdStatus('done'), 500);
+        } else if (docType === 'proofOfOrg') {
+          setDocProofOfOrgFile(file);
+          setDocProofOfOrgStatus('loading');
+          setTimeout(() => setDocProofOfOrgStatus('done'), 500);
         }
-      };
-      input.click();
+      }
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : 'Failed to select document');
     }
   };
 
-  // CV file picker (web)
-  const handleBrowseFiles = () => {
-    if (Platform.OS === 'web') {
-      const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = '.txt,.docx,.pdf';
-      (input as any).onchange = (e: any) => {
-        const file = e.target?.files?.[0];
-        if (file) {
-          setCvStatus('loading');
-          setTimeout(() => setCvStatus('done'), 2500);
-        }
-      };
-      input.click();
+  // CV file picker (cross-platform: native iOS/Android + Web)
+  const handleBrowseFiles = async () => {
+    try {
+      setAuthError('');
+      const file = await pickDocument();
+      if (!file) return;
+      setCvFile(file);
+      setCvStatus('loading');
+      setTimeout(() => setCvStatus('done'), 500);
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : 'Failed to select CV');
     }
   };
 
@@ -666,6 +680,16 @@ export default function SignupScreen() {
       authStore.setRole(role);
 
       if (role === 'hirer') {
+        let uploadedLogoUrl = docCompanyLogoFile?.uri || '';
+        if (docCompanyLogoFile) {
+          try {
+            const uploaded = await uploadFile(docCompanyLogoFile, 'company-logos');
+            if (uploaded?.url) uploadedLogoUrl = uploaded.url;
+          } catch (uploadErr) {
+            console.warn('Could not upload company logo:', uploadErr);
+          }
+        }
+
         authStore.updateCompany({
           name: companyName,
           companyEmail,
@@ -673,6 +697,7 @@ export default function SignupScreen() {
           industry: selectedIndustry,
           companySize: selectedCompanySize,
           location: selectedCompanyCountry?.name ?? '',
+          logo: uploadedLogoUrl,
           recruiterName,
           recruiterRole: recruiterPosition,
           recruiterEmail,
@@ -684,6 +709,16 @@ export default function SignupScreen() {
         authStore.updateVerificationDoc('companyLogo', docCompanyLogoStatus);
         authStore.updateVerificationDoc('proofOfOrg', docProofOfOrgStatus);
       } else {
+        let resumeUrl = cvFile?.name || '';
+        if (cvFile) {
+          try {
+            const uploaded = await uploadFile(cvFile, 'cvs');
+            if (uploaded?.url) resumeUrl = uploaded.url;
+          } catch (uploadErr) {
+            console.warn('Could not upload CV file:', uploadErr);
+          }
+        }
+
         profileStore.updateProfile({
           name: fullName,
           email,
@@ -695,6 +730,7 @@ export default function SignupScreen() {
           education: [
             { degree: program, institution: university, duration: graduationYear },
           ],
+          resumeUrl,
         });
       }
 
@@ -718,7 +754,7 @@ export default function SignupScreen() {
           style={{
             height: 4,
             width: `${(step / totalSteps) * 100}%`,
-            backgroundColor: '#6671E4', borderRadius: 2,
+            backgroundColor: Colors.primary, borderRadius: 2,
           }}
         />
       </View>
@@ -739,7 +775,7 @@ export default function SignupScreen() {
 
           {/* Header */}
           <Text
-            style={{ fontSize: 22, color: '#6671E4', fontWeight: 'bold', fontStyle: 'italic', marginBottom: 6 }}
+            style={{ fontSize: 22, color: Colors.primary, fontWeight: 'bold', fontStyle: 'italic', marginBottom: 6 }}
             className="font-sans"
           >
             Welcome
@@ -750,7 +786,7 @@ export default function SignupScreen() {
           >
             Explore global opportunities or find talented candidates, post opportunities, and connect with skilled youth.{' '}
             <Text
-              style={{ color: '#6671E4', fontWeight: 'bold' }}
+              style={{ color: Colors.primary, fontWeight: 'bold' }}
               onPress={() => router.replace('/(auth)/login')}
             >
               Go back to login
@@ -977,6 +1013,7 @@ export default function SignupScreen() {
                 <UploadCard
                   status={docBusinessRegStatus}
                   onPress={() => handleDocUpload('businessReg')}
+                  fileName={docBusinessRegFile?.name}
                   typesHint="txt, docx, pdf - Up to 5MB"
                 />
               </View>
@@ -986,6 +1023,7 @@ export default function SignupScreen() {
                 <UploadCard
                   status={docOrgIdStatus}
                   onPress={() => handleDocUpload('orgId')}
+                  fileName={docOrgIdFile?.name}
                   typesHint="txt, docx, pdf - Up to 5MB"
                 />
               </View>
@@ -995,6 +1033,7 @@ export default function SignupScreen() {
                 <UploadCard
                   status={docCompanyLogoStatus}
                   onPress={() => handleDocUpload('companyLogo')}
+                  fileName={docCompanyLogoFile?.name}
                   typesHint="jpg, png, svg - Up to 5MB"
                   isImage
                 />
@@ -1005,6 +1044,7 @@ export default function SignupScreen() {
                 <UploadCard
                   status={docProofOfOrgStatus}
                   onPress={() => handleDocUpload('proofOfOrg')}
+                  fileName={docProofOfOrgFile?.name}
                   typesHint="txt, docx, pdf - Up to 5MB"
                 />
                 <Text style={{ fontSize: 12, color: '#DC2626', marginTop: -10, marginBottom: 10, lineHeight: 16 }} className="font-sans">
@@ -1029,6 +1069,7 @@ export default function SignupScreen() {
                   alignItems: 'center',
                   backgroundColor: '#F5F6FA',
                   gap: 8,
+                  paddingHorizontal: 16,
                 }}
               >
                 {cvStatus === 'idle' && (
@@ -1045,6 +1086,7 @@ export default function SignupScreen() {
                       style={{
                         borderWidth: 1, borderColor: '#C0C0C8', borderRadius: 8,
                         paddingHorizontal: 20, paddingVertical: 8,
+                        backgroundColor: '#FFFFFF',
                       }}
                     >
                       <Text style={{ fontSize: 13, color: '#595959' }} className="font-sans">Browse files</Text>
@@ -1054,7 +1096,7 @@ export default function SignupScreen() {
 
                 {cvStatus === 'loading' && (
                   <>
-                    <ActivityIndicator size="large" color="#6671E4" />
+                    <ActivityIndicator size="large" color={Colors.primary} />
                     <Text style={{ fontSize: 13, color: '#8A8D9F', marginTop: 8 }} className="font-sans">
                       extracting information 🔥
                     </Text>
@@ -1066,13 +1108,22 @@ export default function SignupScreen() {
                     <View
                       style={{
                         width: 44, height: 44, borderRadius: 22,
-                        backgroundColor: '#6671E4',
+                        backgroundColor: Colors.primary,
                         justifyContent: 'center', alignItems: 'center',
                       }}
                     >
                       <Check size={22} color="#FFFFFF" strokeWidth={2.5} />
                     </View>
-                    <Text style={{ fontSize: 14, color: '#8A8D9F', marginTop: 6 }} className="font-sans">Done</Text>
+                    <Text
+                      style={{ fontSize: 14, color: '#1A1A1A', fontWeight: '600', marginTop: 4, textAlign: 'center', paddingHorizontal: 16 }}
+                      numberOfLines={1}
+                      className="font-sans"
+                    >
+                      {cvFile?.name || 'Resume Attached'}
+                    </Text>
+                    <TouchableOpacity onPress={handleBrowseFiles} style={{ marginTop: 2 }}>
+                      <Text style={{ fontSize: 12, color: '#6671E4', fontWeight: '500' }} className="font-sans">Change file</Text>
+                    </TouchableOpacity>
                   </>
                 )}
               </View>
@@ -1087,6 +1138,21 @@ export default function SignupScreen() {
         </Text>
       ) : null}
 
+      {/* Legal Compliance Notice (Apple App Store Guideline 5.1.1 & Google Play) */}
+      <View style={{ paddingHorizontal: 24, paddingVertical: 8, alignItems: 'center', backgroundColor: '#F7F7F9' }}>
+        <Text style={{ fontSize: 11, color: '#8A8D9F', textAlign: 'center', lineHeight: 16 }} className="font-sans">
+          By creating an account, you agree to Kredibble&apos;s{' '}
+          <Text onPress={openTermsOfService} style={{ color: '#6671E4', fontWeight: '600', textDecorationLine: 'underline' }}>
+            Terms of Service
+          </Text>{' '}
+          and{' '}
+          <Text onPress={openPrivacyPolicy} style={{ color: '#6671E4', fontWeight: '600', textDecorationLine: 'underline' }}>
+            Privacy Policy
+          </Text>
+          .
+        </Text>
+      </View>
+
       {/* Fixed bottom buttons */}
       <View
         style={{
@@ -1098,11 +1164,11 @@ export default function SignupScreen() {
           <TouchableOpacity
             onPress={() => setStep(s => s - 1)}
             style={{
-              width: 52, height: 52, borderWidth: 1.5, borderColor: '#6671E4',
+              width: 52, height: 52, borderWidth: 1.5, borderColor: Colors.primary,
               borderRadius: 12, justifyContent: 'center', alignItems: 'center',
             }}
           >
-            <ChevronLeft size={20} color="#6671E4" />
+            <ChevronLeft size={20} color={Colors.primary} />
           </TouchableOpacity>
         )}
         <TouchableOpacity
@@ -1118,7 +1184,7 @@ export default function SignupScreen() {
           style={{
             flex: 1, height: 52, borderRadius: 12,
             justifyContent: 'center', alignItems: 'center',
-            backgroundColor: isNextActive && !isSubmitting ? '#6671E4' : '#C5C9F0',
+            backgroundColor: isNextActive && !isSubmitting ? Colors.primary : Colors.purple200,
           }}
         >
           <Text style={{ fontSize: 15, fontWeight: 'bold', color: '#FFFFFF' }} className="font-sans">
@@ -1151,7 +1217,7 @@ export default function SignupScreen() {
 
             {/* Title + subtitle */}
             <View style={{ paddingHorizontal: 24, marginBottom: 16 }}>
-              <Text style={{ fontSize: 15, fontWeight: 'bold', fontStyle: 'italic', color: '#6671E4', marginBottom: 4 }} className="font-sans">
+              <Text style={{ fontSize: 15, fontWeight: 'bold', fontStyle: 'italic', color: Colors.primary, marginBottom: 4 }} className="font-sans">
                 {currentMeta?.title}
               </Text>
               <Text style={{ fontSize: 12, color: '#8A8D9F' }} className="font-sans">
@@ -1192,13 +1258,13 @@ export default function SignupScreen() {
                     onPress={() => handlePickerSelect(item)}
                     style={{
                       height: 56, borderWidth: 1,
-                      borderColor: selected ? '#6671E4' : '#EBEBEE',
+                      borderColor: selected ? Colors.primary : '#EBEBEE',
                       borderRadius: 12, paddingHorizontal: 16,
                       flexDirection: 'row', alignItems: 'center',
                       justifyContent: 'space-between', backgroundColor: '#FFFFFF',
                     }}
                   >
-                    <Text style={{ fontSize: 14, color: selected ? '#6671E4' : '#1A1A1A', flex: 1 }} className="font-sans">
+                    <Text style={{ fontSize: 14, color: selected ? Colors.primary : '#1A1A1A', flex: 1 }} className="font-sans">
                       {label}
                     </Text>
                     {isCountryType && (
@@ -1217,7 +1283,7 @@ export default function SignupScreen() {
                 <TouchableOpacity
                   onPress={closePicker}
                   style={{
-                    height: 52, borderRadius: 12, backgroundColor: '#6671E4',
+                    height: 52, borderRadius: 12, backgroundColor: Colors.primary,
                     justifyContent: 'center', alignItems: 'center',
                   }}
                 >

@@ -12,7 +12,7 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "kredibbleapp",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "platforms": [
       "ios",
       "android"
@@ -21,13 +21,17 @@
       "bundleIdentifier": "com.kredibble.app",
       "supportsTablet": true,
       "buildNumber": "1",
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/images/icon.png",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Kredibble needs access to your camera to take profile photos and capture attachments for community posts.",
+        "NSPhotoLibraryUsageDescription": "Kredibble needs access to your photo library to select profile pictures, company verification documents, and post attachments."
+      }
     },
     "android": {
       "package": "com.kredibble.app",
       "versionCode": 1,
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#792EA4",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -43,7 +47,7 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#792EA4",
           "android": {
             "image": "./assets/images/splash-icon.png",
             "imageWidth": 76
@@ -56,6 +60,13 @@
         {
           "organization": "global-opportunities",
           "project": "god-mobile"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Kredibble needs access to your photo library to select profile pictures, company verification documents, and post attachments.",
+          "cameraPermission": "Kredibble needs access to your camera to take profile photos and capture attachments for community posts."
         }
       ]
     ],

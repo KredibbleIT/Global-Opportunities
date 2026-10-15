@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, TextInput, useWindowDimensions, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Search, Target, Compass, Users, Check, Clock, TrendingUp, Sparkles, Building, Bell } from 'lucide-react-native';
-import Svg, { G, Rect, Defs, ClipPath, RadialGradient, Stop, Ellipse } from 'react-native-svg';
+import { Search, Users, TrendingUp, Bell } from 'lucide-react-native';
+import Svg, { Defs, RadialGradient, Stop, Ellipse } from 'react-native-svg';
 import { useRouter } from 'expo-router';
 import { authStore } from '../../constants/authStore';
 import { notificationStore } from '../../constants/mockNotifications';
-import { Colors, FontSize, FontWeight, Radius, Shadow } from '../../constants/design';
-import { getOpportunities } from '../../lib/api';
+import { syncNotifications } from '../../lib/notificationSync';
+import { Colors } from '../../constants/design';
+import { getOpportunities, getApplicants } from '../../lib/api';
 
 // ─── Logo ─────────────────────────────────────────────────────────────────────
 
@@ -66,7 +67,7 @@ const FeatureCard = ({ title, emoji, backgroundImage, blurCircle, onPress }: { t
     style={{
       flex: 1,
       height: 121.7,
-      backgroundColor: backgroundImage ? 'transparent' : '#6671E4',
+      backgroundColor: backgroundImage ? 'transparent' : Colors.primary,
       borderRadius: 16,
       overflow: 'hidden',
     }}
@@ -135,7 +136,6 @@ export default function HomeScreen() {
           authStore.setOpportunities(data);
         } else {
           // Hirer needs their opportunities and the applicants for pipeline math
-          const { getApplicants } = require('../../lib/api');
           const data = await getOpportunities();
           
           // Fetch applicants for each opportunity to calculate pipeline stats
@@ -144,7 +144,7 @@ export default function HomeScreen() {
               try {
                 const applicants = await getApplicants(opp.id);
                 return { ...opp, applicants, applicantsCount: applicants.length || opp.applicantsCount || 0 };
-              } catch (e) {
+              } catch {
                 return { ...opp, applicants: [], applicantsCount: 0 };
               }
             })
@@ -159,6 +159,7 @@ export default function HomeScreen() {
     };
 
     fetchData();
+    syncNotifications();
 
     // State is initialised from authStore; the subscription keeps it in sync.
     const unsubscribe = authStore.subscribe(() => {
@@ -226,7 +227,7 @@ export default function HomeScreen() {
             activeOpacity={0.7}
           >
             <View>
-              <Bell size={24} color="#1A1A1A" />
+              <Bell size={24} color={Colors.primary} />
               {unreadNotifications > 0 && (
                 <View
                   style={{
@@ -242,7 +243,7 @@ export default function HomeScreen() {
 
         <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
           {isLoading && (
-            <ActivityIndicator size="small" color="#6671E4" style={{ marginTop: 20 }} />
+            <ActivityIndicator size="small" color={Colors.primary} style={{ marginTop: 20 }} />
           )}
 
           {/* Analytics Section */}
@@ -253,13 +254,13 @@ export default function HomeScreen() {
           <View style={{ flexDirection: 'row', gap: 16, marginBottom: 16 }}>
             {/* Card 1 — Active Posts */}
             <View style={{ flex: 1, backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#EBEBEE' }}>
-              <TrendingUp size={24} color="#6671E4" />
+              <TrendingUp size={24} color={Colors.primary} />
               <Text style={{ fontSize: 28, fontWeight: '700', color: '#1A1A1A', marginTop: 16 }} className="font-sans">{totalPosts}</Text>
               <Text style={{ fontSize: 13, color: '#8A8D9F', marginTop: 4 }} className="font-sans">Active Posts</Text>
             </View>
             {/* Card 2 — Total Applicants */}
             <View style={{ flex: 1, backgroundColor: '#FFFFFF', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#EBEBEE' }}>
-              <Users size={24} color="#6671E4" />
+              <Users size={24} color={Colors.primary} />
               <Text style={{ fontSize: 28, fontWeight: '700', color: '#1A1A1A', marginTop: 16 }} className="font-sans">{totalApplicants}</Text>
               <Text style={{ fontSize: 13, color: '#8A8D9F', marginTop: 4 }} className="font-sans">Total Applicants</Text>
             </View>
@@ -270,17 +271,17 @@ export default function HomeScreen() {
             <Text style={{ fontSize: 13, fontWeight: '700', color: '#1A1A1A', marginBottom: 16 }} className="font-sans">Applicant Pipeline</Text>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View style={{ alignItems: 'center', flex: 1 }}>
-                <Text style={{ fontSize: 16, fontWeight: '700', color: countApplied > 0 ? '#6671E4' : '#8A8D9F' }} className="font-sans">{countApplied}</Text>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: countApplied > 0 ? Colors.primary : '#8A8D9F' }} className="font-sans">{countApplied}</Text>
                 <Text style={{ fontSize: 11, color: '#8A8D9F', marginTop: 4 }} className="font-sans">Applied</Text>
               </View>
               <View style={{ width: 1, height: 24, backgroundColor: '#EBEBEE' }} />
               <View style={{ alignItems: 'center', flex: 1 }}>
-                <Text style={{ fontSize: 16, fontWeight: '700', color: countShortlisted > 0 ? '#6671E4' : '#8A8D9F' }} className="font-sans">{countShortlisted}</Text>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: countShortlisted > 0 ? Colors.primary : '#8A8D9F' }} className="font-sans">{countShortlisted}</Text>
                 <Text style={{ fontSize: 11, color: '#8A8D9F', marginTop: 4 }} className="font-sans">Shortlisted</Text>
               </View>
               <View style={{ width: 1, height: 24, backgroundColor: '#EBEBEE' }} />
               <View style={{ alignItems: 'center', flex: 1 }}>
-                <Text style={{ fontSize: 16, fontWeight: '700', color: countInterviewing > 0 ? '#6671E4' : '#8A8D9F' }} className="font-sans">{countInterviewing}</Text>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: countInterviewing > 0 ? Colors.primary : '#8A8D9F' }} className="font-sans">{countInterviewing}</Text>
                 <Text style={{ fontSize: 11, color: '#8A8D9F', marginTop: 4 }} className="font-sans">Interviews</Text>
               </View>
               <View style={{ width: 1, height: 24, backgroundColor: '#EBEBEE' }} />
@@ -323,12 +324,19 @@ export default function HomeScreen() {
           </View>
 
           {/* Feature grid — row 3 (half width) */}
-          <View style={{ flexDirection: 'row' }}>
+          <View style={{ flexDirection: 'row', gap: 20 }}>
             <View style={{ width: cardWidth, height: 121.7 }}>
               <FeatureCard
                 title={CARDS[4].title}
                 backgroundImage={require('../../../assets/images/ai_assistant.png')}
                 onPress={() => router.push('/assistant' as any)}
+              />
+            </View>
+            <View style={{ width: cardWidth, height: 121.7 }}>
+              <FeatureCard
+                title="News"
+                backgroundImage={require('../../../assets/images/home_news_bg.png')}
+                onPress={() => router.push('/news' as any)}
               />
             </View>
           </View>
@@ -347,17 +355,38 @@ export default function HomeScreen() {
           paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12,
         }}
       >
-        <LogoSVG />
+        <View style={{ width: 40, alignItems: 'flex-start' }}>
+          <LogoSVG />
+        </View>
         <Text
           style={{
             flex: 1, textAlign: 'center', fontSize: 17,
             fontWeight: '600', color: '#1A1A1A',
-            marginRight: 40,
           }}
           className="font-sans"
         >
           Home
         </Text>
+        <TouchableOpacity
+          style={{ width: 40, alignItems: 'flex-end' }}
+          onPress={() => router.push('/notifications' as any)}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Notifications"
+        >
+          <View>
+            <Bell size={24} color={Colors.primary} />
+            {unreadNotifications > 0 && (
+              <View
+                style={{
+                  position: 'absolute', top: -2, right: -2,
+                  width: 9, height: 9, borderRadius: 4.5,
+                  backgroundColor: '#ED4C5C', borderWidth: 1.5, borderColor: '#F7F7F9',
+                }}
+              />
+            )}
+          </View>
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -371,8 +400,6 @@ export default function HomeScreen() {
             backgroundColor: '#FFFFFF', borderRadius: 15,
             paddingHorizontal: 16, height: 50,
             marginBottom: 16,
-            shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-            shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
           }}
         >
           <Search size={18} color="#A1A1AA" style={{ marginRight: 10 }} />
@@ -434,7 +461,7 @@ export default function HomeScreen() {
         </View>
 
         {/* Feature grid — row 3 (half width) */}
-        <View style={{ flexDirection: 'row' }}>
+        <View style={{ flexDirection: 'row', gap: 20 }}>
           <View style={{ width: cardWidth, height: 121.7 }}>
             <FeatureCard
               title={CARDS[4].title}
@@ -442,6 +469,13 @@ export default function HomeScreen() {
               onPress={() => router.push('/assistant' as any)}
             />
           </View>
+          <View style={{ width: cardWidth, height: 121.7 }}>
+              <FeatureCard
+                title="News"
+                backgroundImage={require('../../../assets/images/home_news_bg.png')}
+                onPress={() => router.push('/news' as any)}
+              />
+            </View>
         </View>
       </ScrollView>
     </SafeAreaView>
