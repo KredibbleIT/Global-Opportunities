@@ -14,6 +14,7 @@ export default function ProfileLayout() {
       <Stack.Screen name="applications" />
       <Stack.Screen name="notifications" />
       <Stack.Screen name="security" />
+      <Stack.Screen name="people" />
     </Stack>
   );
 }
