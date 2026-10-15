@@ -54,7 +54,7 @@ export interface Listing {
   eventAt?: string;
   /** "3 months", "2 days"... */
   durationLabel?: string;
-  /** Image URLs (an object URL for a new pick, or a saved URL). */
+  /** Image URLs (a data: URL for a new pick, or a saved URL). */
   logoUrl?: string;
   imageUrl?: string;
   /** The staff member who writes about the listing. */
@@ -215,7 +215,7 @@ export interface Ambassador {
   whatsapp?: string;
   /** Free-text region ("Greater Accra"), only when the person wrote one. Set by the CSV import. */
   region?: string;
-  /** A picked image (an object URL for a new pick). Without one the initials avatar shows. */
+  /** A picked image (a data: URL for a new pick). Without one the initials avatar shows. */
   photoUrl?: string;
   /**
    * Where the picture came from, usually a Google Drive link from the sign-up form. It is NOT an image: show the initials
@@ -440,7 +440,52 @@ export interface KpiThresholds {
 }
 
 /** Every entity collection of the mock store, by name. */
+// ---- Showcase (people and organisations featured on the app) ---------------------------------------------
+/** A person has a round photo and a name; an organisation (a partner) has a logo and a name. */
+export type ShowcaseKind = "person" | "organisation";
+
+/** The four built-in categories keep a fixed `key` (permissions are scoped by it); custom ones (for example "Developers") have key "custom". */
+export type ShowcaseCategoryKey = "ambassadors" | "team" | "partners" | "stakeholders" | "custom";
+
+export interface ShowcaseCategory {
+  id: string;
+  key: ShowcaseCategoryKey;
+  name: string;
+  kind: ShowcaseKind;
+  /** Where the category sits on the app page (1 = first). */
+  order: number;
+  /** A hidden category is not shown on the app, with everything in it. */
+  visible: boolean;
+}
+
+export interface ShowcaseEntry {
+  id: string;
+  categoryId: string;
+  name: string;
+  /** Role or title for a person ("Campus Lead, KNUST"); what they do for an organisation. */
+  title: string;
+  /** A short bio (at most 400 characters; the app card cuts it off). */
+  bio: string;
+  /** The picture: a data: URL for a new pick (mock). TODO(backend): an uploaded image URL. */
+  photoUrl?: string;
+  country?: string;
+  /** Who gave the picture and bio, and when ("Sent by Ama on 3 Oct"). A record, not a legal form. */
+  providedBy?: string;
+  /** Shown on the app (true) or hidden (false). Hiding is one click and removes it from the app at once. */
+  visible: boolean;
+  /** Position inside its category (1 = first). */
+  order: number;
+  /** Set when the entry was started from an existing ambassador or partner (so nobody is typed in twice). */
+  linkedAmbassadorId?: string;
+  linkedPartnerId?: string;
+  /** ISO date-times. */
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface EntityCollections {
+  showcaseCategories: ShowcaseCategory[];
+  showcaseEntries: ShowcaseEntry[];
   programs: Program[];
   partners: Partner[];
   ambassadors: Ambassador[];

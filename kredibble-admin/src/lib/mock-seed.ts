@@ -22,6 +22,8 @@
 import { BRAND_EMAIL_DOMAIN } from "@/config/brand";
 import type { KpiKey } from "@/config/kpis";
 import type {
+  ShowcaseCategory,
+  ShowcaseEntry,
   Ambassador,
   AmbassadorStatus,
   AmbassadorTier,
@@ -716,6 +718,28 @@ export function buildSeed(today: Date = new Date()): Seed {
     };
   });
 
+  // ---- Showcase: who is featured on the app (FAKE names; no photos, so the initials avatar shows) ----------------
+  const showcaseCategories: ShowcaseCategory[] = [
+    { id: "sc-ambassadors", key: "ambassadors", name: "Ambassadors", kind: "person", order: 1, visible: true },
+    { id: "sc-team", key: "team", name: "Team", kind: "person", order: 2, visible: true },
+    { id: "sc-partners", key: "partners", name: "Partners", kind: "organisation", order: 3, visible: true },
+    { id: "sc-stakeholders", key: "stakeholders", name: "Stakeholders", kind: "person", order: 4, visible: true },
+  ];
+  const showcaseStamp = `${todayIso}T09:00:00.000Z`;
+  const showcaseRow = (id: string, categoryId: string, order: number, name: string, title: string, bio: string, country: string, visible = true): ShowcaseEntry => ({
+    id, categoryId, order, name, title, bio, country, visible, providedBy: "Sent by the person for the app", createdAt: showcaseStamp, updatedAt: showcaseStamp,
+  });
+  const showcaseEntries: ShowcaseEntry[] = [
+    showcaseRow("se-1", "sc-ambassadors", 1, "Test Ambassador One", "Campus Lead, Example University", "Shares scholarships and internships with students on campus.", "Ghana"),
+    showcaseRow("se-2", "sc-ambassadors", 2, "Test Ambassador Two", "Senior Ambassador", "Runs weekly opportunity sessions for first-year students.", "Nigeria"),
+    showcaseRow("se-3", "sc-ambassadors", 3, "Test Ambassador Three", "Ambassador", "Connects young people in the city with trusted organisations.", "Kenya", false),
+    showcaseRow("se-4", "sc-team", 1, "Test Desk Lead", "Desk Lead", "Leads the desk and the partner programme.", "Ghana"),
+    showcaseRow("se-5", "sc-team", 2, "Test Developer One", "Developer", "Builds the mobile app and the admin dashboard.", "Ghana"),
+    showcaseRow("se-6", "sc-partners", 1, "Example Partner Foundation", "Funds graduate internships", "A foundation that supports early-career programmes across West Africa.", "Ghana"),
+    showcaseRow("se-7", "sc-partners", 2, "Sample Tech Company", "Hires interns and graduates", "A technology company with open internships every quarter.", "Nigeria"),
+    showcaseRow("se-8", "sc-stakeholders", 1, "Test Stakeholder One", "Programme adviser", "Advises the desk on youth employment programmes.", "Kenya"),
+  ];
+
   // ---- Targets ---------------------------------------------------------------------------------------------
   const targets: Target[] = (Object.keys(DEFAULT_TARGETS) as KpiKey[]).map((kpi) => ({ id: `tgt-${kpi}`, kpi, target: DEFAULT_TARGETS[kpi] }));
 
@@ -724,6 +748,8 @@ export function buildSeed(today: Date = new Date()): Seed {
       programs,
       partners,
       ambassadors,
+      showcaseCategories,
+      showcaseEntries,
       databaseRecords,
       socialPosts,
       testimonials,

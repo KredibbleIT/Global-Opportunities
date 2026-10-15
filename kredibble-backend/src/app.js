@@ -57,7 +57,12 @@ app.use(async (req, res, next) => {
   }
 });
 
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({
+  limit: '1mb',
+  // BE-026: stash the raw bytes so the website-webhook route can verify the
+  // HMAC signature. Bounded by the same 1mb limit, no extra parsing cost.
+  verify: (req, _res, buf) => { req.rawBody = buf.toString('utf8'); },
+}));
 // SEC-095: structured HTTP access logging via pino-http
 app.use(createHttpLogger());
 

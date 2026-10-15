@@ -119,6 +119,11 @@ const env = {
   aiSystemPrompt: process.env.AI_SYSTEM_PROMPT || 'You are the Global Opportunities assistant. Give accurate, helpful opportunity guidance.',
   wordpressSyncBaseUrl: process.env.WORDPRESS_SYNC_BASE_URL,
   wordpressApiKey: process.env.WORDPRESS_API_KEY,
+  // BE-026: inbound website sync. The webhook receiver is active only when a
+  // shared secret is configured (503 otherwise); the pull safety net reuses
+  // the outbound sync credentials above.
+  websiteWebhookSecret: process.env.WEBSITE_WEBHOOK_SECRET,
+  websiteWebhookSkewSeconds: Number(process.env.WEBSITE_WEBHOOK_SKEW_SECONDS || 300),
   // Internal secret storage (secure getter pattern)
   _jwtSecret: undefined,
   _adminJwtSecret: undefined,
