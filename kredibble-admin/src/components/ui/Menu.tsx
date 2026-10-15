@@ -14,6 +14,7 @@
  * Items are real links (`href`) or buttons (`onSelect`) with role="menuitem". An item with `checked` set is a
  * checkbox item (role="menuitemcheckbox", aria-checked) with a box on the left; `keepOpen` leaves the menu open
  * after it is chosen. `groupLabel` prints a small caption above that item.
+ * An item may carry a `hint`: a short line of text under its label (used to say why an item is disabled).
  * An item with `current: true` marks the page you are on: aria-current="page",
  * font weight 600 and a check icon on the right.
  *
@@ -53,6 +54,8 @@ export interface MenuItem {
   keepOpen?: boolean;
   /** A small caption shown above this item. */
   groupLabel?: string;
+  /** A short line under the label, for example why a disabled item is disabled. */
+  hint?: string;
 }
 
 interface MenuProps {
@@ -227,7 +230,10 @@ export function Menu({
                   </span>
                 )}
                 {Icon && <Icon size={16} strokeWidth={1.75} aria-hidden="true" />}
-                <span className="flex-1">{item.label}</span>
+                <span className="flex-1">
+                  {item.label}
+                  {item.hint && <span className="caption block font-normal">{item.hint}</span>}
+                </span>
                 {item.current && <Check size={16} strokeWidth={2} aria-hidden="true" className="shrink-0 text-purple-700" />}
               </>
             );
@@ -327,7 +333,10 @@ export function Menu({
                   </span>
                 )}
                 {Icon && <Icon size={16} strokeWidth={1.75} aria-hidden="true" />}
-                <span className="flex-1">{item.label}</span>
+                <span className="flex-1">
+                  {item.label}
+                  {item.hint && <span className="caption block font-normal">{item.hint}</span>}
+                </span>
                 {item.current && <Check size={16} strokeWidth={2} aria-hidden="true" className="shrink-0 text-purple-700" />}
               </>
             );

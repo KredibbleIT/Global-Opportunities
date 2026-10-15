@@ -37,3 +37,29 @@ notificationSchema.index({ audience: 1, status: 1, sentAt: -1 });
 
 export const Article = mongoose.model('Article', articleSchema);
 export const Notification = mongoose.model('Notification', notificationSchema);
+
+// BE-022: ingested news store (Insight Ghana, The African Journal).
+// `externalId` (`<source>:<wordpressId>`) is stable across ingests so
+// re-runs update instead of duplicating. `hidden` is staff-only and never
+// overwritten by ingest (an admin hide decision always wins).
+export const NEWS_SOURCES = Object.freeze(['insight_ghana', 'african_journal']);
+
+const newsItemSchema = new mongoose.Schema({
+  externalId: { type: String, required: true, unique: true, index: true },
+  source: { type: String, required: true, enum: NEWS_SOURCES, index: true },
+  title: { type: String, required: true, index: true },
+  summary: { type: String, default: '' },
+  content: { type: String, default: '' },
+  link: { type: String, default: '' },
+  imageUrl: { type: String, default: null },
+  publishedAt: { type: Date, index: true },
+  hidden: { type: Boolean, default: false, index: true },
+  hiddenBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  hiddenAt: { type: Date, default: null },
+  lastSeenAt: { type: Date, default: Date.now },
+}, { timestamps: true });
+
+newsItemSchema.index({ source: 1, publishedAt: -1 });
+newsItemSchema.index({ hidden: 1, publishedAt: -1 });
+
+export const NewsItem = mongoose.model('NewsItem', newsItemSchema);

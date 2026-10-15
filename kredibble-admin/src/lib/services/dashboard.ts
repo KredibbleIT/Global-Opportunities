@@ -5,8 +5,9 @@
  *   Database, Social and Programs pages use (kpiValue, kpiTarget, kpiThresholds, kpiStatus), so a card, a gauge and a list
  *   always agree, and a target saved in Settings changes the status here. The queue counts come from mock-counts.ts: the SAME
  *   numbers as the sidebar pills and the breadcrumb pill.
- * - Real mode: the API has no monthly targets yet, so the ten cards, the trend, the programs and the feed are "not available yet"
- *   (notConnected: true, not an error) and only the two queue counts from GET /dashboard/summary are live.
+ * - Real mode: the monthly figures come from the live KPI/scorecard APIs (BE-004/BE-015). When the figures endpoint
+ *   cannot be reached the ten cards, the trend, the programs and the feed are "not available yet"
+ *   (notConnected: true, not an error); the four queue counts from GET /dashboard/summary are always live.
  *
  * Design rules:
  * - It never throws for expected failures. It resolves with `issue` set, and every section that could not be loaded is `null`

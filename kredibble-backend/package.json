@@ -19,6 +19,8 @@
         "user:create-admin": "node scripts/create-admin.js",
         "accounts:complete-deletions": "node scripts/complete-account-deletions.js",
         "retention:cleanup": "node -e \"import('./src/lib/data-retention.js').then(m => m.runDataRetentionSweep())\",",
+        "sync:news-ingest": "node scripts/news-ingest.js",
+        "sync:website-tally": "node scripts/website-tally.js",
         "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest",
         "lint": "eslint .",
         "docs:generate": "node scripts/generate-docs.js",
@@ -26,12 +28,12 @@
         "e2e:server:demo": "cross-env E2E_SEED=demo node --import ./src/instrument.js scripts/e2e-server.js"
     },
     "dependencies": {
-        "@sentry/node": "^11.5.0",
-        "bcryptjs": "^2.4.3",
+        "@sentry/node": "^11.6.0",
+        "bcryptjs": "^3.0.3",
         "cloudinary": "^2.11.0",
         "cookie-parser": "^1.4.7",
         "cors": "^2.8.5",
-        "dotenv": "^18.0.6",
+        "dotenv": "^18.0.7",
         "express": "^4.19.2",
         "express-rate-limit": "^8.7.1",
         "file-type": "^22.1.1",
@@ -39,12 +41,12 @@
         "ioredis": "^5.4.1",
         "jsonwebtoken": "^9.0.2",
         "mongodb": "^7.7.0",
-        "mongoose": "^9.11.0",
+        "mongoose": "^9.11.1",
         "mongoose-to-swagger": "^1.5.1",
         "morgan": "^1.12.1",
         "multer": "^2.4.0",
         "pino": "^10.4.0",
-        "pino-http": "^10.5.0",
+        "pino-http": "^11.0.0",
         "pino-pretty": "^13.2.0",
         "rate-limit-redis": "^6.0.1",
         "resend": "^6.32.1",
@@ -53,7 +55,7 @@
         "zod": "^4.6.5"
     },
     "devDependencies": {
-        "@babel/preset-env": "^7.26.0",
+        "@babel/preset-env": "^8.0.7",
         "@eslint/js": "^10.0.1",
         "babel-jest": "^30.5.2",
         "cross-env": "^10.1.0",
@@ -62,7 +64,7 @@
         "ioredis-mock": "^8.13.1",
         "jest": "^30.5.2",
         "mongodb-memory-server": "^11.3.0",
-        "openapi-to-postmanv2": "^6.3.3",
+        "openapi-to-postmanv2": "^6.4.0",
         "socket.io-client": "^4.8.4",
         "supertest": "^7.3.1"
     }

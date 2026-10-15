@@ -46,6 +46,7 @@ export default function StaffDetailPage() {
   if (!staff) return <DetailNotFound noun="Staff member" listLabel="Team" listHref="/team" />;
 
   const isActive = staff.status === "active";
+  const isSuspended = staff.status === "suspended"; // Invited and Deactivated accounts are managed from the Team list
   const roleLabels = staff.roles.map((role) => ROLES[role].label);
 
   const toggleRole = (role: Role, checked: boolean) => {
@@ -90,7 +91,7 @@ export default function StaffDetailPage() {
             badges={<StatusBadge status={staff.status} />}
             meta={`${staff.email} · Joined ${formatDate(staff.joinedDate)}`}
             actions={
-              !isActive && (
+              isSuspended && (
                 <Button variant="secondary" icon={RotateCcw} onClick={reinstate}>
                   Reinstate access
                 </Button>

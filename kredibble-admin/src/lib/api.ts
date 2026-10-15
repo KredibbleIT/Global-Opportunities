@@ -2125,6 +2125,75 @@ export const updateAdminReferenceList = async (
   });
 };
 
+// BE-021: website category taxonomy + live tally.
+export type CategoryMapRecord = {
+  id: string;
+  websiteCategory: string;
+  appCategory: string | null;
+  note?: string;
+  updatedAt: string;
+};
+
+export type TallyReport = {
+  websiteOpportunities: number;
+  appOpportunities: number;
+  report: {
+    opportunities: { inBoth: unknown[]; onlyWebsite: unknown[]; onlyApp: unknown[] };
+    categories: {
+      inBoth: unknown[];
+      onlyWebsite: unknown[];
+      onlyApp: unknown[];
+      differing: unknown[];
+      unmapped: unknown[];
+    };
+  };
+};
+
+export const getCategoryTaxonomyApi = async (): Promise<CategoryMapRecord[]> => {
+  return request<CategoryMapRecord[]>(`/admin/sync/taxonomy`);
+};
+
+export const updateCategoryMappingApi = async (data: { websiteCategory: string; appCategory?: string | null; note?: string }): Promise<CategoryMapRecord> => {
+  return request<CategoryMapRecord>(`/admin/sync/taxonomy`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+};
+
+export const getWebsiteTallyApi = async (): Promise<TallyReport> => {
+  return request<TallyReport>(`/admin/sync/tally`);
+};
+
+// BE-022: ingested news moderation (hide/show re-ingest-proof items).
+export type NewsItemRecord = {
+  id: string;
+  externalId: string;
+  source: "insight_ghana" | "african_journal";
+  title: string;
+  summary?: string;
+  content?: string;
+  link?: string;
+  imageUrl?: string | null;
+  publishedAt?: string | null;
+  hidden: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const getAdminNewsApi = async (params?: { source?: "insight_ghana" | "african_journal"; hidden?: boolean; q?: string; page?: number; limit?: number }) => {
+  const query = new URLSearchParams();
+  if (params?.source) query.set("source", params.source);
+  if (params?.hidden !== undefined) query.set("hidden", String(params.hidden));
+  if (params?.q) query.set("q", params.q);
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  const queryString = query.toString() ? `?${query.toString()}` : "";
+  return requestPage<NewsItemRecord>(`/admin/news${queryString}`);
+};
+
+export const moderateNewsItemApi = async (id: string, data: { hidden: boolean }) =>
+  request<NewsItemRecord>(`/admin/news/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+
 
 
 

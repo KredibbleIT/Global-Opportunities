@@ -201,10 +201,12 @@
   color: #ffffff;
 }
 
-/* Brand tagline under the name in the sidebar: 11/16 as the brief specifies, so "Global Opportunity Desk" fits one line */
+/* Brand tagline under the name in the sidebar: 11/16 as the brief specifies, so "Global Opportunity Desk" fits one line.
+   Tight tracking: the 132px slot leaves no room for wider fallback fonts (CI renders ~136px untracked). */
 @utility brand-sub {
   font-size: 11px;
   line-height: 16px;
+  letter-spacing: -0.02em;
   color: var(--color-sb-muted);
 }
 
