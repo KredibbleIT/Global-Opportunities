@@ -2,6 +2,9 @@ import { z } from 'zod';
 import { ROLE_IDS } from '../lib/permissions.js';
 import { KPI_KEYS } from '../lib/targets.js';
 
+// YYYY-MM with a real calendar month (rejects '2026-13', which /^\d{4}-\d{2}$/ allows).
+const YEAR_MONTH_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
+
 // SEC-077, BE-001, BE-017: add an existing or invited person to the admin staff list with 1 or 2 roles.
 export const staffInviteSchema = z.object({
   body: z.object({
@@ -18,7 +21,7 @@ export const staffInviteSchema = z.object({
 // BE-002, BE-003: batch targets save schema with effective-from month (supports targets, thresholds, or both)
 export const targetsBatchSchema = z.object({
   body: z.object({
-    effectiveFrom: z.string().regex(/^\d{4}-\d{2}$/, 'effectiveFrom must be YYYY-MM format'),
+    effectiveFrom: z.string().regex(YEAR_MONTH_REGEX, 'effectiveFrom must be YYYY-MM format'),
     targets: z.array(z.object({
       kpi: z.enum(KPI_KEYS, { errorMap: () => ({ message: 'Invalid KPI key' }) }),
       value: z.number().int('Target must be an integer').min(1, 'Target must be at least 1').max(10_000_000, 'Target cannot exceed 10,000,000'),
@@ -43,7 +46,7 @@ export const targetsBatchSchema = z.object({
 // BE-003: dedicated thresholds save schema
 export const thresholdsSchema = z.object({
   body: z.object({
-    effectiveFrom: z.string().regex(/^\d{4}-\d{2}$/, 'effectiveFrom must be YYYY-MM format'),
+    effectiveFrom: z.string().regex(YEAR_MONTH_REGEX, 'effectiveFrom must be YYYY-MM format'),
     green: z.number().int('Green must be an integer').min(1, 'Green must be at least 1').max(200, 'Green cannot exceed 200'),
     amber: z.number().int('Amber must be an integer').min(1, 'Amber must be at least 1').max(200, 'Amber cannot exceed 200'),
   }).refine((data) => data.amber < data.green, {

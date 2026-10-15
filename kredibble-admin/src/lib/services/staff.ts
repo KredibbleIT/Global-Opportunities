@@ -82,6 +82,9 @@ export const loadStaffMember = async (id: string): Promise<StaffMember | undefin
   }
 };
 
+/** The team as it is in the store right now (a plain read, for rules that need everyone, such as "is this email taken"). */
+export const loadStaffSnapshot = (): StaffMember[] => getMockCollection("staff");
+
 /** Adds a person to the team (newest first). One role, or two (anything beyond MAX_STAFF_ROLES is dropped). */
 export function inviteStaff(name: string, email: string, roles: Role | Role[]): StaffMember {
   const normalizedRoles = (Array.isArray(roles) ? roles : [roles]).slice(0, MAX_STAFF_ROLES) as Role[];

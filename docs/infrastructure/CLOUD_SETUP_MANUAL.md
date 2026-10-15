@@ -309,14 +309,14 @@ In **Project Settings** -> **Environment Variables**:
 
 * **For Production:**
   * `NEXT_PUBLIC_API_URL` = `/api`
-  * `API_PROXY_TARGET` = `https://api.globalopportunitydesk.com`
+  * `API_PROXY_TARGET` = `https://api.globalopportunitydesk.com/api`
   * `NEXT_PUBLIC_APP_ENV` = `production`
   * `NEXT_PUBLIC_USE_MOCKS` = `false`
   * `NEXT_PUBLIC_SENTRY_DSN` = `<admin_sentry_dsn>`
 
 * **For Staging / Preview:**
   * `NEXT_PUBLIC_API_URL` = `/api`
-  * `API_PROXY_TARGET` = `https://staging-api.globalopportunitydesk.com`
+  * `API_PROXY_TARGET` = `https://staging-api.globalopportunitydesk.com/api`
   * `NEXT_PUBLIC_APP_ENV` = `staging`
   * `NEXT_PUBLIC_USE_MOCKS` = `false`
 
@@ -405,7 +405,7 @@ openssl rand -base64 48
 | `WORDPRESS_API_KEY` | Backend | WP Admin -> Application Passwords | `xxxx xxxx xxxx xxxx` |
 | `SENTRY_DSN` | Backend, Admin | Sentry Project Settings -> Keys | `https://xxxx@o0.ingest.sentry.io/0` |
 | `NEXT_PUBLIC_API_URL` | Admin | Next.js API client target | `http://localhost:4000/api` (local) or `/api` (Vercel) |
-| `API_PROXY_TARGET` | Admin | Next.js rewrite target | `https://api.globalopportunitydesk.com` |
+| `API_PROXY_TARGET` | Admin | Next.js rewrite target | `https://api.globalopportunitydesk.com/api` |
 | `NEXT_PUBLIC_USE_MOCKS` | Admin | Static mock toggle | `false` |
 | `EXPO_PUBLIC_API_URL` | Mobile App | Mobile API endpoint | `https://api.globalopportunitydesk.com/api/v1` |
 | `EXPO_PUBLIC_SENTRY_DSN` | Mobile App | Sentry Mobile project key | `https://xxxx@o0.ingest.sentry.io/0` |

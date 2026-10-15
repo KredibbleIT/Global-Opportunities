@@ -8,6 +8,7 @@ import { Opportunity, CompanyVerification } from '../models/Platform.js';
 import { StaffMember, User } from '../models/User.js';
 import { Channel, CommunityMembership, Report, ChannelPost } from '../models/Community.js';
 import { Notification } from '../models/Content.js';
+import { NewsItem } from '../models/Content.js';
 import { SeekerProfile, HirerAccount } from '../models/Profiles.js';
 import {
   AdminActivity,
@@ -36,6 +37,7 @@ import {
   TESTIMONIAL_ACTIONS_MAP,
   WebsiteMonth,
   MonthlyReport,
+  CategoryMap,
 } from '../models/AdminPortal.js';
 import { deleteFromWordpress, syncToWordpress } from '../lib/wordpress-sync.js';
 import { env } from '../config/env.js';
@@ -52,6 +54,8 @@ import {
   getReferenceDataList,
   updateReferenceDataList,
 } from '../lib/reference-data.js';
+import { buildTallyReport, fetchWebsiteSnapshot } from '../lib/website-tally.js';
+import { taxonomyUpsertSchema } from '../schemas/website-tally.js';
 import { auditReq, AUDIT_ACTIONS, AUDIT_RESOURCE_TYPES } from '../lib/audit.js';
 import { getTargetsForMonth, getTargetHistory, saveTargetBatch, KPI_KEYS } from '../lib/targets.js';
 import { getThresholdsInForce, getThresholdHistory, saveThresholdChange, getCombinedChangeHistory } from '../lib/thresholds.js';
@@ -128,6 +132,7 @@ import { notifyUser } from '../lib/user-notify.js';
 import { evictFromChannelRoom } from '../socket.js';
 import { toRequestResponse } from './ambassador.js';
 import { moveUserSegment, normalizeSegments, GENERAL_SEGMENT } from '../lib/segments.js';
+import { newsAdminQuerySchema, newsModerateSchema } from '../schemas/news.js';
 import {
   approveAmbassadorRequestSchema, rejectAmbassadorRequestSchema, chatMessageSchema,
   createAdminChannelSchema, addChannelMemberSchema, allowRepliesSchema,
@@ -366,7 +371,7 @@ const addManagedRoutes = ({
   adminApiRouter.delete(`${path}/:id`, ...editAuth, asyncHandler(async (req, res) => {
     const record = await Model.findById(validId(req.params.id, resource));
     if (!record) throw notFound(resource);
-    let sync = { status: 'pending' };
+    let sync;
     try {
       sync = await deleteFromWordpress(resource, record);
     } catch (error) {
@@ -727,7 +732,7 @@ adminApiRouter.get('/opportunities/:id/analytics', requireAdminOrStaffAuth, requ
 adminApiRouter.delete('/opportunities/:id', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'edit'), requirePortalRoles(...OPPORTUNITY_ROLES), asyncHandler(async (req, res) => {
   const record = await Opportunity.findById(validId(req.params.id, 'Opportunity'));
   if (!record) throw notFound('Opportunity');
-  let sync = { status: 'pending' };
+  let sync;
   try {
     sync = await deleteFromWordpress('opportunities', record);
   } catch (error) {
@@ -926,9 +931,9 @@ export const calculatePipelineHealth = async (monthQuery) => {
   const closedCount = closedInWindow.size;
   const closeRate = reachedCount > 0 ? (closedCount / reachedCount) : null;
 
-  let needed = null;
-  let ratio = null;
-  let status = 'unknown';
+  let needed;
+  let ratio;
+  let status;
 
   if (target <= 0) {
     needed = 0;
@@ -1135,7 +1140,7 @@ const prepareAmbassador = (body, authSub, existing = {}) => {
     joinedAt = body.joinedAt || new Date().toISOString().slice(0, 10);
   }
 
-  let dormantSince = existing.dormantSince;
+  let dormantSince;
   if (status === 'dormant') {
     dormantSince = body.dormantSince || existing.dormantSince || new Date().toISOString().slice(0, 10);
   } else {
@@ -2842,7 +2847,7 @@ adminApiRouter.get(
     const today = req.query.today ? new Date(req.query.today) : new Date();
 
     const staff = await StaffMember.findOne({ userId: req.auth.sub, status: 'active' }).lean();
-    let callerPerson = null;
+    let callerPerson;
 
     const [metricValues, targets, thresholds] = await Promise.all([
       dashboardMetrics(month),
@@ -3260,8 +3265,43 @@ export const resolveTestimonialTransition = (currentStatus, target) => {
   return targetStatus;
 };
 
-adminApiRouter.get('/testimonials/pending-count', requireAdminOrStaffAuth, requireScreen('testimonials', 'view'), requirePortalRoles(...TESTIMONIAL_VIEW_ROLES), asyncHandler(async (req, res) => {
-  const count = await Testimonial.countDocuments({ status: 'pending' });
+// BE-022: ingested news moderation. Staff can hide (or re-show) items;
+// ingest never flips `hidden`, so a hide decision always wins.
+adminApiRouter.get('/news', requireAdminOrStaffAuth, requireScreen('social', 'view'), requirePortalRoles(...SOCIAL_ROLES), validate(newsAdminQuerySchema), asyncHandler(async (req, res) => {
+  const filter = {};
+  if (req.query.source) filter.source = req.query.source;
+  if (req.query.hidden !== undefined) filter.hidden = req.query.hidden === 'true';
+  if (req.query.q) {
+    const regex = new RegExp(escapedRegex(req.query.q.trim()), 'i');
+    filter.$or = [{ title: regex }, { summary: regex }];
+  }
+  const { page, skip, limit } = pageOptions(req.query);
+  const [total, records] = await Promise.all([
+    NewsItem.countDocuments(filter),
+    NewsItem.find(filter).sort({ publishedAt: -1, _id: -1 }).skip(skip).limit(limit),
+  ]);
+  listResponse(res, records.map(toClientObject), total, page, limit);
+}));
+
+adminApiRouter.patch('/news/:id', requireAdminOrStaffAuth, requireScreen('social', 'edit'), requirePortalRoles(...SOCIAL_ROLES), validate(newsModerateSchema), asyncHandler(async (req, res) => {
+  const record = await NewsItem.findById(validId(req.params.id, 'News item'));
+  if (!record) throw notFound('News item');
+  const previous = record.hidden;
+  record.hidden = req.body.hidden;
+  record.hiddenBy = req.body.hidden ? req.auth.sub : null;
+  record.hiddenAt = req.body.hidden ? new Date() : null;
+  await record.save();
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.NEWS_UPDATE,
+    resourceType: AUDIT_RESOURCE_TYPES.NEWS_ITEM,
+    resourceId: record._id,
+    outcome: 'success',
+    metadata: { previous, hidden: record.hidden },
+  });
+  itemResponse(res, toClientObject(record));
+}));
+
+adminApiRouter.get('/testimonials/pending-count', requireAdminOrStaffAuth, requireScreen('testimonials', 'view'), requirePortalRoles(...TESTIMONIAL_VIEW_ROLES), asyncHandler(async (req, res) => { const count = await Testimonial.countDocuments({ status: 'pending' });
   itemResponse(res, { count });
 }));
 
@@ -4274,7 +4314,11 @@ adminApiRouter.post('/staff/invite', requireAdminOrStaffAuth, requireScreen('tea
   let user = await User.findOne({ emailNormalized: emailNorm, role: { $ne: 'deleted' } });
 
   if (!user) {
-    const name = req.body.name?.trim() || req.body.email.split('@')[0];
+    // SEC-077: without a full name the invite must reference an existing
+    // account — fabricating an account from a bare email is rejected (404).
+    // With a name (the admin UI requires one) the invite provisions the account.
+    if (!req.body.name?.trim()) throw notFound('User');
+    const name = req.body.name.trim();
     const randomPassword = crypto.randomBytes(16).toString('hex');
     const passwordHash = await bcrypt.hash(randomPassword, 12);
     user = await User.create({
@@ -4369,9 +4413,9 @@ adminApiRouter.patch('/staff/:id', requireAdminOrStaffAuth, requireScreen('team'
   await auditReq(req, {
     action: AUDIT_ACTIONS.ADMIN_USER_UPDATE,
     resourceType: AUDIT_RESOURCE_TYPES.USER,
-    resourceId: staff.userId,
+    resourceId: staff._id,
     outcome: 'success',
-    metadata: { staffUpdate: true, previous, updated: toClientObject(staff) },
+    metadata: { staffUpdate: true, previous, updated: toClientObject(staff), updatedFields: Object.keys(req.body) },
   });
 
   itemResponse(res, toClientObject(staff));
@@ -4407,9 +4451,9 @@ adminApiRouter.put('/staff/:id', requireAdminOrStaffAuth, requireScreen('team', 
   await auditReq(req, {
     action: AUDIT_ACTIONS.ADMIN_USER_UPDATE,
     resourceType: AUDIT_RESOURCE_TYPES.USER,
-    resourceId: staff.userId,
+    resourceId: staff._id,
     outcome: 'success',
-    metadata: { staffUpdate: true, updated: toClientObject(staff) },
+    metadata: { staffUpdate: true, updated: toClientObject(staff), updatedFields: Object.keys(req.body) },
   });
 
   itemResponse(res, toClientObject(staff));
@@ -4586,6 +4630,59 @@ adminApiRouter.put('/reference-data/:group/:key', requireAdminOrStaffAuth, requi
   });
 
   itemResponse(res, toClientObject(updated));
+}));
+
+// --- BE-021: website category taxonomy + live tally ---------------------------
+// The mapping table curates website category names onto app opportunity
+// types; the tally compares both sides live (502 when the website is
+// unreachable, mirroring the news feed pattern).
+
+adminApiRouter.get('/sync/taxonomy', requireAdminOrStaffAuth, requireScreen('settings_admin', 'view'), asyncHandler(async (req, res) => {
+  const rows = await CategoryMap.find({}).sort({ websiteCategory: 1 }).lean();
+  listResponse(res, rows.map(toClientObject));
+}));
+
+adminApiRouter.put('/sync/taxonomy', requireAdminOrStaffAuth, requireScreen('settings_admin', 'edit'), validate(taxonomyUpsertSchema), asyncHandler(async (req, res) => {
+  const websiteCategory = String(req.body.websiteCategory).trim();
+  const previous = await CategoryMap.findOne({ websiteCategory }).lean();
+  const row = await CategoryMap.findOneAndUpdate(
+    { websiteCategory },
+    {
+      $set: {
+        ...(req.body.appCategory !== undefined ? { appCategory: req.body.appCategory } : {}),
+        ...(req.body.note !== undefined ? { note: req.body.note } : {}),
+        updatedBy: req.auth.sub,
+      },
+    },
+    { new: true, upsert: true, runValidators: true, setDefaultsOnInsert: true },
+  );
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.SETTINGS_UPDATE,
+    resourceType: AUDIT_RESOURCE_TYPES.SETTINGS,
+    resourceId: row._id,
+    outcome: 'success',
+    metadata: {
+      setting: 'category_taxonomy',
+      websiteCategory,
+      previous: previous?.appCategory ?? null,
+      appCategory: row.appCategory ?? null,
+    },
+  });
+  itemResponse(res, toClientObject(row));
+}));
+
+adminApiRouter.get('/sync/tally', requireAdminOrStaffAuth, requireScreen('settings_admin', 'view'), asyncHandler(async (req, res) => {
+  const { opportunities: websiteOpportunities, categories: websiteCategories } = await fetchWebsiteSnapshot();
+  const [appOpportunities, mappings] = await Promise.all([
+    Opportunity.find({}).select('title type wordpressSync').lean(),
+    CategoryMap.find({}).lean(),
+  ]);
+  const report = buildTallyReport({ websiteOpportunities, websiteCategories, appOpportunities, mappings });
+  itemResponse(res, {
+    websiteOpportunities: websiteOpportunities.length,
+    appOpportunities: appOpportunities.length,
+    report,
+  });
 }));
 
 // --- 4. Community Channels Moderation ---------------------------------------
@@ -4769,5 +4866,5 @@ adminApiRouter.delete('/community/posts/:id', requireAdminOrStaffAuth, requireSc
     metadata: { channelId: post.channelId, authorId: post.authorId },
   });
 
-  res.json({ data: { id: String(post._id), removed: true } });
+  res.status(204).send();
 }));

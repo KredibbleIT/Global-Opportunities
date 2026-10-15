@@ -96,6 +96,8 @@ export function PartnerReport({ data, month, toDate }: { data: PartnerReportData
       </ReportSection>
       {data.channels.length > 0 ? (
         <ReportSection title="Channel performance" subtitle="From the social posts published this month, the channel with the most reach first" testId="report-channels">
+          {/* On narrow phones the table's minimum content can exceed the paper: contain it here (never in print). */}
+          <div className="overflow-x-auto print:overflow-visible">
           <table data-testid="channel-table" className="w-full text-left">
             <caption className="sr-only">Posts, reach and engagement by channel</caption>
             <thead>
@@ -117,6 +119,7 @@ export function PartnerReport({ data, month, toDate }: { data: PartnerReportData
               ))}
             </tbody>
           </table>
+          </div>
         </ReportSection>
       ) : (
         <p data-testid="channels-none" className="caption">
