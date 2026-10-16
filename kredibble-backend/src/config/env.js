@@ -117,6 +117,8 @@ const env = {
   emailVerificationCodeTtlMinutes: Number(process.env.EMAIL_VERIFICATION_CODE_TTL_MINUTES || 10),
   outboundRequestTimeoutMs: Number(process.env.OUTBOUND_REQUEST_TIMEOUT_MS || 10000),
   aiSystemPrompt: process.env.AI_SYSTEM_PROMPT || 'You are the Global Opportunities assistant. Give accurate, helpful opportunity guidance.',
+  // BE-025: per-user daily AI message budget (cost cap). Attempts, not successes.
+  aiDailyMessageLimit: Number(process.env.AI_DAILY_MESSAGE_LIMIT || 50),
   wordpressSyncBaseUrl: process.env.WORDPRESS_SYNC_BASE_URL,
   wordpressApiKey: process.env.WORDPRESS_API_KEY,
   // BE-026: inbound website sync. The webhook receiver is active only when a

@@ -71,6 +71,7 @@ export const AUDIT_ACTIONS = {
   APPLICATION_SUBMIT: 'application.submit',
   GRANT_APPLY: 'grant.apply',
   EVENT_BOOK: 'event.book',
+  ASSISTANT_CHAT: 'assistant.chat',
 };
 
 export const AUDIT_RESOURCE_TYPES = {
@@ -102,6 +103,7 @@ export const AUDIT_RESOURCE_TYPES = {
   EVENT_ATTENDEE: 'event_attendee',
   AMBASSADOR_REQUEST: 'ambassador_request',
   CHANNEL_MESSAGE: 'channel_message',
+  ASSISTANT: 'assistant',
 };
 
 /**
