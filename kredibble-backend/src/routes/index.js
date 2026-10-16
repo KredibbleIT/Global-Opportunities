@@ -5,6 +5,7 @@ import { uploadRouter, createUploadRouter, IMAGE_MIME_TYPES } from './upload.js'
 import { assistantRouter } from './assistant.js';
 import { newsRouter } from './news.js';
 import { adminApiRouter, getAttentionCounts } from './admin-api.js';
+import { accountsRouter } from './accounts.js';
 import { ambassadorRouter } from './ambassador.js';
 import { syncRouter } from './sync.js';
 import { asyncHandler, itemResponse, listResponse, notFound, stripSensitive, ApiError, parsePagination } from '../utils/http.js';
@@ -878,6 +879,9 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
   router.use('/assistant', assistantRouter);
   router.use('/news', newsRouter);
   router.use('/admin', adminApiRouter);
+  // BE-028: team account provisioning. Every route carries its own
+  // Super-Admin guard (or public rate limit for accept-invite).
+  router.use('/admin', accountsRouter);
   router.use('/ambassador-requests', ambassadorRouter);
   // BE-026: inbound website sync. The webhook authenticates via HMAC, not a
   // user token (every verification failure answers 401 — see sync.js).

@@ -11,7 +11,7 @@ const COMMON_PASSWORDS = new Set([
 
 const isCommonPassword = (pwd) => COMMON_PASSWORDS.has(pwd.toLowerCase());
 
-const passwordSchema = z.string()
+export const passwordSchema = z.string()
   .min(10, 'Password must be at least 10 characters long')
   .max(128, 'Password must be at most 128 characters long')
   .regex(/[a-z]/, 'Password must contain at least one lowercase letter')
