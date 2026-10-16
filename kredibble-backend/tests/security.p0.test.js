@@ -7,6 +7,7 @@ import mongoose from 'mongoose';
 import { app } from '../src/app.js';
 import { signToken, signAdminToken } from '../src/middleware/auth.js';
 import { User } from '../src/models/User.js';
+import { env } from '../src/config/env.js';
 import { Opportunity, Event, EventAttendee } from '../src/models/Platform.js';
 import { Candidate, SeekerProfile } from '../src/models/Profiles.js';
 import { stripSensitive } from '../src/utils/http.js';
@@ -977,13 +978,21 @@ describe('SEC-045: AI assistant and news routes', () => {
   });
 
   it('assistant chat returns 503 when AI is not enabled', async () => {
-    const { token } = await makeUser({ email: 'ai-tester@example.com' });
-    const res = await request(app)
-      .post('/api/v1/assistant/chat')
-      .set(...AUTH_BEARER(token))
-      .send({ message: 'Hello' });
-    expect(res.statusCode).toBe(503);
-    expect(res.body.error.message).toMatch(/AI assistant service is currently unavailable/i);
+    // SEC-129: deterministic with or without a local .env AI key. Force the
+    // disabled path and restore afterwards so other suites are unaffected.
+    const prevAiEnabled = env.aiEnabled;
+    env.aiEnabled = false;
+    try {
+      const { token } = await makeUser({ email: 'ai-tester@example.com' });
+      const res = await request(app)
+        .post('/api/v1/assistant/chat')
+        .set(...AUTH_BEARER(token))
+        .send({ message: 'Hello' });
+      expect(res.statusCode).toBe(503);
+      expect(res.body.error.message).toMatch(/AI assistant service is currently unavailable/i);
+    } finally {
+      env.aiEnabled = prevAiEnabled;
+    }
   });
 
   it('news endpoint is mounted and public', async () => {
