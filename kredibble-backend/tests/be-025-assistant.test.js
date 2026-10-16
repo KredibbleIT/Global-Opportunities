@@ -32,6 +32,18 @@ beforeEach(() => {
   mockReply.mockClear();
 });
 
+// The provider boundary above is mocked, so forcing the enabled flag here
+// can never cause a real network call. It makes the suite deterministic with
+// or without a local .env AI key (CI has none). The disabled path (503) is
+// covered separately in tests/security.p0.test.js, which forces the flag off.
+const prevAiEnabled = env.aiEnabled;
+beforeAll(() => {
+  env.aiEnabled = true;
+});
+afterAll(() => {
+  env.aiEnabled = prevAiEnabled;
+});
+
 describe('BE-025: assistant request schema', () => {
   const parse = (body) => assistantChatSchema.safeParse({ body, query: {}, params: {} });
 
