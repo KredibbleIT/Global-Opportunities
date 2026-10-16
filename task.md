@@ -296,7 +296,7 @@ Note: the audit's own text reached the same conclusion on #10 ("Actually this on
 | SEC-126 | Mock data fallbacks in notifications, saved items, and hardcoded Wave job descriptions | P2 | Mobile app | ✅ Done |
 | SEC-127 | Hirer postings and managed channels rely on mock in-memory authStore data | P2 | Mobile hirer | ✅ Done |
 | SEC-128 | Mobile test coverage: 0 screen/UI component tests; 116 ESLint warnings across screens | P2 | Mobile tests | ✅ Done (MOB-019 Completed on main; `kredibble-app/__tests__/screen-integration.test.ts` present, 95/95 per 2026-10-09 log) |
-| SEC-129 | SEC-002 manifest red on main: BE-017 public `GET /reference-data` routes not in `PUBLIC_ROUTES` | P1 | Backend tests | Open — filed 2026-10-11 on `feature/BE-026-website-inbound-sync`, not yet merged; verified present on `main` 2026-10-15 |
+| SEC-129 | SEC-002 manifest red on main: BE-017 public `GET /reference-data` routes not in `PUBLIC_ROUTES` | P1 | Backend tests | ✅ Done (2026-10-16: allowlist already on `origin/main`; AI 503 test made env-independent, 71/71 with and without local `.env` AI key) |
 
 ---
 
@@ -1529,7 +1529,7 @@ Found while planning the move to the company infrastructure platform (`Company_I
 **Risk:** CI gate is red; every subsequent PR trains the team to ignore a red security suite.
 **Fix:** Decide public-by-design (reference taxonomy is non-sensitive) and add both routes to `PUBLIC_ROUTES` + reachable check, or put them behind auth. Either way the sweep must be green.
 **Acceptance criteria:**
-- [ ] `npx jest tests/security.p0.test.js` is green on `main` (with and without a local `.env` AI key)
+- [x] `npx jest tests/security.p0.test.js` is green on `main` (with and without a local `.env` AI key) — verified 2026-10-16, 71/71 both ways
 
 # Execution Order
 
@@ -2312,6 +2312,7 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
 - 2026-10-08 — MOB-018 complete: Upgraded `hirer-profile/postings.tsx` to fetch caller-scoped opportunities via `getOpportunities()`, added live `deleteOpportunity` with confirmation alert and state sync, and added "Post an Opportunity" empty state action; upgraded `hirer-profile/channels.tsx` to fetch live channels via `getChannels()`, added live `deleteChannel`, added empty state and create banner; added `updateChannel` and `deleteChannel` API callers in `src/lib/api.ts`; cleaned up unused mock initial arrays in `authStore.ts`; added unit test suite (`__tests__/hirer-management.test.ts`) covering channel deletion/updates, opportunity scoping, and model mappings (83/83 tests passing across 11 suites with 0 type errors).
 - 2026-10-09 — MOB-019 complete: Swept all 95 ESLint warnings across the entire mobile codebase down to zero (0 errors, 0 warnings); resolved unused variables, duplicate imports, and forbidden require() calls with clean static imports; created comprehensive mobile screen integration test suite (`__tests__/screen-integration.test.ts`) covering login/registration validation, 6-digit email OTP verification, opportunity detail & job application submission, hirer listings deletion, applicant status reviews, and community channels CRUD; all 12 test suites (95/95 tests) passing with 0 TypeScript errors and 0 encoding issues.
 - 2026-10-15 — task.md sync vs `main` + branches (no code changes): resolved committed merge-conflict markers on SEC-119…SEC-127 in favour of Done (verified on `main`: `file-picker.ts`, `verify-email.tsx`, `legal.ts`, no `window.prompt`/`document.createElement` in feed, no card inputs in booking, `sendAssistantMessage` wired, empty `authStore`/`profileStore.saved`, `screen-integration.test.ts` present); flipped SEC-128 to Done to match MOB-019; added SEC-129 (public `reference-data` vs manifest, verified `routes/index.js:868-877` vs `security.p0.test.js:701-746`); ported BE-028/BE-029 spec from `docs/be-028-be-029-backend-tasks` (`981ee4e`); recorded unmerged branch work (BE-021/BE-022/BE-023/BE-025/BE-026, SEC-089 `f9f4282`) so rows stay Open until merged. SEC-037/041/089(partial)/091/092(partial)/093/114/117 re-verified still Open.
+| 2026-10-16 | SEC-129 | security/SEC-129-reference-data-manifest | Done | Manifest allowlist already present on `origin/main` (merged after 2026-10-15 sync); made AI 503 test env-independent (`env.aiEnabled=false` save/restore in `tests/security.p0.test.js`). `npm test -- tests/security.p0.test.js`: 71/71 with local `.env` AI keys AND with `.env` neutralized (CI-equivalent). Backend `npm run lint` clean. |
 
 ---
 
