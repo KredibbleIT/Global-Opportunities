@@ -147,6 +147,8 @@ export type ChannelRecord = {
   bio?: string;
   avatar?: string;
   visibility: "public" | "private";
+  // BE-023: stakeholder segments this channel is visible to.
+  segments?: ("general" | "ambassador")[];
   status: string;
   followers?: string;
   postsCount: number;
@@ -1736,8 +1738,12 @@ export type ChatMessageRecord = {
   createdAt: string;
 };
 
-export const createAdminChannel = async (data: { name: string; bio?: string; visibility: "public" | "private" }) =>
+export const createAdminChannel = async (data: { name: string; bio?: string; visibility: "public" | "private"; segments?: ("general" | "ambassador")[] }) =>
   request<ChannelRecord>(`/admin/channels`, { method: "POST", body: JSON.stringify(data) });
+
+// BE-023: move a user between stakeholder segments (audited).
+export const moveUserSegmentApi = async (id: string, data: { segment: "general" | "ambassador"; reason?: string }) =>
+  request<{ id: string; previous: string; segment: "general" | "ambassador"; changed: boolean }>(`/admin/users/${id}/segment`, { method: "PATCH", body: JSON.stringify(data) });
 
 export const getChannelMembers = async (channelId: string) => request<ChannelMemberRecord[]>(`/admin/channels/${channelId}/members`);
 

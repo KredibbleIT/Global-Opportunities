@@ -206,8 +206,8 @@ export const RESOURCE_POLICIES = {
     create: AUTHENTICATED,
     update: AUTHENTICATED,
     delete: [HIRER, ADMIN],
-    createFields: ['hirerId', 'name', 'owner', 'category', 'followers', 'avatar', 'bio'],
-    updateFields: ['name', 'category', 'followers', 'avatar', 'bio', 'status'],
+    createFields: ['hirerId', 'name', 'owner', 'category', 'followers', 'avatar', 'bio', 'segments'],
+    updateFields: ['name', 'category', 'followers', 'avatar', 'bio', 'status', 'segments'],
   },
   'community/posts': {
     read: AUTHENTICATED,
