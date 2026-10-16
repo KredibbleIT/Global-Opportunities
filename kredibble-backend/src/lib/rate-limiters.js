@@ -251,6 +251,19 @@ export const strictLimiter = createRateLimiter({
   message: { error: { message: 'Too many requests, please try again after an hour' } },
 });
 
+/**
+ * BE-028: 30 team-invite operations per hour per authenticated admin.
+ * Covers account creation and invite resends; guessing the accept token is
+ * covered separately by strictLimiter on the public accept route.
+ */
+export const accountInviteLimiter = createRateLimiter({
+  prefix: 'account-invite',
+  windowMs: 60 * 60 * 1000,
+  limit: 30,
+  message: { error: { message: 'Too many invite requests, please try again after an hour' } },
+  keyGenerator: (req) => req.auth?.sub || ipKeyGenerator(req.ip, { ipv6Subnet: 56 }),
+});
+
 /** Rate limit for public testimonial submissions (10 per hour per IP / user). */
 export const testimonialLimiter = createRateLimiter({
   prefix: 'testimonials',

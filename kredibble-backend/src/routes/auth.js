@@ -6,7 +6,9 @@ const DUMMY_HASH = '$2a$12$bRWsa/PC32qEk5cFCdQ/n.DrtmNZZeIr7Fc15SfH6SoezqktcAbCO
 import { Router } from 'express';
 import { requireAuth, requireAdminOrStaffAuth, signToken, signAdminToken, setAdminCookie, clearAdminCookie, setAdminRefreshCookie, clearAdminRefreshCookie, generateRefreshToken, hashRefreshToken } from '../middleware/auth.js';
 import { validate } from '../middleware/validate.js';
-import { loginSchema, registerSchema, refreshSchema, forgotPasswordSchema, resetPasswordSchema, changePasswordSchema, deleteAccountSchema } from '../schemas/auth.js';
+import { loginSchema, registerSchema, refreshSchema, forgotPasswordSchema,
+resetPasswordSchema, changePasswordSchema, deleteAccountSchema } from '../schemas/auth.js';
+import { acceptInviteSchema } from '../schemas/accounts.js';
 import { ApiError, asyncHandler, itemResponse } from '../utils/http.js';
 import { User, StaffMember, RefreshToken, hashRefreshToken as hashRefreshTokenUtil, EmailVerificationCode, PasswordResetCode } from '../models/User.js';
 import { computeGrants, getEffectiveToggles, normalizeLegacyRole } from '../lib/permissions.js';
@@ -14,11 +16,15 @@ import { SeekerProfile, HirerAccount } from '../models/Profiles.js';
 import { Applicant, EventAttendee, CompanyVerification, VerificationDoc, Opportunity, GrantApplication } from '../models/Platform.js';
 import { Channel, ChannelPost, CommunityMembership } from '../models/Community.js';
 import { Testimonial } from '../models/AdminPortal.js';
+import { AccountInvite } from '../models/AdminPortal.js';
 import { SavedItem } from '../models/User.js';
 import { createVerificationCode, hashVerificationCode, sendVerificationEmail, sendPasswordResetEmail } from '../lib/email.js';
 import { env } from '../config/env.js';
 import { AUDIT_ACTIONS, AUDIT_RESOURCE_TYPES, auditReq } from '../lib/audit.js';
-import { registrationLimiter, passwordResetLimiter, authLimiter, emailVerificationLimiter, forgotPasswordLimiter, forgotPasswordEmailLimiter, passwordResetAttemptLimiter, reauthLimiter } from '../lib/rate-limiters.js';
+import { registrationLimiter, passwordResetLimiter, authLimiter,
+emailVerificationLimiter, forgotPasswordLimiter, forgotPasswordEmailLimiter, passwordResetAttemptLimiter,
+reauthLimiter, strictLimiter } from '../lib/rate-limiters.js';
+import { hashInviteToken, inviteTokensMatch } from '../lib/invite-tokens.js';
 import logger from '../lib/logger.js';
 import { deleteAccount, userDataFilters } from '../lib/account-deletion.js';
 import { disconnectUserSockets } from '../socket.js';
@@ -238,6 +244,23 @@ authRouter.post(
         throw new ApiError(429, `Account temporarily locked. Try again in ${remainingMinutes} minute(s).`);
       }
 
+    // BE-028: invited/deactivated staff cannot sign in, even with a valid
+    // password. Users without a staff record (app users, CLI root admin)
+    // are unaffected. Generic message preserves the SEC-051 oracle guard.
+    if (user.role === 'admin') {
+      const staff = await StaffMember.findOne({ userId: user._id }).select('status').lean();
+      if (staff && staff.status !== 'active') {
+        await auditReq(req, {
+          action: AUDIT_ACTIONS.LOGIN_FAILURE,
+          resourceType: AUDIT_RESOURCE_TYPES.USER,
+          resourceId: user._id,
+          outcome: 'failure',
+          metadata: { reason: 'staff_inactive', status: staff.status },
+        });
+        throw new ApiError(401, 'Invalid email or password');
+      }
+    }
+
     // SEC-025: Reset failed login attempts on successful login
     user.failedLoginAttempts = 0;
     user.lockUntil = null;
@@ -434,6 +457,22 @@ authRouter.post(
     if (user.failedLoginAttempts > 0) {
       user.failedLoginAttempts = 0;
       user.lockUntil = null;
+    }
+
+    // BE-028: invited/deactivated staff cannot start an admin session, even
+    // with a valid password. Generic message, same as a bad password.
+    {
+      const staff = await StaffMember.findOne({ userId: user._id }).select('status').lean();
+      if (staff && staff.status !== 'active') {
+        await auditReq(req, {
+          action: AUDIT_ACTIONS.LOGIN_FAILURE,
+          resourceType: AUDIT_RESOURCE_TYPES.USER,
+          resourceId: user._id,
+          outcome: 'failure',
+          metadata: { reason: 'staff_inactive', status: staff.status },
+        });
+        throw new ApiError(401, 'Invalid admin credentials');
+      }
     }
 
     const adminToken = signAdminToken(user);
@@ -750,7 +789,7 @@ const PASSWORD_RESET_MAX_ATTEMPTS = 5;
  * Sign out every device: access tokens fail the tokenVersion check and refresh
  * tokens are gone. The caller saves `user`.
  */
-const revokeAllSessions = async (user) => {
+export const revokeAllSessions = async (user) => {
   user.tokenVersion = (user.tokenVersion || 0) + 1;
   user.refreshTokenHash = null;
   await RefreshToken.deleteMany({ userId: user._id });
@@ -875,6 +914,72 @@ authRouter.post(
     });
 
     itemResponse(res, { message: 'Password updated. Sign in with your new password.' });
+  }),
+);
+
+// BE-028: accept a team invite. Public + strictly rate limited (token
+// guessing). Every failure gives the same message so the endpoint cannot be
+// used to find accounts or probe tokens. The only place a team password is
+// ever received.
+authRouter.post(
+  '/accept-invite',
+  strictLimiter,
+  validate(acceptInviteSchema),
+  asyncHandler(async (req, res) => {
+    const invalidInvite = () => new ApiError(400, 'Invalid or expired invite');
+    const { token, password } = req.body;
+
+    const invite = await AccountInvite.findOneAndUpdate(
+      { tokenHash: hashInviteToken(token), usedAt: null, expiresAt: { $gt: new Date() } },
+      { usedAt: new Date() },
+      { new: true },
+    ).select('+tokenHash');
+    // Constant-time check on top of the indexed hash lookup, so a hash
+    // collision or partial-match row can never be consumed by guessing.
+    if (!invite || !inviteTokensMatch(hashInviteToken(token), invite.tokenHash)) {
+      await auditReq(req, {
+        action: AUDIT_ACTIONS.ACCOUNT_ACTIVATE,
+        resourceType: AUDIT_RESOURCE_TYPES.USER,
+        outcome: 'failure',
+        metadata: { reason: 'invalid_token' },
+      });
+      throw invalidInvite();
+    }
+
+    const staff = await StaffMember.findById(invite.staffId);
+    if (!staff || staff.status !== 'invited') {
+      await auditReq(req, {
+        action: AUDIT_ACTIONS.ACCOUNT_ACTIVATE,
+        resourceType: AUDIT_RESOURCE_TYPES.USER,
+        outcome: 'failure',
+        metadata: { reason: 'not_invited' },
+      });
+      throw invalidInvite();
+    }
+
+    const user = await User.findById(staff.userId);
+    if (!user || user.role === 'deleted') throw invalidInvite();
+
+    user.passwordHash = await bcrypt.hash(password, 12);
+    user.emailVerified = true;
+    user.failedLoginAttempts = 0;
+    user.lockUntil = null;
+    user.lastFailedLogin = null;
+    await revokeAllSessions(user);
+    await user.save();
+
+    staff.status = 'active';
+    await staff.save();
+
+    await auditReq(req, {
+      action: AUDIT_ACTIONS.ACCOUNT_ACTIVATE,
+      resourceType: AUDIT_RESOURCE_TYPES.USER,
+      resourceId: user._id,
+      outcome: 'success',
+      metadata: { staffId: String(staff._id) },
+    });
+
+    itemResponse(res, { active: true, email: user.email });
   }),
 );
 

@@ -72,6 +72,12 @@ export const AUDIT_ACTIONS = {
   GRANT_APPLY: 'grant.apply',
   EVENT_BOOK: 'event.book',
   ASSISTANT_CHAT: 'assistant.chat',
+  ACCOUNT_INVITE: 'account.invite',
+  ACCOUNT_INVITE_RESEND: 'account.invite_resend',
+  ACCOUNT_ROLE_CHANGE: 'account.role_change',
+  ACCOUNT_DEACTIVATE: 'account.deactivate',
+  ACCOUNT_REACTIVATE: 'account.reactivate',
+  ACCOUNT_ACTIVATE: 'account.activate',
 };
 
 export const AUDIT_RESOURCE_TYPES = {

@@ -949,3 +949,23 @@ const categoryMapSchema = new mongoose.Schema(
 );
 
 export const CategoryMap = mongoose.model('CategoryMap', categoryMapSchema);
+
+// BE-028: team invite tokens. One row per invited staff account; resend
+// replaces the hash/expiry (invalidating the old link). Only the HMAC hash
+// is stored — the raw 32-byte token exists only in the invite link/email.
+const accountInviteSchema = new mongoose.Schema(
+  {
+    staffId: { type: mongoose.Schema.Types.ObjectId, ref: 'StaffMember', required: true, unique: true, index: true },
+    emailNormalized: { type: String, required: true, trim: true, lowercase: true, index: true },
+    tokenHash: { type: String, required: true, select: false },
+    expiresAt: { type: Date, required: true },
+    lastFour: { type: String, required: true },
+    usedAt: { type: Date, default: null },
+    invitedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  },
+  { timestamps: true },
+);
+
+accountInviteSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
+export const AccountInvite = mongoose.model('AccountInvite', accountInviteSchema);

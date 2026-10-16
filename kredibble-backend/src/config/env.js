@@ -119,6 +119,9 @@ const env = {
   aiSystemPrompt: process.env.AI_SYSTEM_PROMPT || 'You are the Global Opportunities assistant. Give accurate, helpful opportunity guidance.',
   // BE-025: per-user daily AI message budget (cost cap). Attempts, not successes.
   aiDailyMessageLimit: Number(process.env.AI_DAILY_MESSAGE_LIMIT || 50),
+  // BE-028: public admin origin used to build one-time team invite links.
+  // Optional; when unset the API returns a relative invite path instead.
+  adminAppUrl: (process.env.ADMIN_APP_URL || '').trim().replace(/\/+$/, ''),
   wordpressSyncBaseUrl: process.env.WORDPRESS_SYNC_BASE_URL,
   wordpressApiKey: process.env.WORDPRESS_API_KEY,
   // BE-026: inbound website sync. The webhook receiver is active only when a
