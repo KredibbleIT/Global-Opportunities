@@ -1,7 +1,7 @@
 import request from 'supertest';
 import { app } from '../src/app.js';
 import { User, AuditLog } from '../src/models/User.js';
-import { Partner, PipelineStageConfig } from '../src/models/AdminPortal.js';
+import { Partner, PipelineStageConfig, Program } from '../src/models/AdminPortal.js';
 import { signAdminToken } from '../src/middleware/auth.js';
 import { preparePartner, toPartnerClientObject } from '../src/routes/admin-api.js';
 
@@ -121,6 +121,21 @@ describe('BE-006: Partner Moves & Pipeline API', () => {
       passwordHash: 'hashed_pw_test',
     });
     adminCookie = `kredibble_admin_token=${signAdminToken(adminUser)}`;
+  });
+
+  it('DELETE /admin/partners/:id removes the partner and unlinks its programs, which stay', async () => {
+    const partner = await Partner.create({ organizationName: 'Gone Partner', partnerType: 'corporate', stage: 'prospect' });
+    const program = await Program.create({ title: 'Kept Program', programType: 'training', status: 'planned', partnerId: partner._id });
+    const other = await Program.create({ title: 'Other Program', programType: 'training', status: 'planned' });
+
+    const res = await request(app).delete(api(`/admin/partners/${partner._id}`)).set('Cookie', adminCookie);
+    expect(res.status).toBe(200);
+    expect(await Partner.findById(partner._id)).toBeNull();
+    const kept = await Program.findById(program._id).lean();
+    expect(kept).not.toBeNull();
+    expect(kept.partnerId).toBeUndefined();
+    expect(await Program.findById(other._id)).not.toBeNull();
+    await Program.deleteMany({});
   });
 
   it('POST /admin/partners creates a partner with initialized stage history', async () => {

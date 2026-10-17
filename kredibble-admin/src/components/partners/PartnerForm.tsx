@@ -11,14 +11,17 @@
  * There is NO stage field: a new partner always starts at Prospect, and the stage changes only by moving the card on the
  * board. "Closed" is not a field either: it follows the stage by itself.
  * Validation: errors show after a field is left and on submit; the first invalid field takes focus. Leaving with unsaved
- * changes asks first. Each save carries a TODO(backend).
+ * changes asks first. Saving waits for services/partners.ts savePartner (the API in real mode); a failure shows an error
+ * toast and keeps the form open with what was typed. The owner choices load from the team (real mode: by user id).
  *
  * Props: partner? (the partner being edited; omit for a new one)
  */
 import { useMemo, useRef, useState, type FormEvent } from "react";
 import { LISTING_COUNTRIES } from "@/config/countries";
 import { PARTNER_TYPES, PARTNER_TYPE_LABELS, type Partner, type PartnerType } from "@/lib/mock-entities";
-import { createPartner, partnerOwnerOptions, updatePartner, type PartnerFields } from "@/lib/services/partners";
+import { defaultOwnerId, loadPartnerOwnerOptions, savePartner, type PartnerFields } from "@/lib/services/partners";
+import { isMockMode } from "@/lib/services/mock-mode";
+import { useAsync } from "@/lib/use-async";
 import { currentStaffMember } from "@/lib/services/listings";
 import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/form/Field";
@@ -29,7 +32,6 @@ import { StickyActionBar } from "@/components/ui/form/StickyActionBar";
 import { Textarea } from "@/components/ui/form/Textarea";
 import { focusFirstInvalid, useTouched } from "@/components/ui/form/use-touched";
 import { useUnsavedGuard } from "@/components/ui/form/use-unsaved-guard";
-import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 import { useToast } from "@/components/ui/Toast";
 
 const LIST_HREF = "/partners";
@@ -81,11 +83,13 @@ export function validatePartner(form: FormState): Errors {
 }
 
 export function PartnerForm({ partner }: { partner?: Partner }) {
-  const owners = useMemo(() => partnerOwnerOptions(), []);
+  const { data: loadedOwners } = useAsync(loadPartnerOwnerOptions);
+  const owners = useMemo(() => loadedOwners ?? [], [loadedOwners]);
+  // The default owner is the signed-in person, so it does not wait for the owner list to load.
   const initial = useMemo<FormState>(() => {
     if (partner) return fromPartner(partner);
-    return { name: "", type: "corporate", ownerId: currentStaffMember()?.id ?? owners[0]?.id ?? "", country: "", provides: "", contactName: "", contactEmail: "", contactPhone: "", sourcedVia: "", notes: "" };
-  }, [partner, owners]);
+    return { name: "", type: "corporate", ownerId: defaultOwnerId([], currentStaffMember()?.id), country: "", provides: "", contactName: "", contactEmail: "", contactPhone: "", sourcedVia: "", notes: "" };
+  }, [partner]);
   const [form, setForm] = useState<FormState>(initial);
   const [saving, setSaving] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
@@ -107,8 +111,8 @@ export function PartnerForm({ partner }: { partner?: Partner }) {
       return;
     }
     setSaving(true);
-    // TODO(backend): persist this change (create or update the partner).
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    // Mock mode saves instantly; a short pause shows the saving state as a real save would.
+    if (isMockMode()) await new Promise((resolve) => setTimeout(resolve, 600));
     const fields: PartnerFields = {
       name: form.name.trim(),
       type: form.type,
@@ -122,9 +126,14 @@ export function PartnerForm({ partner }: { partner?: Partner }) {
       sourcedVia: form.sourcedVia.trim() || undefined,
       notes: form.notes.trim() || undefined,
     };
-    const saved = partner ? updatePartner(partner.id, fields) : createPartner(fields);
-    toast.success(partner ? `${fields.name} was updated.` : `${fields.name} was added at Prospect.`);
-    guard.leaveNow(saved ? `${LIST_HREF}/${saved.id}` : LIST_HREF);
+    try {
+      const saved = await savePartner(fields, partner?.id);
+      toast.success(partner ? `${fields.name} was updated.` : `${fields.name} was added at Prospect.`);
+      guard.leaveNow(`${LIST_HREF}/${saved.id}`);
+    } catch (problem) {
+      setSaving(false);
+      toast.error(problem instanceof Error ? problem.message : "The partner could not be saved. Try again.");
+    }
   };
 
   return (
@@ -136,7 +145,6 @@ export function PartnerForm({ partner }: { partner?: Partner }) {
         <p className="page-subtitle mt-1 mb-6">
           {partner ? "Change this partner's details. Move it between stages on the board." : "Add an organisation to the pipeline. It starts at Prospect."}
         </p>
-        <NotConnectedNotice className="mb-4" />
 
         <div className="space-y-4">
           <Card>
