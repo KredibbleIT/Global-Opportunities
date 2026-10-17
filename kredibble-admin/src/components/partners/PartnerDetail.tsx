@@ -11,7 +11,8 @@
  *   re-opened the deal.
  * - Side: Linked programs (links when the viewer can see Programs).
  * - Danger zone (edit access): Remove partner, with a confirm dialog; programs that were linked to it lose the link.
- * Data: services/partners.ts (live store). Each action carries a TODO(backend).
+ * Data: services/partners.ts (the API in real mode, the mock store in mock mode). Removing waits for the server; a
+ * failure shows an error toast and the partner stays.
  *
  * Props: id (the partner id)
  */
@@ -28,7 +29,6 @@ import { InfoCard } from "@/components/detail/InfoCard";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { useConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { KeyValueList } from "@/components/ui/KeyValueList";
-import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TagPill } from "@/components/ui/TagPill";
 import { Timeline, type TimelineItem } from "@/components/ui/Timeline";
@@ -38,7 +38,7 @@ import { useBreadcrumbLabel } from "@/lib/breadcrumb-label";
 import { formatDate } from "@/lib/format";
 import { CLOSED_STAGES, PARTNER_TYPE_LABELS } from "@/lib/mock-entities";
 import { usePartnerStageLabels } from "@/lib/mock-store";
-import { loadPartner, programsOfPartner, removePartner, subscribePartners } from "@/lib/services/partners";
+import { deletePartner, loadPartner, subscribePartners } from "@/lib/services/partners";
 import { useDetailData } from "@/lib/use-detail-data";
 
 export function PartnerDetail({ id }: { id: string }) {
@@ -58,7 +58,7 @@ export function PartnerDetail({ id }: { id: string }) {
   if (status === "error") return <DetailError message={error ?? "Could not load this partner."} onRetry={retry} />;
   if (!partner) return <DetailNotFound noun="Partner" listLabel="Partners" listHref="/partners" />;
 
-  const programs = programsOfPartner(partner.id);
+  const programs = partner.programs;
   const history: TimelineItem[] = partner.stageHistory
     .map((entry, index, all) => {
       const wasClosed = index > 0 && CLOSED_STAGES.includes(all[index - 1].stage);
@@ -86,10 +86,13 @@ export function PartnerDetail({ id }: { id: string }) {
       ),
       confirmLabel: "Remove partner",
       onConfirm: () => {
-        // TODO(backend): persist this change
-        removePartner(partner.id);
-        toast.success(`${partner.name} was removed.`);
-        router.push("/partners");
+        void deletePartner(partner.id).then(
+          () => {
+            toast.success(`${partner.name} was removed.`);
+            router.push("/partners");
+          },
+          (problem: unknown) => toast.error(problem instanceof Error ? problem.message : "The partner could not be removed. Try again."),
+        );
       },
     });
 
@@ -108,7 +111,6 @@ export function PartnerDetail({ id }: { id: string }) {
 
   return (
     <>
-      <NotConnectedNotice className="mb-4" />
       <DetailPage
         header={
           <DetailHeader

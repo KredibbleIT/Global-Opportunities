@@ -1067,14 +1067,19 @@ export const getProgramById = async (id: string) => {
   return request<ProgramApiRecord>(`/admin/programs/${id}`);
 };
 
-export const createProgramApi = async (data: Partial<ProgramApiRecord>) => {
+/** What the program form sends. `partnerId: null` removes the link; dates are ISO date-times. */
+export type ProgramWriteInput = Omit<Partial<ProgramApiRecord>, "id" | "partnerId" | "partnerName" | "warning" | "createdAt" | "updatedAt"> & {
+  partnerId?: string | null;
+};
+
+export const createProgramApi = async (data: ProgramWriteInput) => {
   return request<ProgramApiRecord>("/admin/programs", {
     method: "POST",
     body: JSON.stringify(data),
   });
 };
 
-export const updateProgramApi = async (id: string, data: Partial<ProgramApiRecord>) => {
+export const updateProgramApi = async (id: string, data: ProgramWriteInput) => {
   return request<ProgramApiRecord>(`/admin/programs/${id}`, {
     method: "PATCH",
     body: JSON.stringify(data),
@@ -1166,14 +1171,22 @@ export const getPartnerById = async (id: string) => {
   return request<PartnerApiRecord>(`/admin/partners/${id}`);
 };
 
-export const createPartnerApi = async (data: Partial<PartnerApiRecord>) => {
+/** What the partner form sends. The stage and its history change only through movePartnerApi. */
+export type PartnerWriteInput = Omit<
+  Partial<PartnerApiRecord>,
+  "id" | "stage" | "stageHistory" | "closed" | "ownerName" | "ownerId" | "assignedOwnerId" | "createdAt" | "updatedAt"
+> & {
+  assignedOwnerId?: string | null;
+};
+
+export const createPartnerApi = async (data: PartnerWriteInput) => {
   return request<PartnerApiRecord>("/admin/partners", {
     method: "POST",
     body: JSON.stringify(data),
   });
 };
 
-export const updatePartnerApi = async (id: string, data: Partial<PartnerApiRecord>) => {
+export const updatePartnerApi = async (id: string, data: PartnerWriteInput) => {
   return request<PartnerApiRecord>(`/admin/partners/${id}`, {
     method: "PATCH",
     body: JSON.stringify(data),
