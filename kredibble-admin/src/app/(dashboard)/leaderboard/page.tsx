@@ -9,7 +9,7 @@
  * - NO edit actions at all: the only control on the page is the month select. A row links to the ambassador only when the
  *   viewer can view Network (otherwise the name is plain text and there is no arrow column).
  * - A past month is a snapshot: it is worked out from the dated shares and signups of that month and never changes.
- * Everyone with leaderboard access sees this page the same way. Outside mock mode a notice says it shows sample data.
+ * Everyone with leaderboard access sees this page the same way. Real mode: the server ranks the month (GET /admin/leaderboard).
  * The dev ?state=loading|empty|error switch works here.
  */
 import { useCallback } from "react";
@@ -22,7 +22,6 @@ import { Avatar } from "@/components/ui/Avatar";
 import { MonthSelect } from "@/components/ui/MonthSelect";
 import { TagPill } from "@/components/ui/TagPill";
 import { TruncatedLink, TruncatedText } from "@/components/ui/TruncatedText";
-import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 import { cn } from "@/lib/cn";
 import { formatMonth } from "@/lib/format";
 import { AMBASSADOR_TIER_LABELS, AMBASSADOR_TIER_SHORT_LABELS } from "@/lib/mock-entities";
@@ -99,7 +98,6 @@ export default function LeaderboardPage() {
       subtitle="Ambassadors ranked by verified signups, then referred clicks, then shares logged."
       toolbar={
         <div className="space-y-3">
-          <NotConnectedNotice />
           <div className="flex flex-wrap items-center gap-3">
             <MonthSelect />
             <p data-testid="leaderboard-note" role="status" className="caption">

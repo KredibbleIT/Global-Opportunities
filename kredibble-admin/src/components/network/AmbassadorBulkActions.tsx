@@ -11,20 +11,22 @@
  * History is shown to anyone who has either permission.
  *
  * Export: "Export filtered results" (what the list shows now), "Export selected" (disabled while nothing is selected) and
- * "Export all" (everyone, ignoring filters). A column picker follows; Download writes ambassadors-YYYY-MM-DD.csv and an audit
- * entry (who, when, counts, filters, columns).
- * Import: opens the four-step wizard; the page's store is only written by the wizard's final confirm, through commitImport.
+ * "Export all" (everyone, ignoring filters). A column picker follows; Download saves ambassadors-YYYY-MM-DD.csv. In real mode
+ * the server builds the file and records the export; in mock mode the file is built here and the audit entry is written here.
+ * Import: opens the four-step wizard; nothing is saved until the wizard's final confirm (services/ambassador-import.ts).
+ * History: real mode reads the server's audit log; mock mode the in-browser one.
  *
- * Props: filteredRows (the list as filtered), selectedIds, filters (a plain summary for the audit entry), onClearSelection.
+ * Props: allRows (everyone the page loaded), filteredRows (the list as filtered), selectedIds, filters (the page's filter
+ * values), onClearSelection.
  */
 import { useState } from "react";
 import { ChevronDown, Download, History, Upload } from "lucide-react";
 import { getAdminUser } from "@/lib/api";
 import { ROLES } from "@/config/roles";
-import { buildExportCsv, exportFilename, type ExistingChoice, type ImportField, type ImportPreview, type ImportStatus } from "@/lib/ambassador-io";
-import { downloadTextFile } from "@/lib/csv";
+import { exportFilename, type ExistingChoice, type ImportField, type ImportPreview, type ImportStatus } from "@/lib/ambassador-io";
 import type { Ambassador } from "@/lib/mock-entities";
-import { allAmbassadors, commitImport, recordExport } from "@/lib/services/ambassador-import";
+import { emailIndex, exportAmbassadors, importAmbassadors, loadAmbassadorHistory, type ImportOutcome } from "@/lib/services/ambassador-import";
+import { isMockMode } from "@/lib/services/mock-mode";
 import { todayIsoDate } from "@/lib/services/listings";
 import { useRoles } from "@/components/access/RoleProvider";
 import { Button, buttonClasses } from "@/components/ui/Button";
@@ -38,6 +40,7 @@ import { AmbassadorImportDialog } from "./AmbassadorImportDialog";
 type Scope = "filtered" | "selected" | "all";
 
 interface AmbassadorBulkActionsProps {
+  allRows: readonly Ambassador[];
   filteredRows: readonly Ambassador[];
   selectedIds: ReadonlySet<string>;
   filters: { status: string; tier: string; country: string; search: string };
@@ -50,7 +53,7 @@ const SCOPE_LABEL: Record<Scope, string> = {
   all: "All ambassadors",
 };
 
-export function AmbassadorBulkActions({ filteredRows, selectedIds, filters, onClearSelection }: AmbassadorBulkActionsProps) {
+export function AmbassadorBulkActions({ allRows, filteredRows, selectedIds, filters, onClearSelection }: AmbassadorBulkActionsProps) {
   const { can, roles } = useRoles();
   const toast = useToast();
   const canExport = can("ambassadors.export", "edit");
@@ -58,6 +61,7 @@ export function AmbassadorBulkActions({ filteredRows, selectedIds, filters, onCl
   const [exportScope, setExportScope] = useState<Scope | null>(null);
   const [importing, setImporting] = useState(false);
   const [history, setHistory] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   if (!canExport && !canImport) return null;
 
@@ -66,11 +70,11 @@ export function AmbassadorBulkActions({ filteredRows, selectedIds, filters, onCl
 
   const refuse = (what: string) => toast.error(`Your role cannot ${what} ambassador data.`);
 
-  // The people of each scope, from what the page passed in (filtered, selected) or the store (all).
+  // The people of each scope, from what the page loaded.
   const rowsFor = (scope: Scope): readonly Ambassador[] => {
     if (scope === "filtered") return filteredRows;
-    if (scope === "all") return allAmbassadors();
-    return allAmbassadors().filter((ambassador) => selectedIds.has(ambassador.id));
+    if (scope === "all") return allRows;
+    return allRows.filter((ambassador) => selectedIds.has(ambassador.id));
   };
 
   const openExport = (scope: Scope) => {
@@ -78,24 +82,31 @@ export function AmbassadorBulkActions({ filteredRows, selectedIds, filters, onCl
     setExportScope(scope);
   };
 
-  const runExport = (columns: ImportField[]) => {
+  const runExport = async (columns: ImportField[]) => {
     if (!can("ambassadors.export", "edit")) return refuse("export");
-    if (!exportScope) return;
+    if (!exportScope || exporting) return;
     const people = rowsFor(exportScope);
-    downloadTextFile(exportFilename(todayIsoDate()), buildExportCsv(people, columns));
-    recordExport({ actor, scope: exportScope, rows: people.length, columns, filters });
-    toast.success(`Exported ${people.length} ${people.length === 1 ? "ambassador" : "ambassadors"} to ${exportFilename(todayIsoDate())}.`);
-    setExportScope(null);
+    setExporting(true);
+    try {
+      await exportAmbassadors({ actor, scope: exportScope, rows: people.length, columns, filters, people, selectedIds });
+      toast.success(`Exported ${people.length} ${people.length === 1 ? "ambassador" : "ambassadors"} to ${exportFilename(todayIsoDate())}.`);
+      setExportScope(null);
+    } catch (problem) {
+      toast.error(problem instanceof Error ? problem.message : "The export could not be made. Try again.");
+    } finally {
+      setExporting(false);
+    }
   };
 
-  const runImport = (preview: ImportPreview, choice: ExistingChoice, status: ImportStatus, fileName: string) => {
+  /** Resolves with the result, or rejects with the reason (the wizard shows it and stays on the options step). */
+  const runImport = async (preview: ImportPreview, choice: ExistingChoice, status: ImportStatus, file: File): Promise<ImportOutcome> => {
     // The wizard only offers this after the permission check at open; checked again here, at the moment of saving.
     if (!can("ambassadors.import", "edit")) {
       refuse("import");
-      return { next: allAmbassadors(), status, created: 0, updated: 0, skipped: 0, failed: 0, merged: 0 };
+      throw new Error("Your role cannot import ambassador data.");
     }
-    const result = commitImport(preview, { actor, fileName, choice, status });
-    toast.success(`Imported ${result.created + result.updated} ${result.created + result.updated === 1 ? "ambassador" : "ambassadors"} from ${fileName}.`);
+    const result = await importAmbassadors(file, preview, { actor, fileName: file.name, choice, status });
+    toast.success(`Imported ${result.created + result.updated} ${result.created + result.updated === 1 ? "ambassador" : "ambassadors"} from ${file.name}.`);
     return result;
   };
 
@@ -139,8 +150,8 @@ export function AmbassadorBulkActions({ filteredRows, selectedIds, filters, onCl
       {exportScope && (
         <AmbassadorExportDialog scopeLabel={SCOPE_LABEL[exportScope]} rowCount={rowsFor(exportScope).length} onClose={() => setExportScope(null)} onExport={runExport} />
       )}
-      {importing && <AmbassadorImportDialog onClose={() => setImporting(false)} onCommit={runImport} />}
-      {history && <AmbassadorHistoryDialog onClose={() => setHistory(false)} />}
+      {importing && <AmbassadorImportDialog existing={emailIndex(allRows)} onClose={() => setImporting(false)} onCommit={runImport} />}
+      {history && <AmbassadorHistoryDialog onClose={() => setHistory(false)} load={isMockMode() ? undefined : loadAmbassadorHistory} />}
     </>
   );
 }

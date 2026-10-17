@@ -7,19 +7,30 @@
  *   Active         ambassadors whose status is Active
  *   Activity rate  active ambassadors who logged at least one share THIS MONTH, divided by the active ones,
  *                  with the two numbers behind it in the caption ("14 of 25 active shared this month")
- * The maths is networkSummary() in services/network.ts. They count ALL ambassadors, so a filter does not move them.
+ * Mock mode: the maths is networkSummary() in services/network.ts over the sample data. Real mode: the server counts them
+ * (loadNetworkSummary), loaded again each time the list loads. They count ALL ambassadors, so a filter does not move them.
  * With no active ambassador the rate is "—", never a made-up 0%.
  *
  * Props:
- * - ambassadors, logs: what to count, or null while they load (every tile then shows "—")
+ * - ambassadors, logs: what to count (mock mode), or null while the list loads (every tile then shows "—")
  * Test ids: network-summary, network-size, network-active, network-rate.
  */
+import { useCallback } from "react";
 import { MiniStat } from "@/components/ui/MiniStat";
-import { networkSummary } from "@/lib/services/network";
+import { loadNetworkSummary, networkSummary, type NetworkSummaryData } from "@/lib/services/network";
+import { isMockMode } from "@/lib/services/mock-mode";
+import { useAsync } from "@/lib/use-async";
 import type { AmplificationLog, Ambassador } from "@/lib/mock-entities";
 
 export function NetworkSummary({ ambassadors, logs }: { ambassadors: readonly Pick<Ambassador, "id" | "status">[] | null; logs: readonly Pick<AmplificationLog, "ambassadorId" | "at">[] }) {
-  const summary = ambassadors ? networkSummary(ambassadors, logs) : null;
+  const live = !isMockMode();
+  // Real mode: wait for the list, then ask the server; a new list (after a save or an import) asks again.
+  const load = useCallback(
+    (): Promise<NetworkSummaryData | null> => (live && ambassadors ? loadNetworkSummary() : Promise.resolve(null)),
+    [live, ambassadors],
+  );
+  const { data: liveSummary } = useAsync(load);
+  const summary = live ? liveSummary : ambassadors ? networkSummary(ambassadors, logs) : null;
   const rate = summary?.activityRate;
   return (
     <section aria-label="Network summary" data-testid="network-summary" className="grid gap-2 sm:grid-cols-3 sm:max-w-5xl">

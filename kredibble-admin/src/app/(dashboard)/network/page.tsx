@@ -12,8 +12,8 @@
  *   or campus. The status counts follow the other filters.
  * - "New ambassador" (primary) needs edit access on network: Country Lead, Desk Lead, Super Admin. The Partnerships, Training and
  *   Database officers can open the page and read it, and see no such button.
- * Outside mock mode a notice says the page shows sample data (ambassadors have no backend yet). The dev ?state=
- * loading|empty|error switch works here.
+ * Real mode reads the API (services/network.ts); mock mode shows the sample data. The dev ?state= loading|empty|error
+ * switch works here (mock mode).
  */
 import { useMemo, useState } from "react";
 import { Check, Network as NetworkIcon, Plus } from "lucide-react";
@@ -25,7 +25,6 @@ import type { Column } from "@/components/list/types";
 import { AmbassadorBulkActions } from "@/components/network/AmbassadorBulkActions";
 import { NetworkSummary } from "@/components/network/NetworkSummary";
 import { Select, type SelectOption } from "@/components/ui/form/Select";
-import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 import { AMBASSADOR_STATUSES, AMBASSADOR_TIERS, AMBASSADOR_TIER_LABELS, AMBASSADOR_TIER_SHORT_LABELS, type AmbassadorStatus, type AmbassadorTier } from "@/lib/mock-entities";
 import { useMockCollection } from "@/lib/mock-store";
 import { loadAmbassadorRows, subscribeNetwork, type AmbassadorRow } from "@/lib/services/network";
@@ -97,7 +96,6 @@ export default function NetworkPage() {
       action={can("network", "edit") ? { label: "New ambassador", href: "/network/new", icon: Plus } : undefined}
       toolbar={
         <div className="space-y-4">
-          <NotConnectedNotice />
           <NetworkSummary ambassadors={rows} logs={logs} />
           <TableToolbar
             search={{ value: search, onChange: setSearch, placeholder: "Search by name or campus", label: "Search ambassadors" }}
@@ -107,6 +105,7 @@ export default function NetworkPage() {
             <Select options={countryOptions} value={country} onChange={setCountry} ariaLabel="Filter by country" sheetTitle="Country" className="w-fit" />
             {/* Export, Import and History: each only for a role that has the permission (see AmbassadorBulkActions). */}
             <AmbassadorBulkActions
+              allRows={all}
               filteredRows={visible}
               selectedIds={selected}
               filters={{ status, tier, country, search: term }}

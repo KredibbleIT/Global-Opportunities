@@ -430,6 +430,34 @@ describe('BE-029: audit trail', () => {
   });
 });
 
+describe('BE-029: history and photo upload for the Network page', () => {
+  it('lists imports and exports newest first with who ran them, for Super Admin and Desk Lead only', async () => {
+    const caller = await superAdmin();
+    await postImport(caller, fixture('ambassadors-update.csv'));
+    await postExport(caller, { scope: 'all' });
+    await AuditLog.create({ action: 'account.invite', outcome: 'success', actorId: caller.user._id, actorRole: 'admin' });
+
+    const res = await request(app).get(api('/admin/ambassadors/history')).set(...caller.cookie);
+    expect(res.statusCode).toBe(200);
+    expect(res.body.data.map((entry) => entry.action)).toEqual(['ambassadors.export', 'ambassadors.import']);
+    expect(res.body.data[1]).toMatchObject({ outcome: 'success', actorName: 'Admin User', metadata: { created: 1, file: 'ambassadors.csv' } });
+
+    const deskLead = await makeCaller(['desk_lead']);
+    expect((await request(app).get(api('/admin/ambassadors/history')).set(...deskLead.cookie)).statusCode).toBe(200);
+    const support = await makeCaller(['support']);
+    expect((await request(app).get(api('/admin/ambassadors/history')).set(...support.cookie)).statusCode).toBe(403);
+  });
+
+  it('accepts an ambassador photo upload into a server-chosen folder', async () => {
+    const caller = await superAdmin();
+    const res = await request(app).post(api('/admin/upload')).query({ purpose: 'ambassador-photo' })
+      .set(...caller.cookie)
+      .attach('file', PNG, { filename: 'photo.png', contentType: 'image/png' });
+    expect(res.statusCode).toBe(200);
+    expect(res.body.data.folder).toContain('kredibble/admin/ambassador-photo');
+  });
+});
+
 describe('BE-029: the import lock', () => {
   it('lets one holder in, refuses the second, and frees on release or expiry', async () => {
     const first = await acquireLock('test-lock', 60_000);

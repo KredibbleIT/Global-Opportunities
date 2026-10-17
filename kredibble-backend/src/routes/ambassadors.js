@@ -6,7 +6,7 @@ import { requireStaffRoles } from '../middleware/portal-auth.js';
 import { validate } from '../middleware/validate.js';
 import { ApiError, asyncHandler, itemResponse } from '../utils/http.js';
 import { Ambassador, generateReferralCode } from '../models/AdminPortal.js';
-import { auditReq, AUDIT_ACTIONS, AUDIT_RESOURCE_TYPES } from '../lib/audit.js';
+import { auditReq, AUDIT_ACTIONS, AUDIT_RESOURCE_TYPES, AuditLog } from '../lib/audit.js';
 import { ambassadorIoLimiter } from '../lib/rate-limiters.js';
 import { acquireLock, releaseLock } from '../lib/job-lock.js';
 import {
@@ -339,6 +339,29 @@ const exportHandler = asyncHandler(async (req, res) => {
   res.send(buildExportCsv(ambassadors, columns));
 });
 
+const HISTORY_LIMIT = 100;
+
+/**
+ * The Network page's History dialog: the latest imports and exports, newest
+ * first, with who ran them. Metadata is what the audit rows already hold
+ * (counts, scope, columns, filters), so no personal data is added here.
+ */
+const historyHandler = asyncHandler(async (req, res) => {
+  const rows = await AuditLog.find({ action: { $in: [AUDIT_ACTIONS.AMBASSADORS_IMPORT, AUDIT_ACTIONS.AMBASSADORS_EXPORT] } })
+    .sort({ createdAt: -1 })
+    .limit(HISTORY_LIMIT)
+    .populate('actorId', 'name')
+    .lean();
+  itemResponse(res, rows.map((row) => ({
+    id: String(row._id),
+    at: row.createdAt,
+    action: row.action,
+    outcome: row.outcome,
+    actorName: row.actorId?.name ?? null,
+    metadata: row.metadata ?? {},
+  })));
+});
+
 // Order: who you are, what you may do, how often, then the body. The limiter
 // keys on the verified admin, so it must run after authentication.
 ambassadorsRouter.post(
@@ -359,3 +382,5 @@ ambassadorsRouter.post(
   validate(ambassadorExportSchema),
   exportHandler,
 );
+
+ambassadorsRouter.get('/history', requireAdminAuth, requireImportExportRole, historyHandler);

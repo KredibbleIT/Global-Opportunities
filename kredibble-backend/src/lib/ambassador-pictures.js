@@ -176,14 +176,14 @@ export async function processAmbassadorPictures({
 /**
  * Starts copying the given ambassadors' pictures after the current response,
  * without making the caller wait. Errors are logged, never thrown; anything
- * left pending is picked up by the scheduled run. Does nothing under test, so
- * the test server never reaches Google.
+ * left pending is picked up by the scheduled run. Does nothing under Jest or
+ * on the admin e2e server, so neither ever reaches Google or Cloudinary.
  *
  * @param {string[]} ids
  * @returns {void}
  */
 export function schedulePictureCopies(ids) {
-  if (env.isTest || ids.length === 0) return;
+  if (env.isTest || env.isE2E || ids.length === 0) return;
   setImmediate(() => {
     processAmbassadorPictures({ ids, limit: ids.length }).catch((error) => {
       logger.error({ error: error.message, count: ids.length }, 'Ambassador picture job failed to run');

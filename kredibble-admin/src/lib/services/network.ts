@@ -1,9 +1,13 @@
 /**
  * Network service: the ambassadors who amplify listings with their referral code, their amplification logs, and the
- * leaderboard built from them. One function per need; pages never touch the store or the seed. Everything lives in the
- * shared in-memory mock store, so the list, the detail page, the form, the leaderboard, the "Active ambassadors" KPI and
- * the scorecards see the same data. Writes use `{ always: true }` (ambassadors have no backend yet, so they are kept in
- * memory in every mode). TODO(backend): every write below must be persisted by the API.
+ * leaderboard built from them. One function per need; pages never touch the store, the seed or the API directly.
+ *
+ * Two modes (services/mock-mode.ts):
+ * - Real mode (the default): every loader reads the API (/admin/ambassadors, /admin/ambassadors/:id/detail,
+ *   /admin/leaderboard, /admin/network/summary) and every save waits for the API (saveAmbassador, recordShare), so an error
+ *   reaches the page instead of being lost. After a save, notifyNetworkChanged() makes the open pages load again.
+ * - Mock mode: everything lives in the shared in-memory mock store, so the list, the detail page, the form, the
+ *   leaderboard, the "Active ambassadors" KPI and the scorecards see the same sample data. Mock writes never call the API.
  *
  * Rules kept here, not in the pages:
  * - The REFERRAL CODE is generated once, when the ambassador is created (GOD- and six letters or digits, unique), and no
@@ -21,12 +25,22 @@ import { seekerAccounts } from "@/lib/mock-seekers";
 import type { AmplificationLog, Ambassador, DatabaseRecord, MonthKey, SocialPlatform } from "@/lib/mock-entities";
 import { todayIsoDate } from "@/lib/services/listings";
 import {
+  ApiError,
   createAmbassadorApi,
-  updateAmbassadorApi,
-  deleteAmbassadorApi,
+  getAmbassadorDetailApi,
+  getAmbassadors,
+  getLeaderboardApi,
+  getNetworkSummaryApi,
+  getSeekers,
+  getStaff,
   logAmplificationApi,
-  hasAdminSession,
+  updateAmbassadorApi,
+  uploadAmbassadorPhoto,
+  type AmbassadorApiRecord,
+  type AmbassadorWriteInput,
+  type AmplificationLogApiRecord,
 } from "@/lib/api";
+import { fetchAll } from "@/lib/services/api-helpers";
 import { isMockMode } from "@/lib/services/mock-mode";
 
 const MOCK_DELAY_MS = 300;
@@ -42,8 +56,21 @@ const afterDelay = <T>(value: T) => {
   );
 };
 
-/** Re-run a loader whenever the network (or anything else in the store) changes. */
-export const subscribeNetwork = subscribeMockStore;
+// Real mode: saves do not go through the store, so they tell the open pages through these listeners instead.
+const liveListeners = new Set<() => void>();
+
+/** Tells every open Network page that the data changed (real mode: after a save, a share or an import). */
+export const notifyNetworkChanged = (): void => liveListeners.forEach((listener) => listener());
+
+/** Re-run a loader whenever the network changes: a store change (mock mode) or a saved change (real mode). */
+export function subscribeNetwork(listener: () => void): () => void {
+  const unsubscribeStore = subscribeMockStore(listener);
+  liveListeners.add(listener);
+  return () => {
+    unsubscribeStore();
+    liveListeners.delete(listener);
+  };
+}
 
 /** The month ("YYYY-MM") of an ISO date or date-time. */
 export const monthOf = (at: string): MonthKey => at.slice(0, 7);
@@ -133,20 +160,64 @@ export function generateReferralCode(used: ReadonlySet<string>, random: () => nu
 
 const staffName = (id: string | undefined) => (id ? getMockCollection("staff").find((person) => person.id === id)?.name : undefined);
 
+/** An API ambassador as the pages' Ambassador (the API already normalises tier and status). */
+export function toAmbassador(record: AmbassadorApiRecord): Ambassador {
+  return {
+    id: record.id,
+    name: record.name || record.fullName || "",
+    email: record.email,
+    referralCode: record.referralCode,
+    campus: record.campus ?? "",
+    country: record.country ?? "",
+    city: record.city ?? "",
+    phone: record.phone || undefined,
+    whatsapp: record.whatsapp || undefined,
+    region: record.region || undefined,
+    photoUrl: record.photoUrl || record.profilePhoto || undefined,
+    pictureSourceUrl: record.pictureSourceUrl || undefined,
+    submittedAt: record.submittedAt || undefined,
+    memberType: record.memberType,
+    description: record.description || undefined,
+    roleTitle: record.roleTitle || undefined,
+    assignedLeadId: record.assignedLeadId || undefined,
+    trained: Boolean(record.trained),
+    linkedSeekerId: record.linkedSeekerId || record.linkedUserId || undefined,
+    tier: record.tier,
+    status: record.status,
+    joinedAt: record.joinedAt,
+    dormantSince: record.dormantSince || undefined,
+  };
+}
+
+/**
+ * An API amplification as the pages' log entry. The channel is free text on the server; entries logged here are always
+ * one of SOCIAL_PLATFORMS, and the detail page shows any other value as written.
+ */
+const toAmplificationLog = (record: AmplificationLogApiRecord): AmplificationLog => ({
+  id: record.id,
+  ambassadorId: record.ambassadorId,
+  listingId: record.listingId || undefined,
+  note: record.note || undefined,
+  channel: record.channel as SocialPlatform,
+  at: record.at,
+  clicks: record.clicks ?? 0,
+  applications: record.applications ?? 0,
+});
+
 /** An ambassador with the names the list shows. */
 export interface AmbassadorRow extends Ambassador {
   leadName?: string;
-  /** Shares logged this month. */
-  sharesThisMonth: number;
 }
 
-export function loadAmbassadorRows(): Promise<AmbassadorRow[]> {
-  const logs = getMockCollection("amplificationLogs");
-  const month = currentMonth();
+/** Everyone in the network (real mode: every page of /admin/ambassadors). */
+export async function loadAmbassadorRows(): Promise<AmbassadorRow[]> {
+  if (!isMockMode()) {
+    const records = await fetchAll((page, limit) => getAmbassadors({ page, limit }));
+    return records.map((record) => ({ ...toAmbassador(record), leadName: record.leadName || undefined }));
+  }
   const rows = getMockCollection("ambassadors").map((ambassador): AmbassadorRow => ({
     ...ambassador,
     leadName: staffName(ambassador.assignedLeadId),
-    sharesThisMonth: logs.filter((log) => log.ambassadorId === ambassador.id && monthOf(log.at) === month).length,
   }));
   return afterDelay(rows);
 }
@@ -161,7 +232,25 @@ export interface AmbassadorDetailData {
   stats: MonthStats;
 }
 
-export function loadAmbassador(id: string): Promise<AmbassadorDetailData | undefined> {
+/** One ambassador with this month's numbers and every logged share; undefined when there is no such ambassador. */
+export async function loadAmbassador(id: string): Promise<AmbassadorDetailData | undefined> {
+  if (!isMockMode()) {
+    try {
+      const detail = await getAmbassadorDetailApi(id, currentMonth());
+      return {
+        ambassador: toAmbassador(detail.ambassador),
+        leadName: detail.leadName || undefined,
+        // The API returns the linked account's id only; the detail page then shows no name for it.
+        linkedSeekerName: undefined,
+        logs: detail.logs.map(toAmplificationLog),
+        stats: detail.stats,
+      };
+    } catch (error) {
+      // Not a database id (400) or no such ambassador (404): the page shows "not found".
+      if (error instanceof ApiError && (error.status === 400 || error.status === 404)) return undefined;
+      throw error;
+    }
+  }
   const ambassador = getMockCollection("ambassadors").find((entry) => entry.id === id);
   if (!ambassador) return afterDelay(undefined);
   const logs = getMockCollection("amplificationLogs").filter((log) => log.ambassadorId === id).sort((a, b) => b.at.localeCompare(a.at));
@@ -174,28 +263,73 @@ export function loadAmbassador(id: string): Promise<AmbassadorDetailData | undef
   });
 }
 
-export function loadLeaderboard(month: MonthKey): Promise<LeaderboardRow[]> {
+/** The ranked leaderboard of one month (real mode: the server ranks it with the same rules). */
+export async function loadLeaderboard(month: MonthKey): Promise<LeaderboardRow[]> {
+  if (!isMockMode()) {
+    const rows = await getLeaderboardApi(month);
+    return rows.map((row) => ({ ambassador: toAmbassador(row.ambassador), shares: row.shares, clicks: row.clicks, signups: row.signups, rank: row.rank }));
+  }
   return afterDelay(buildLeaderboard(getMockCollection("ambassadors"), getMockCollection("amplificationLogs"), getMockCollection("databaseRecords"), month));
 }
 
-/** People who can lead an ambassador: active team members. */
-export function leadOptions(): { id: string; name: string; title?: string }[] {
+/** Real mode only: this month's Network size, Active and Activity rate, counted by the server over everyone. */
+export async function loadNetworkSummary(month: MonthKey = currentMonth()): Promise<NetworkSummaryData> {
+  const { size, active, sharedActive, activityRate } = await getNetworkSummaryApi(month);
+  return { size, active, sharedActive, activityRate };
+}
+
+export interface LeadOption {
+  id: string;
+  name: string;
+  title?: string;
+}
+export interface SeekerOption {
+  id: string;
+  name: string;
+  email: string;
+}
+
+/** People who can lead an ambassador: active team members (mock store). */
+export function leadOptions(): LeadOption[] {
   return getMockCollection("staff")
     .filter((person) => person.status === "active")
     .map((person) => ({ id: person.id, name: person.name, title: person.title }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** Seeker accounts an ambassador can be linked to. */
-export const seekerOptions = (): { id: string; name: string; email: string }[] => seekerAccounts.map(({ id, name, email }) => ({ id, name, email }));
+/** Seeker accounts an ambassador can be linked to (mock data). */
+export const seekerOptions = (): SeekerOption[] => seekerAccounts.map(({ id, name, email }) => ({ id, name, email }));
+
+/** The lead choices for the form. Real mode: active staff, by their user id (what the API stores as the lead). */
+export async function loadLeadOptions(): Promise<LeadOption[]> {
+  if (isMockMode()) return leadOptions();
+  const staff = await fetchAll((page, limit) => getStaff({ page, limit }));
+  return staff
+    .filter((person) => person.status === "active" && person.userId)
+    .map((person) => ({ id: person.userId, name: person.name, title: person.role }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** The linked-account choices for the form. Real mode: seeker accounts, by their user id. */
+export async function loadSeekerOptions(): Promise<SeekerOption[]> {
+  if (isMockMode()) return seekerOptions();
+  const seekers = await fetchAll((page, limit) => getSeekers({ page, limit }));
+  return seekers
+    .filter((seeker) => seeker.userId)
+    .map((seeker) => ({ id: seeker.userId, name: seeker.fullName || seeker.name || seeker.email, email: seeker.email }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
 
 // ---- writes ----------------------------------------------------------------------------------------------------------
 
 /** What the form edits. The id, the referral code and the dates are decided by the service, never by the form. */
 export type AmbassadorFields = Omit<Ambassador, "id" | "referralCode" | "joinedAt" | "dormantSince">;
 
+// The four functions below write the MOCK STORE only (mock mode and the rule tests). The pages call saveAmbassador and
+// recordShare, which pick the store or the API.
 const write = (ambassadors: Ambassador[]) => setMockCollection("ambassadors", ambassadors, { always: true });
 
+/** Mock store: adds an ambassador with a new unique referral code and today as the joining date. */
 export function createAmbassador(fields: AmbassadorFields): Ambassador {
   const existing = getMockCollection("ambassadors");
   const used = new Set(existing.map((ambassador) => ambassador.referralCode));
@@ -207,38 +341,10 @@ export function createAmbassador(fields: AmbassadorFields): Ambassador {
     dormantSince: fields.status === "dormant" ? todayIsoDate() : undefined,
   };
   write([ambassador, ...existing]);
-
-  if (typeof window !== "undefined" && (!isMockMode() || hasAdminSession())) {
-    createAmbassadorApi({
-      name: ambassador.name,
-      fullName: ambassador.name,
-      email: ambassador.email,
-      phone: ambassador.phone,
-      country: ambassador.country,
-      city: ambassador.city,
-      campus: ambassador.campus,
-      memberType: ambassador.memberType,
-      description: ambassador.description,
-      roleTitle: ambassador.roleTitle,
-      photoUrl: ambassador.photoUrl,
-      profilePhoto: ambassador.photoUrl,
-      tier: ambassador.tier,
-      status: ambassador.status,
-      assignedLeadId: ambassador.assignedLeadId,
-      trained: ambassador.trained,
-      linkedSeekerId: ambassador.linkedSeekerId,
-      referralCode: ambassador.referralCode,
-      joinedAt: ambassador.joinedAt,
-      dormantSince: ambassador.dormantSince,
-    }).catch((err) => {
-      console.warn("Could not persist ambassador creation to backend API", err);
-    });
-  }
-
   return ambassador;
 }
 
-/** Saves the form. The referral code and the joining date are kept exactly as they were. */
+/** Mock store: saves the form. The referral code and the joining date are kept exactly as they were. */
 export function updateAmbassador(id: string, fields: AmbassadorFields): Ambassador | undefined {
   const current = getMockCollection("ambassadors").find((ambassador) => ambassador.id === id);
   if (!current) return undefined;
@@ -251,46 +357,15 @@ export function updateAmbassador(id: string, fields: AmbassadorFields): Ambassad
     dormantSince: fields.status === "dormant" ? current.dormantSince ?? todayIsoDate() : undefined,
   };
   write(getMockCollection("ambassadors").map((ambassador) => (ambassador.id === id ? next : ambassador)));
-
-  if (typeof window !== "undefined" && (!isMockMode() || hasAdminSession())) {
-    updateAmbassadorApi(id, {
-      name: next.name,
-      fullName: next.name,
-      email: next.email,
-      phone: next.phone,
-      country: next.country,
-      city: next.city,
-      campus: next.campus,
-      memberType: next.memberType,
-      description: next.description,
-      roleTitle: next.roleTitle,
-      photoUrl: next.photoUrl,
-      profilePhoto: next.photoUrl,
-      tier: next.tier,
-      status: next.status,
-      assignedLeadId: next.assignedLeadId,
-      trained: next.trained,
-      linkedSeekerId: next.linkedSeekerId,
-      dormantSince: next.dormantSince,
-    }).catch((err) => {
-      console.warn("Could not persist ambassador update to backend API", err);
-    });
-  }
-
   return next;
 }
 
-/** Removes an ambassador from the network. */
+/** Mock store: removes an ambassador from the network. */
 export function removeAmbassador(id: string) {
   write(getMockCollection("ambassadors").filter((ambassador) => ambassador.id !== id));
-  if (typeof window !== "undefined" && (!isMockMode() || hasAdminSession())) {
-    deleteAmbassadorApi(id).catch((err) => {
-      console.warn("Could not persist ambassador deletion to backend API", err);
-    });
-  }
 }
 
-/** Logs one share by hand: today, the channel and an optional note. It counts toward this month's shares at once. */
+/** Mock store: logs one share by hand (today, the channel, an optional note). It counts toward this month's shares at once. */
 export function logAmplification(ambassadorId: string, channel: SocialPlatform, note?: string): AmplificationLog {
   const log: AmplificationLog = {
     id: `amp-new-${Date.now()}`,
@@ -302,17 +377,62 @@ export function logAmplification(ambassadorId: string, channel: SocialPlatform, 
     note: note?.trim() || undefined,
   };
   setMockCollection("amplificationLogs", [log, ...getMockCollection("amplificationLogs")], { always: true });
-
-  if (typeof window !== "undefined" && (!isMockMode() || hasAdminSession())) {
-    logAmplificationApi(ambassadorId, {
-      channel,
-      note: log.note,
-      at: log.at,
-      clicks: 0,
-    }).catch((err) => {
-      console.warn("Could not persist amplification log to backend API", err);
-    });
-  }
-
   return log;
+}
+
+/** A picked photo arrives from FileDrop as a base64 data: URL; the upload route takes a file. */
+function dataUrlToFile(dataUrl: string, baseName: string): File {
+  const [header, base64 = ""] = dataUrl.split(",", 2);
+  const type = /^data:([^;,]+)/.exec(header)?.[1] ?? "image/png";
+  const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+  return new File([bytes], `${baseName}.${type.split("/")[1] ?? "png"}`, { type });
+}
+
+/**
+ * Saves the form: creates an ambassador (no id) or updates one. Resolves with the saved ambassador, or rejects with the
+ * API's message so the form can show it and stay open.
+ *
+ * Real mode: a newly picked photo is uploaded first and the stored https address is saved; the server generates the
+ * referral code and the joining date and keeps both on every update; clearing a lead or a linked account sends null.
+ */
+export async function saveAmbassador(fields: AmbassadorFields, id?: string): Promise<Ambassador> {
+  if (isMockMode()) {
+    const saved = id ? updateAmbassador(id, fields) : createAmbassador(fields);
+    if (!saved) throw new Error("This ambassador no longer exists.");
+    return saved;
+  }
+  const photo = fields.photoUrl?.startsWith("data:")
+    ? (await uploadAmbassadorPhoto(dataUrlToFile(fields.photoUrl, "ambassador-photo"))).url
+    : fields.photoUrl;
+  const body: AmbassadorWriteInput = {
+    fullName: fields.name,
+    email: fields.email,
+    phone: fields.phone ?? "",
+    country: fields.country,
+    city: fields.city,
+    campus: fields.campus,
+    memberType: fields.memberType,
+    description: fields.description ?? "",
+    roleTitle: fields.roleTitle ?? "",
+    // "" on an update removes the photo; a new ambassador without one sends nothing.
+    profilePhoto: photo ?? (id ? "" : undefined),
+    tier: fields.tier,
+    status: fields.status,
+    trained: fields.trained,
+    assignedLeadId: fields.assignedLeadId ?? null,
+    linkedUserId: fields.linkedSeekerId ?? null,
+  };
+  const saved = id ? await updateAmbassadorApi(id, body) : await createAmbassadorApi(body);
+  notifyNetworkChanged();
+  return toAmbassador(saved);
+}
+
+/** Logs one share by hand. Real mode: waits for the API, so a failure reaches the caller. */
+export async function recordShare(ambassadorId: string, channel: SocialPlatform, note?: string): Promise<void> {
+  if (isMockMode()) {
+    logAmplification(ambassadorId, channel, note);
+    return;
+  }
+  await logAmplificationApi(ambassadorId, { channel, note: note?.trim() || undefined });
+  notifyNetworkChanged();
 }

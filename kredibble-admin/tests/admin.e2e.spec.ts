@@ -4984,9 +4984,18 @@ test.describe('Not connected yet', () => {
     await expect(page.getByTestId('not-connected-notice')).toBeVisible();
   });
 
+  test('Network and Leaderboard read the API in the real run: no sample-data notice on the list, the form or the leaderboard', async ({ page }) => {
+    test.skip(MOCK_RUN, 'the notice only shows outside mock mode');
+    for (const path of ['/network', '/network/new', '/leaderboard']) {
+      await page.goto(`${BASE_URL}${path}`);
+      await expect(page.getByTestId('page-title')).toBeVisible();
+      await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
+    }
+  });
+
   test('Programs and Partners say they show sample data in the real API run, on the list, a detail page and the form', async ({ page }) => {
     test.skip(MOCK_RUN, 'the notice only shows outside mock mode');
-    for (const path of ['/programs', '/programs/prg-01', '/programs/new', '/partners', '/partners/ptn-01', '/partners/new', '/network', '/network/amb-02', '/network/new', '/leaderboard']) {
+    for (const path of ['/programs', '/programs/prg-01', '/programs/new', '/partners', '/partners/ptn-01', '/partners/new']) {
       await page.goto(`${BASE_URL}${path}`);
       await expect(page.getByTestId('page-title')).toBeVisible();
       await expect(page.getByTestId('not-connected-notice')).toBeVisible();

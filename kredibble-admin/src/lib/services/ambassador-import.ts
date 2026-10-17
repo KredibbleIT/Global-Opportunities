@@ -1,31 +1,44 @@
 "use client";
 
 /**
- * Ambassador import/export service: the only place the Network page's import and export touch the mock store.
- * One function per need; components never import seed data.
+ * Ambassador import/export service: the only place the Network page's import, export and history touch data.
+ * One function per need; components never import seed data or call the API themselves.
  *
- * - The import writes ONLY to the in-memory mock store ({ always: true }, like the rest of the ambassador writes). It never
- *   calls the backend, because the backend has no import endpoint yet.
- *   TODO(backend): persist this change: POST /admin/ambassadors/import with the previewed rows, and a job that downloads
- *   every pictureSourceUrl (Google Drive files must be shared as "anyone with the link") into our own storage.
- * - Referral codes come from generateReferralCode (the same function the New ambassador form uses), so imported people get
- *   GOD-XXXXXX codes that are unique.
- * - Every import and export is written to the audit log, with who, when, the counts and the filters.
+ * - Real mode (the default): the import sends the CSV FILE to POST /admin/ambassadors/import. The server checks every row
+ *   again with the same rules (kredibble-backend/src/lib/ambassador-io.js), saves, gives new people GOD-XXXXXX codes,
+ *   queues each Google Drive picture to be copied into our storage, and writes the audit entry. Its result (counts and the
+ *   failed rows with their reasons) is what the wizard shows at the end; the preview before it stays in the browser.
+ *   The export asks POST /admin/ambassadors/export for the file: the server leaves email, phone and WhatsApp out unless one
+ *   of them was ticked, and writes the audit entry. The history reads GET /admin/ambassadors/history.
+ * - Mock mode: the import writes the in-memory store, the export is built in the browser, and both go to the in-browser
+ *   audit log. Referral codes come from generateReferralCode, the same function the New ambassador form uses.
  */
+import {
+  exportAmbassadorsApi,
+  getAmbassadorHistoryApi,
+  importAmbassadorsApi,
+  type AmbassadorExportRequest,
+  type AmbassadorHistoryApiEntry,
+  type AmbassadorImportErrorRow,
+} from "@/lib/api";
+import { buildExportCsv, applyImport, exportFilename, type ExistingChoice, type ImportField, type ImportPreview, type ImportStatus } from "@/lib/ambassador-io";
+import { csvWithBom, downloadTextFile } from "@/lib/csv";
 import { getMockCollection, setMockCollection } from "@/lib/mock-store";
 import type { Ambassador } from "@/lib/mock-entities";
-import { generateReferralCode } from "@/lib/services/network";
+import { generateReferralCode, notifyNetworkChanged } from "@/lib/services/network";
 import { todayIsoDate } from "@/lib/services/listings";
-import { recordAudit } from "@/lib/services/audit-log";
-import { applyImport, type ExistingChoice, type ImportPreview, type ImportResult, type ImportStatus } from "@/lib/ambassador-io";
+import { recordAudit, type AuditEntry } from "@/lib/services/audit-log";
+import { isMockMode } from "@/lib/services/mock-mode";
 
-/** The emails already in the system, lowercase, with the ambassador each belongs to. */
-export function existingEmails(): Map<string, string> {
-  return new Map(getMockCollection("ambassadors").map((ambassador) => [ambassador.email.trim().toLowerCase(), ambassador.id]));
+const BOM = "\uFEFF";
+/** The Network page's "no filter" value. */
+const ALL = "all";
+const SENSITIVE_COLUMNS: readonly ImportField[] = ["email", "phone", "whatsapp"];
+
+/** The emails of the given ambassadors, lowercase, with the ambassador each belongs to. */
+export function emailIndex(ambassadors: readonly Ambassador[]): Map<string, string> {
+  return new Map(ambassadors.map((ambassador) => [ambassador.email.trim().toLowerCase(), ambassador.id]));
 }
-
-/** Everyone in the network (for "Export all"). */
-export const allAmbassadors = (): Ambassador[] => getMockCollection("ambassadors");
 
 export interface ImportContext {
   actor: string;
@@ -35,8 +48,22 @@ export interface ImportContext {
   status: ImportStatus;
 }
 
-/** Saves the import to the mock store and logs it. The caller has already checked the permission. */
-export function commitImport(preview: ImportPreview, context: ImportContext): ImportResult {
+/** What the wizard's last step shows. */
+export interface ImportOutcome {
+  status: ImportStatus;
+  created: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  merged: number;
+  /** Real mode: the server's own list of failed rows (it may refuse a row the preview passed). */
+  errors?: AmbassadorImportErrorRow[];
+  /** Real mode: Google Drive pictures the server will copy into our storage. */
+  picturesQueued?: number;
+}
+
+/** Mock mode: saves the import to the store and logs it. The caller has already checked the permission. */
+export function commitImport(preview: ImportPreview, context: ImportContext): ImportOutcome {
   const stamp = Date.now();
   const result = applyImport(
     preview,
@@ -51,7 +78,7 @@ export function commitImport(preview: ImportPreview, context: ImportContext): Im
   recordAudit({
     actor: context.actor,
     action: "ambassadors.import",
-    summary: `Imported ${context.fileName}: ${result.created} created as ${context.status}, ${result.updated} updated, ${result.skipped} skipped, ${result.failed} failed, ${result.merged} duplicates merged`,
+    summary: importSummary(context.fileName, context.status, result),
     details: {
       file: context.fileName,
       existingRows: context.choice,
@@ -63,24 +90,37 @@ export function commitImport(preview: ImportPreview, context: ImportContext): Im
       merged: result.merged,
     },
   });
-  return result;
+  const { status, created, updated, skipped, failed, merged } = result;
+  return { status, created, updated, skipped, failed, merged };
+}
+
+/**
+ * Runs the import the wizard confirmed. Real mode sends `file` (the server re-reads it; `preview` is not trusted) and
+ * rejects with the server's message on a refusal (for example "Another ambassador import is running").
+ */
+export async function importAmbassadors(file: File, preview: ImportPreview, context: ImportContext): Promise<ImportOutcome> {
+  if (isMockMode()) return commitImport(preview, context);
+  const result = await importAmbassadorsApi(file, context.choice, context.status);
+  notifyNetworkChanged();
+  const { status, created, updated, skipped, failed, merged, errors, picturesQueued } = result;
+  return { status, created, updated, skipped, failed, merged, errors, picturesQueued };
 }
 
 export interface ExportContext {
   actor: string;
   scope: "filtered" | "selected" | "all";
   rows: number;
-  columns: string[];
+  columns: ImportField[];
   /** The filters that were on when "Export filtered results" was used. */
   filters: { status: string; tier: string; country: string; search: string };
 }
 
-/** Writes the export to the audit log. */
+/** Mock mode: writes the export to the audit log. */
 export function recordExport(context: ExportContext) {
   recordAudit({
     actor: context.actor,
     action: "ambassadors.export",
-    summary: `Exported ${context.rows} ambassador${context.rows === 1 ? "" : "s"} (${context.scope})`,
+    summary: exportSummary(context.rows, context.scope),
     details: {
       scope: context.scope,
       rows: context.rows,
@@ -91,4 +131,89 @@ export function recordExport(context: ExportContext) {
       filterSearch: context.filters.search || "—",
     },
   });
+}
+
+export interface ExportRequest extends ExportContext {
+  /** The people of the scope as the page shows them (mock mode builds the file from them). */
+  people: readonly Ambassador[];
+  /** The ticked rows, for scope "selected". */
+  selectedIds: ReadonlySet<string>;
+}
+
+/** The filters the server should apply for "Export filtered results": the ones that are on. */
+const activeFilters = (filters: ExportContext["filters"]): AmbassadorExportRequest["filters"] => {
+  const on = (value: string) => (value && value !== ALL ? value : undefined);
+  const result = { status: on(filters.status), tier: on(filters.tier), country: on(filters.country), search: filters.search.trim() || undefined };
+  return Object.values(result).some(Boolean) ? result : undefined;
+};
+
+/** Downloads the export file for the scope and columns. Real mode: the server builds the file and records the export. */
+export async function exportAmbassadors(request: ExportRequest): Promise<void> {
+  const fileName = exportFilename(todayIsoDate());
+  if (isMockMode()) {
+    downloadTextFile(fileName, buildExportCsv(request.people, request.columns));
+    recordExport(request);
+    return;
+  }
+  const text = await exportAmbassadorsApi({
+    scope: request.scope,
+    columns: request.columns,
+    // Ticking a sensitive column in the picker is the explicit opt-in; without it the server leaves them out anyway.
+    includeSensitive: request.columns.some((column) => SENSITIVE_COLUMNS.includes(column)),
+    ids: request.scope === "selected" ? [...request.selectedIds] : undefined,
+    filters: request.scope === "filtered" ? activeFilters(request.filters) : undefined,
+  });
+  // Reading the response as text drops the byte-order mark Excel needs to read accented names as UTF-8.
+  downloadTextFile(fileName, text.startsWith(BOM) ? text : csvWithBom(text));
+}
+
+// ---- history ---------------------------------------------------------------------------------------------------------
+
+const plural = (count: number) => `${count} ambassador${count === 1 ? "" : "s"}`;
+
+function importSummary(fileName: string, status: ImportStatus, counts: Pick<ImportOutcome, "created" | "updated" | "skipped" | "failed" | "merged">): string {
+  return `Imported ${fileName}: ${counts.created} created as ${status}, ${counts.updated} updated, ${counts.skipped} skipped, ${counts.failed} failed, ${counts.merged} duplicates merged`;
+}
+
+const exportSummary = (rows: number, scope: string) => `Exported ${plural(rows)} (${scope})`;
+
+const asNumber = (value: unknown) => (typeof value === "number" ? value : 0);
+
+/** A server audit row's metadata as plain label/value pairs (lists joined, filters spread out). */
+function flatDetails(metadata: Record<string, unknown>): AuditEntry["details"] {
+  const details: AuditEntry["details"] = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if (value === null || value === undefined) continue;
+    if (Array.isArray(value)) details[key] = value.join(", ");
+    else if (typeof value === "object") {
+      for (const [inner, innerValue] of Object.entries(value as Record<string, unknown>)) {
+        if (innerValue !== null && innerValue !== undefined) details[`${key}.${inner}`] = String(innerValue);
+      }
+    } else if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") details[key] = value;
+  }
+  return details;
+}
+
+function toHistoryEntry(entry: AmbassadorHistoryApiEntry): AuditEntry {
+  const meta = entry.metadata;
+  const file = typeof meta.file === "string" ? meta.file : "a file";
+  const summary =
+    entry.action === "ambassadors.export"
+      ? exportSummary(asNumber(meta.rows), String(meta.scope ?? "all"))
+      : entry.outcome === "failure"
+        ? `Import of ${file} stopped before it finished`
+        : importSummary(file, meta.status === "pending" ? "pending" : "active", {
+            created: asNumber(meta.created),
+            updated: asNumber(meta.updated),
+            skipped: asNumber(meta.skipped),
+            failed: asNumber(meta.failed),
+            merged: asNumber(meta.merged),
+          });
+  return { id: entry.id, at: entry.at, actor: entry.actorName ?? "Unknown user", action: entry.action, summary, details: flatDetails(meta) };
+}
+
+/** Real mode: the latest imports and exports from the server's audit log, newest first. */
+export async function loadAmbassadorHistory(): Promise<AuditEntry[]> {
+  const entries = await getAmbassadorHistoryApi();
+  return entries.map(toHistoryEntry);
 }
