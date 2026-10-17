@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { requireAdminOrStaffAuth, requireAdminAuth } from '../middleware/auth.js';
 import { requirePortalRoles, requireScreen } from '../middleware/portal-auth.js';
 import { ambassadorsRouter } from './ambassadors.js';
+import { showcaseAdminRouter } from './showcase.js';
 import { pictureJobFor, schedulePictureCopies } from '../lib/ambassador-pictures.js';
 import { ApiError, asyncHandler, itemResponse, listResponse, notFound } from '../utils/http.js';
 import { Opportunity, CompanyVerification } from '../models/Platform.js';
@@ -1469,6 +1470,11 @@ adminApiRouter.post('/ambassadors/:id/amplifications', requireAdminOrStaffAuth, 
 // Lead guard. Mounted before the managed routes, so GET /ambassadors/:id below
 // never reads "history" as an id.
 adminApiRouter.use('/ambassadors', ambassadorsRouter);
+
+// BE-030: the Showcase. Its routes check the caller's roles per category
+// themselves (routes/showcase.js); the app's read is re-exported for index.js.
+adminApiRouter.use('/showcase', showcaseAdminRouter);
+export { showcaseAppRouter } from './showcase.js';
 
 addManagedRoutes({
   path: '/ambassadors',

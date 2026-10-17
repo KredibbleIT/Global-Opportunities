@@ -1002,3 +1002,61 @@ const jobLockSchema = new mongoose.Schema(
 );
 
 export const JobLock = mongoose.model('JobLock', jobLockSchema);
+
+// BE-030: the app's "Meet our people" page. A category is one heading on it
+// (the four built-in ones, plus any the admin adds such as "Developers"); an
+// entry is one person or organisation under a heading. The rules (limits,
+// ordering, who may edit which category) are in lib/showcase.js.
+export const SHOWCASE_BUILT_IN_KEYS = Object.freeze(['ambassadors', 'team', 'partners', 'stakeholders']);
+export const SHOWCASE_CATEGORY_KEYS = Object.freeze([...SHOWCASE_BUILT_IN_KEYS, 'custom']);
+export const SHOWCASE_KINDS = Object.freeze(['person', 'organisation']);
+export const SHOWCASE_LIMITS = Object.freeze({ name: 80, title: 100, bio: 400, providedBy: 120, country: 80, categoryName: 40, photoUrl: 1000 });
+
+const showcaseCategorySchema = new mongoose.Schema(
+  {
+    key: { type: String, required: true, enum: SHOWCASE_CATEGORY_KEYS, index: true },
+    name: { type: String, required: true, trim: true, maxlength: SHOWCASE_LIMITS.categoryName },
+    // The name in lower case: category names are unique whatever the capitals.
+    nameKey: { type: String, required: true, unique: true },
+    kind: { type: String, required: true, enum: SHOWCASE_KINDS },
+    order: { type: Number, required: true, min: 1 },
+    visible: { type: Boolean, default: true },
+  },
+  { timestamps: true },
+);
+
+export const ShowcaseCategory = mongoose.model('ShowcaseCategory', showcaseCategorySchema);
+
+const showcaseEntrySchema = new mongoose.Schema(
+  {
+    categoryId: { type: mongoose.Schema.Types.ObjectId, ref: 'ShowcaseCategory', required: true },
+    name: { type: String, required: true, trim: true, maxlength: SHOWCASE_LIMITS.name },
+    title: { type: String, required: true, trim: true, maxlength: SHOWCASE_LIMITS.title },
+    bio: { type: String, trim: true, maxlength: SHOWCASE_LIMITS.bio, default: '' },
+    photoUrl: { type: String, trim: true, maxlength: SHOWCASE_LIMITS.photoUrl, default: null },
+    country: { type: String, trim: true, maxlength: SHOWCASE_LIMITS.country, default: '' },
+    // Staff-only note of who sent the photo and bio. Never sent to the app.
+    providedBy: { type: String, trim: true, maxlength: SHOWCASE_LIMITS.providedBy, default: '' },
+    visible: { type: Boolean, default: true },
+    order: { type: Number, required: true, min: 1 },
+    linkedAmbassadorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Ambassador', default: null },
+    linkedPartnerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Partner', default: null },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  },
+  { timestamps: true },
+);
+
+showcaseEntrySchema.index({ categoryId: 1, order: 1 });
+// One entry per ambassador and per partner: "Start from an existing record"
+// offers only people not featured yet, and the database keeps it that way.
+showcaseEntrySchema.index(
+  { linkedAmbassadorId: 1 },
+  { unique: true, partialFilterExpression: { linkedAmbassadorId: { $type: 'objectId' } } },
+);
+showcaseEntrySchema.index(
+  { linkedPartnerId: 1 },
+  { unique: true, partialFilterExpression: { linkedPartnerId: { $type: 'objectId' } } },
+);
+
+export const ShowcaseEntry = mongoose.model('ShowcaseEntry', showcaseEntrySchema);

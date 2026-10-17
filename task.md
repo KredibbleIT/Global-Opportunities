@@ -1954,8 +1954,8 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
 | BE-027 | Product item 8: email verification screen support | P1 | – | [x] Done |
 | BE-028 | Team account creation: invites, roles, deactivate (backend for PR #103) | P1 | BE-001 | [x] Done (2026-10-16 `feature/BE-028-team-accounts`: 6 endpoints, Super-Admin guard, 20/20 tests) |
 | BE-029 | Ambassador CSV import/export backend (for PR #103 wizard) | P2 | BE-001, BE-007 | [x] Done: backend 2026-10-17 `feature/BE-029-ambassador-io` (PR #116: import + export endpoints, picture job); admin wiring + history on `feature/BE-007-network-api` (real-mode Playwright import/export green) |
-| BE-030 | Showcase ("Meet our people"): categories, entries, public read and admin write | P1 | BE-001, BE-018 | [ ] Open |
-| BE-031 | Showcase photo upload and storage | P1 | BE-030 | [ ] Open |
+| BE-030 | Showcase ("Meet our people"): categories, entries, public read and admin write | P1 | BE-001, BE-018 | [x] Done (2026-10-17 `feature/BE-030-showcase`: admin and app on the API, per-category role checks, 34/34 backend tests) |
+| BE-031 | Showcase photo upload and storage | P1 | BE-030 | [ ] Open (started in BE-030: the admin uploads a picked photo through the existing `/admin/upload` pipeline, purpose `showcase-photo`) |
 
 (Product item 3, App Colours, is frontend only: no backend task.)
 
@@ -2305,6 +2305,16 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
 - **Audit (BE-018):** one entry per add, edit, show, hide, move and delete, and per category change, written by the server in the same transaction: actor, entry, category, what changed (for example visible from/to, photo changed). Action names the admin already uses: `showcase.add`, `showcase.edit`, `showcase.show`, `showcase.hide`, `showcase.move`, `showcase.delete`, `showcase.category_add`, `showcase.category_edit`, `showcase.category_move`, `showcase.category_delete`. Read endpoint for the History dialog: `GET /admin/audit-log?scope=showcase`.
 - **Contract shape:** the app expects `{ categories: [{ id, key, name, kind, order, visible }], entries: [{ id, categoryId, name, title, bio, photoUrl?, country?, visible, order }] }` (see `kredibble-app/src/constants/mockShowcase.ts`). Once the endpoint exists, replace the body of `getShowcase()` and delete the sample data; the screen needs no other change.
 - **Verify:** a hidden entry or a hidden category never appears in `GET /showcase`; each role can change only the categories above (table-driven test of every role against every category); a Country Lead cannot move an entry into Partners; deleting a category with entries is refused; reorder keeps 1..n; every action has an audit row; `providedBy` never leaks to the app. New suite `tests/be-030-showcase.test.js` green; backend lint clean; the admin Playwright file `tests/showcase.spec.ts` passes against the real API with the service switched over.
+- **Done 2026-10-17** (`feature/BE-030-showcase`):
+  - Models `ShowcaseCategory` and `ShowcaseEntry` (`models/AdminPortal.js`), rules in `lib/showcase.js`, Zod in `schemas/showcase.js`, routes in `routes/showcase.js`. The four built-in categories are created on first read and can't be deleted; category names are unique whatever the capitals (`nameKey`); an ambassador or partner can be featured once (unique partial index, 409).
+  - Roles come from the verified session through the new `resolveStaffRoles` (the BE-028/BE-029 way: an ACTIVE staff record, or super_admin only for a root admin with no staff record). The routes do NOT use `requireScreen`, which lets every admin-session staff member through (being fixed separately).
+  - Each entry change checks the category it is in and, on a move, the category it goes to; categories need `showcase.manage`. The server has the four Showcase screens in `lib/permissions.js`, the same grants as the admin's `config/permissions.ts`.
+  - The admin reads and writes through the API in real mode: the service waits for the server, shows its message on a refusal, uploads a picked photo first, and loads "Start from an existing record" from the API. The "sample data" notice is gone from the page. The app's `getShowcase()` calls `GET /showcase`, and `SAMPLE_SHOWCASE` is deleted.
+  - **Deviations:**
+    - History is read from `GET /admin/showcase/history` (open to anyone with Showcase access), not `/admin/audit-log?scope=showcase`. That route is Super-Admin-only and serves only `scope=accounts`; this follows BE-029's `/ambassadors/history`.
+    - Audit rows are written right after each change by the shared `auditReq`, as in every other area, not in one transaction. No route uses transactions yet, and the tests run a standalone MongoDB.
+    - The Country Lead is not yet limited to their own country.
+    - `photoUrl` must be an https link (the CSP), but is not yet limited to our own Cloudinary. That check, image transforms and deleting the old file are BE-031.
 
 #### BE-031 — Showcase photo upload and storage
 - **Today:** the admin form reads a picked picture into an in-memory `data:` URL (`FileDrop`) and keeps it on the entry; nothing is uploaded. The site's Content-Security-Policy allows `img-src 'self' data: https:`, so a stored picture must be an `https` URL.

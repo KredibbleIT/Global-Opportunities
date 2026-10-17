@@ -13,7 +13,8 @@
  *  1. controls are only rendered when the person may use them, and
  *  2. every handler asks can(...) again (lib/showcase canEditCategory, and showcase.manage for categories) and refuses with a message,
  *     so the action cannot be reached any other way (for example a form that was open when the role changed).
- * The same data rules exist in the service. The real enforcement belongs to the server (see task.md); this is for the experience.
+ * The server enforces the same rules in real mode (BE-030: roles from the session, per category); this layer is for the experience.
+ * Every change waits for the server; a refusal shows the server's message (a toast, or the open form's message) and changes nothing.
  */
 import { useState, type ReactNode } from "react";
 import { ROLES } from "@/config/roles";
@@ -21,17 +22,18 @@ import { getAdminUser } from "@/lib/api";
 import type { ShowcaseCategory, ShowcaseEntry } from "@/lib/mock-entities";
 import { canDeleteCategory, canEditCategory, type EntryForm } from "@/lib/showcase";
 import {
-  addCategory,
-  addEntry,
-  deleteCategory,
-  deleteEntry,
-  moveCategoryPlace,
-  moveEntryPlace,
-  setEntryVisible,
-  updateCategory,
-  updateEntry,
+  loadShowcaseHistory,
+  saveCategory,
+  saveCategoryDeletion,
+  saveCategoryMove,
+  saveCategoryVisible,
+  saveEntry,
+  saveEntryDeletion,
+  saveEntryMove,
+  saveEntryVisible,
   useShowcase,
 } from "@/lib/services/showcase";
+import { isMockMode } from "@/lib/services/mock-mode";
 import { currentStaffMember } from "@/lib/services/listings";
 import { useRoles } from "@/components/access/RoleProvider";
 import { AmbassadorHistoryDialog } from "@/components/network/AmbassadorHistoryDialog";
@@ -87,12 +89,12 @@ export function useShowcaseManager() {
     if (permittedFor(entry.categoryId)) setEntryDialog({ mode: "edit", entry, categories: editableCategories });
   };
 
-  const submitEntry = (form: EntryForm, links: { ambassadorId?: string; partnerId?: string }) => {
+  const submitEntry = async (form: EntryForm, links: { ambassadorId?: string; partnerId?: string }) => {
     const editing = entryDialog?.mode === "edit" ? entryDialog.entry : undefined;
     // Both the category it is in and the category it is going to must be allowed.
     if (editing && !permittedFor(editing.categoryId)) return { ok: false as const, reason: "Your role cannot change this part of the showcase." };
     if (!permittedFor(form.categoryId)) return { ok: false as const, reason: "Your role cannot change this part of the showcase." };
-    const result = editing ? updateEntry(editing.id, form, actor) : addEntry(form, links, actor);
+    const result = await saveEntry(form, links, actor, editing?.id);
     if (!result.ok) return result;
     setEntryDialog(null);
     toast.success(editing ? `${result.entry.name} was updated.` : `${result.entry.name} was added${result.entry.visible ? " and is on the app." : " (hidden)."}`);
@@ -101,15 +103,17 @@ export function useShowcaseManager() {
 
   const toggleVisible = (entry: ShowcaseEntry) => {
     if (!permittedFor(entry.categoryId)) return;
-    const result = setEntryVisible(entry.id, !entry.visible, actor);
-    if (result.ok) toast.success(entry.visible ? `${entry.name} is hidden from the app.` : `${entry.name} is on the app.`);
-    else toast.error(result.reason);
+    void saveEntryVisible(entry, !entry.visible, actor).then((result) => {
+      if (result.ok) toast.success(entry.visible ? `${entry.name} is hidden from the app.` : `${entry.name} is on the app.`);
+      else toast.error(result.reason);
+    });
   };
 
   const moveEntryUpDown = (entry: ShowcaseEntry, direction: "up" | "down") => {
     if (!permittedFor(entry.categoryId)) return;
-    const result = moveEntryPlace(entry.id, direction, actor);
-    if (!result.ok) toast.error(result.reason);
+    void saveEntryMove(entry, direction, actor).then((result) => {
+      if (!result.ok) toast.error(result.reason);
+    });
   };
 
   const removeEntry = (entry: ShowcaseEntry) =>
@@ -123,9 +127,10 @@ export function useShowcaseManager() {
       confirmLabel: "Delete entry",
       onConfirm: () => {
         if (!permittedFor(entry.categoryId)) return;
-        const result = deleteEntry(entry.id, actor);
-        if (result.ok) toast.success(`${entry.name} was deleted.`);
-        else toast.error(result.reason);
+        void saveEntryDeletion(entry, actor).then((result) => {
+          if (result.ok) toast.success(`${entry.name} was deleted.`);
+          else toast.error(result.reason);
+        });
       },
     });
 
@@ -137,10 +142,10 @@ export function useShowcaseManager() {
     if (permittedToManage()) setCategoryDialog({ mode: "edit", category });
   };
 
-  const submitCategory = (name: string, kind: ShowcaseCategory["kind"]) => {
+  const submitCategory = async (name: string, kind: ShowcaseCategory["kind"]) => {
     if (!permittedToManage()) return { ok: false as const, reason: "Your role cannot create or change categories." };
     const editing = categoryDialog?.mode === "edit" ? categoryDialog.category : undefined;
-    const result = editing ? updateCategory(editing.id, { name, kind }, actor) : addCategory(name, kind, actor);
+    const result = await saveCategory(name, kind, actor, editing?.id);
     if (!result.ok) return result;
     setCategoryDialog(null);
     toast.success(editing ? "The category was updated." : `${name.trim()} was added as a category.`);
@@ -149,15 +154,17 @@ export function useShowcaseManager() {
 
   const toggleCategoryVisible = (category: ShowcaseCategory) => {
     if (!permittedToManage()) return;
-    const result = updateCategory(category.id, { visible: !category.visible }, actor);
-    if (result.ok) toast.success(category.visible ? `${category.name} is hidden from the app.` : `${category.name} is on the app.`);
-    else toast.error(result.reason);
+    void saveCategoryVisible(category, !category.visible, actor).then((result) => {
+      if (result.ok) toast.success(category.visible ? `${category.name} is hidden from the app.` : `${category.name} is on the app.`);
+      else toast.error(result.reason);
+    });
   };
 
   const moveCategoryUpDown = (category: ShowcaseCategory, direction: "up" | "down") => {
     if (!permittedToManage()) return;
-    const result = moveCategoryPlace(category.id, direction, actor);
-    if (!result.ok) toast.error(result.reason);
+    void saveCategoryMove(category, direction, actor).then((result) => {
+      if (!result.ok) toast.error(result.reason);
+    });
   };
 
   const removeCategory = (category: ShowcaseCategory) =>
@@ -171,9 +178,10 @@ export function useShowcaseManager() {
       confirmLabel: "Delete category",
       onConfirm: () => {
         if (!permittedToManage()) return;
-        const result = deleteCategory(category.id, actor);
-        if (result.ok) toast.success(`${category.name} was deleted.`);
-        else toast.error(result.reason);
+        void saveCategoryDeletion(category, actor).then((result) => {
+          if (result.ok) toast.success(`${category.name} was deleted.`);
+          else toast.error(result.reason);
+        });
       },
     });
 
@@ -205,6 +213,7 @@ export function useShowcaseManager() {
           title="Showcase history"
           description="Every entry added, edited, shown, hidden, moved or deleted, and every category change, is recorded here."
           emptyText="Showcase changes appear here with who made them, what changed, and when."
+          load={isMockMode() ? undefined : loadShowcaseHistory}
         />
       )}
       {confirmDialog}

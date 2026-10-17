@@ -57,23 +57,35 @@ export const requirePortalRoles = (...allowedRoles) => async (req, res, next) =>
  */
 export const requireStaffRoles = (allowedRoles, message) => async (req, res, next) => {
   try {
-    const activeStaff = await StaffMember.findOne({ userId: req.auth?.sub, status: 'active' }).select('roles role').lean();
-    let roles = activeStaff
-      ? (activeStaff.roles?.length ? activeStaff.roles : normalizeLegacyRole(activeStaff.role))
-      : [];
-    if (!activeStaff && req.auth?.role === 'admin' && req.auth?.aud === 'kredibble-admin') {
-      const anyStaff = await StaffMember.exists({ userId: req.auth.sub });
-      if (!anyStaff) roles = ['super_admin'];
-    }
+    const { roles, staff } = await resolveStaffRoles(req);
     if (!roles.some((role) => allowedRoles.includes(role))) {
       return next(new ApiError(403, message));
     }
-    req.portalStaff = activeStaff || null;
+    req.portalStaff = staff;
     return next();
   } catch (error) {
     return next(error);
   }
 };
+
+/**
+ * The caller's BE-001 roles, read from the verified session, never the request: the roles of their ACTIVE StaffMember
+ * record. The CLI-provisioned root admin, who has no staff record at all, counts as super_admin; an admin whose staff
+ * record is suspended or invited has no roles. (requireScreen's blanket admin-session pass is NOT used here.)
+ *
+ * @param {import('express').Request} req
+ * @returns {Promise<{ roles: string[], staff: object | null }>}
+ */
+export async function resolveStaffRoles(req) {
+  const activeStaff = await StaffMember.findOne({ userId: req.auth?.sub, status: 'active' }).select('roles role').lean();
+  if (activeStaff) {
+    return { roles: activeStaff.roles?.length ? activeStaff.roles : normalizeLegacyRole(activeStaff.role), staff: activeStaff };
+  }
+  if (req.auth?.role === 'admin' && req.auth?.aud === 'kredibble-admin' && !(await StaffMember.exists({ userId: req.auth.sub }))) {
+    return { roles: ['super_admin'], staff: null };
+  }
+  return { roles: [], staff: null };
+}
 
 export const requireScreen = (screen, level = 'view') => async (req, res, next) => {
   try {
