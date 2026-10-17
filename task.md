@@ -2409,6 +2409,7 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
     - App `typecheck` + `lint` clean; app tests 101/101 (getShowcase sends the token and surfaces the server's error).
     - `check:encoding` 0 failing.
   - Fixed along the way: a shell `sed -i` had turned `task.md`'s CRLF line endings into LF. They are restored, so the file merges normally again.
+- 2026-10-17 — PR #122 (Database/Social/Testimonials) merged into `feature/programs-partners-api` a minute AFTER #121 merged into `main`, so its commits (`3874a48`, `bdd8135`) never reached `main`, the same slip as #118. PR #124 (BE-030) is built on them, so it now targets `main` and carries both.
 | 2026-10-16 | SEC-129 | security/SEC-129-reference-data-manifest | Done | Manifest allowlist already present on `origin/main` (merged after 2026-10-15 sync); made AI 503 test env-independent (`env.aiEnabled=false` save/restore in `tests/security.p0.test.js`). `npm test -- tests/security.p0.test.js`: 71/71 with local `.env` AI keys AND with `.env` neutralized (CI-equivalent). Backend `npm run lint` clean. |
 
 ---
