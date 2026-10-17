@@ -932,6 +932,37 @@ test.describe('Ambassadors: import and export against the real API', () => {
     await expect(page.locator('main tbody tr').filter({ hasText: name })).toHaveCount(1);
   });
 
+  test('the form saves WhatsApp, region, the picture link and a linked account; the detail page shows them and the queued copy', async ({ page }) => {
+    const stamp = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+    const name = `Live Form ${stamp}`;
+    await page.goto(`${BASE_URL}/network/new`, { timeout: 30_000 });
+    await expect(page.getByTestId('page-title')).toHaveText('New ambassador');
+    await page.getByLabel('Full name', { exact: true }).fill(name);
+    await page.getByLabel('Email', { exact: true }).fill(`form.${stamp}@example.com`);
+    await page.getByLabel('WhatsApp', { exact: true }).fill('0200000128');
+    await page.getByRole('combobox', { name: 'Country', exact: true }).click();
+    await page.getByRole('option', { name: 'Ghana' }).click();
+    await page.getByLabel('City', { exact: true }).fill('Ho');
+    await page.getByLabel('Region', { exact: true }).fill('Volta');
+    await page.getByLabel('Campus', { exact: true }).fill('UHAS');
+    await page.getByLabel('Picture source link', { exact: true }).fill('drive.google.com/no-scheme');
+    await page.getByLabel('Picture source link', { exact: true }).blur();
+    await expect(page.getByText('Enter the full link, starting with https://.')).toBeVisible();
+    await page.getByLabel('Picture source link', { exact: true }).fill(`https://drive.google.com/open?id=FORMFILE${stamp}`);
+    await page.getByRole('combobox', { name: 'Linked user account', exact: true }).click();
+    await page.getByRole('option', { name: /E2E Seeker/ }).click();
+    await page.getByRole('button', { name: 'Add ambassador' }).click();
+
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(name, { timeout: 15_000 });
+    const details = page.locator('main');
+    await expect(details).toContainText('0200000128');
+    await expect(details).toContainText('Volta');
+    await expect(details).toContainText(`https://drive.google.com/open?id=FORMFILE${stamp}`);
+    // The e2e server never copies pictures, so the job stays waiting.
+    await expect(details).toContainText('Waiting to be copied');
+    await expect(details).toContainText('E2E Seeker');
+  });
+
   test('export and history: the file comes from the server, contact columns only when ticked, and both actions are recorded', async ({ page }) => {
     const stamp = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
     const name = `Live Export ${stamp}`;

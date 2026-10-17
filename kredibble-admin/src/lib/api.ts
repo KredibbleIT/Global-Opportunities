@@ -1239,6 +1239,8 @@ export interface AmbassadorApiRecord {
   region?: string;
   pictureSourceUrl?: string;
   submittedAt?: string;
+  /** The copy of pictureSourceUrl into our storage (absent when there is nothing to copy). */
+  pictureImport?: { status: "pending" | "processing" | "done" | "failed"; attempts?: number; lastError?: string };
 }
 
 export interface AmplificationLogApiRecord {
@@ -1303,6 +1305,8 @@ export const getAmbassadorDetailApi = async (id: string, month?: string) => {
   return request<{
     ambassador: AmbassadorApiRecord;
     leadName?: string;
+    /** The user account the ambassador also has, or null. */
+    linkedAccount?: { id: string; name: string; email: string } | null;
     logs: AmplificationLogApiRecord[];
     stats: { shares: number; clicks: number; signups: number };
   }>(`/admin/ambassadors/${id}/detail${query}`);
@@ -1311,7 +1315,7 @@ export const getAmbassadorDetailApi = async (id: string, month?: string) => {
 /** What the admin form sends. `null` clears an optional link (lead, linked account); the server sets code and dates. */
 export type AmbassadorWriteInput = Omit<
   Partial<AmbassadorApiRecord>,
-  "id" | "referralCode" | "joinedAt" | "dormantSince" | "assignedLeadId" | "linkedUserId" | "linkedSeekerId" | "leadName"
+  "id" | "referralCode" | "joinedAt" | "dormantSince" | "assignedLeadId" | "linkedUserId" | "linkedSeekerId" | "leadName" | "pictureImport" | "submittedAt"
 > & {
   assignedLeadId?: string | null;
   linkedUserId?: string | null;
