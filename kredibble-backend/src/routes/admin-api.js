@@ -2,8 +2,9 @@ import { Router } from 'express';
 import mongoose from 'mongoose';
 import crypto from 'node:crypto';
 import { requireAdminOrStaffAuth, requireAdminAuth } from '../middleware/auth.js';
-import { requirePortalRoles, requireScreen } from '../middleware/portal-auth.js';
+import { requirePortalRoles, requireScreen, resolveStaffRoles } from '../middleware/portal-auth.js';
 import { ambassadorsRouter } from './ambassadors.js';
+import { revokeAllSessions } from './auth.js';
 import { pictureJobFor, schedulePictureCopies } from '../lib/ambassador-pictures.js';
 import { ApiError, asyncHandler, itemResponse, listResponse, notFound } from '../utils/http.js';
 import { Opportunity, CompanyVerification } from '../models/Platform.js';
@@ -4372,9 +4373,62 @@ adminApiRouter.get('/staff/:id', requireAdminOrStaffAuth, requireScreen('team', 
   itemResponse(res, toClientObject(staff));
 }));
 
+/**
+ * Finds a staff record by its id, or by email (the Team page links by either).
+ * @param {string} idOrEmail
+ * @returns {Promise<import('mongoose').Document>} the record (404 when there is none)
+ */
+const findStaffRecord = async (idOrEmail) => {
+  const staff = (mongoose.isValidObjectId(idOrEmail) ? await StaffMember.findById(idOrEmail) : null)
+    || await StaffMember.findOne({ email: idOrEmail });
+  if (!staff) throw notFound('Staff member');
+  return staff;
+};
+
+/**
+ * SEC-134: a staff record's roles and status decide what its user may do, so
+ * adding staff or changing either is a Super Admin decision whatever route
+ * makes it (BE-028's rule; `accounts.create` in the admin's matrix). Team edit
+ * alone used to be enough, so Admin Support could make themselves Super Admin.
+ * Nobody changes their own record, and the last active Super Admin stays one.
+ *
+ * @param {import('express').Request} req
+ * @param {object | null} staff - the record being changed (null when adding one)
+ * @param {{ roles?: string[], status?: string }} [next] - the record's roles and status after the change
+ */
+const assertMayChangeStaffAccess = async (req, staff, next = {}) => {
+  const { roles } = await resolveStaffRoles(req);
+  if (!roles.includes('super_admin')) {
+    throw new ApiError(403, 'Only a Super Admin can add staff or change their roles or access');
+  }
+  if (!staff) return;
+  if (String(staff.userId) === String(req.auth.sub)) {
+    throw new ApiError(403, 'You cannot change your own roles or access');
+  }
+  const isActiveSuperAdmin = staff.status === 'active' && (staff.roles || []).includes('super_admin');
+  const staysActiveSuperAdmin = (next.status ?? staff.status) === 'active' && (next.roles ?? staff.roles ?? []).includes('super_admin');
+  if (isActiveSuperAdmin && !staysActiveSuperAdmin
+    && (await StaffMember.countDocuments({ roles: 'super_admin', status: 'active', _id: { $ne: staff._id } })) === 0) {
+    throw new ApiError(403, 'This is the last Super Admin. At least one must stay active.');
+  }
+};
+
+/** Signs a staff member out everywhere (access tokens, refresh tokens, sockets). */
+const revokeStaffSessions = async (staff) => {
+  const user = await User.findById(staff.userId);
+  if (user && user.role !== 'deleted') {
+    await revokeAllSessions(user);
+    await user.save();
+  }
+};
+
 adminApiRouter.post('/staff/invite', requireAdminOrStaffAuth, requireScreen('team', 'edit'), validate(staffInviteSchema), asyncHandler(async (req, res) => {
+  await assertMayChangeStaffAccess(req, null);
   const emailNorm = req.body.email.trim().toLowerCase();
   let user = await User.findOne({ emailNormalized: emailNorm, role: { $ne: 'deleted' } });
+  if (user && String(user._id) === String(req.auth.sub)) {
+    throw new ApiError(403, 'You cannot change your own roles or access');
+  }
 
   if (!user) {
     // SEC-077: without a full name the invite must reference an existing
@@ -4442,36 +4496,42 @@ adminApiRouter.patch('/users/:id/segment', requireAdminOrStaffAuth, requireScree
   });
 }));
 
-adminApiRouter.patch('/staff/:id', requireAdminOrStaffAuth, requireScreen('team', 'edit'), validate(staffUpdateSchema), asyncHandler(async (req, res) => {
-  let staff = null;
-  if (mongoose.isValidObjectId(req.params.id)) {
-    staff = await StaffMember.findById(req.params.id);
-  }
-  if (!staff) {
-    staff = await StaffMember.findOne({ email: req.params.id });
-  }
-  if (!staff) throw notFound('Staff member');
-
+/**
+ * PATCH and PUT /admin/staff/:id. Team edit may rename someone; a change to
+ * their roles or status goes through assertMayChangeStaffAccess (SEC-134), and
+ * a suspension signs them out everywhere.
+ */
+const updateStaffRecord = asyncHandler(async (req, res) => {
+  const staff = await findStaffRecord(req.params.id);
   const previous = toClientObject(staff);
+
+  let nextRoles;
+  if (req.body.roles?.length > 0) {
+    nextRoles = req.body.roles.slice(0, 2);
+  } else if (req.body.role) {
+    nextRoles = normalizeLegacyRole(req.body.role);
+    if (nextRoles.length === 0) throw new ApiError(400, `Unknown role "${req.body.role}"`);
+  }
+  if (nextRoles || req.body.status) {
+    await assertMayChangeStaffAccess(req, staff, { roles: nextRoles, status: req.body.status });
+  }
 
   if (req.body.name) {
     staff.name = req.body.name.trim();
     await User.findByIdAndUpdate(staff.userId, { name: staff.name });
   }
-
   if (req.body.status) {
     staff.status = req.body.status;
   }
-
-  if (req.body.roles && req.body.roles.length > 0) {
-    staff.roles = req.body.roles.slice(0, 2);
-    staff.role = staff.roles.join(',');
-  } else if (req.body.role) {
-    staff.roles = normalizeLegacyRole(req.body.role);
-    staff.role = req.body.role;
+  if (nextRoles) {
+    staff.roles = nextRoles;
+    staff.role = req.body.roles?.length > 0 ? nextRoles.join(',') : req.body.role;
   }
 
   await staff.save();
+  if (req.body.status === 'suspended' && previous.status !== 'suspended') {
+    await revokeStaffSessions(staff);
+  }
 
   await auditReq(req, {
     action: AUDIT_ACTIONS.ADMIN_USER_UPDATE,
@@ -4482,64 +4542,30 @@ adminApiRouter.patch('/staff/:id', requireAdminOrStaffAuth, requireScreen('team'
   });
 
   itemResponse(res, toClientObject(staff));
-}));
+});
 
-adminApiRouter.put('/staff/:id', requireAdminOrStaffAuth, requireScreen('team', 'edit'), validate(staffUpdateSchema), asyncHandler(async (req, res) => {
-  let staff = null;
-  if (mongoose.isValidObjectId(req.params.id)) {
-    staff = await StaffMember.findById(req.params.id);
-  }
-  if (!staff) {
-    staff = await StaffMember.findOne({ email: req.params.id });
-  }
-  if (!staff) throw notFound('Staff member');
+adminApiRouter.patch('/staff/:id', requireAdminOrStaffAuth, requireScreen('team', 'edit'), validate(staffUpdateSchema), updateStaffRecord);
+adminApiRouter.put('/staff/:id', requireAdminOrStaffAuth, requireScreen('team', 'edit'), validate(staffUpdateSchema), updateStaffRecord);
 
-  if (req.body.name) {
-    staff.name = req.body.name.trim();
-    await User.findByIdAndUpdate(staff.userId, { name: staff.name });
-  }
-  if (req.body.status) {
-    staff.status = req.body.status;
-  }
-  if (req.body.roles && req.body.roles.length > 0) {
-    staff.roles = req.body.roles.slice(0, 2);
-    staff.role = staff.roles.join(',');
-  } else if (req.body.role) {
-    staff.roles = normalizeLegacyRole(req.body.role);
-    staff.role = req.body.role;
-  }
-
-  await staff.save();
-
-  await auditReq(req, {
-    action: AUDIT_ACTIONS.ADMIN_USER_UPDATE,
-    resourceType: AUDIT_RESOURCE_TYPES.USER,
-    resourceId: staff._id,
-    outcome: 'success',
-    metadata: { staffUpdate: true, updated: toClientObject(staff), updatedFields: Object.keys(req.body) },
-  });
-
-  itemResponse(res, toClientObject(staff));
-}));
-
+// SEC-134: removing someone deactivates their record and signs them out. The
+// record is never deleted: an admin user with no staff record at all counts
+// as the root admin, so a deletion would make them Super Admin.
 adminApiRouter.delete('/staff/:id', requireAdminOrStaffAuth, requireScreen('team', 'edit'), asyncHandler(async (req, res) => {
-  let staff = null;
-  if (mongoose.isValidObjectId(req.params.id)) {
-    staff = await StaffMember.findById(req.params.id);
-  }
-  if (!staff) {
-    staff = await StaffMember.findOne({ email: req.params.id });
-  }
-  if (!staff) throw notFound('Staff member');
+  const staff = await findStaffRecord(req.params.id);
+  await assertMayChangeStaffAccess(req, staff, { status: 'deactivated' });
 
-  await StaffMember.findByIdAndDelete(staff._id);
+  if (staff.status !== 'deactivated') {
+    staff.status = 'deactivated';
+    await staff.save();
+  }
+  await revokeStaffSessions(staff);
 
   await auditReq(req, {
     action: AUDIT_ACTIONS.ADMIN_USER_UPDATE,
     resourceType: AUDIT_RESOURCE_TYPES.USER,
     resourceId: staff.userId,
     outcome: 'success',
-    metadata: { staffRemoval: true, email: staff.email },
+    metadata: { staffRemoval: true, email: staff.email, status: 'deactivated' },
   });
 
   res.json({ data: { id: String(staff._id), removed: true } });

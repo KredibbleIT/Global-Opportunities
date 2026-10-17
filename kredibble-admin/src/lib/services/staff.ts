@@ -85,11 +85,19 @@ export const loadStaffMember = async (id: string): Promise<StaffMember | undefin
 /** The team as it is in the store right now (a plain read, for rules that need everyone, such as "is this email taken"). */
 export const loadStaffSnapshot = (): StaffMember[] => getMockCollection("staff");
 
+// Real mode: every change below waits for the API and throws its error (ApiError), so the page can show it. Only a
+// Super Admin may add staff or change their roles or status (SEC-134); the server refuses anyone else.
+
 /** Adds a person to the team (newest first). One role, or two (anything beyond MAX_STAFF_ROLES is dropped). */
-export function inviteStaff(name: string, email: string, roles: Role | Role[]): StaffMember {
+export async function inviteStaff(name: string, email: string, roles: Role | Role[]): Promise<StaffMember> {
   const normalizedRoles = (Array.isArray(roles) ? roles : [roles]).slice(0, MAX_STAFF_ROLES) as Role[];
+  let id = `staff-${Date.now()}`;
+  if (!isMockMode()) {
+    const created = await apiInviteStaff({ name, email, roles: normalizedRoles });
+    id = created.id || id;
+  }
   const person: StaffMember = {
-    id: `staff-${Date.now()}`,
+    id,
     name,
     email,
     roles: normalizedRoles,
@@ -97,46 +105,26 @@ export function inviteStaff(name: string, email: string, roles: Role | Role[]): 
     joinedDate: new Date().toISOString().slice(0, 10),
   };
   write([person, ...getMockCollection("staff")]);
-
-  if (!isMockMode()) {
-    apiInviteStaff({ name, email, roles: normalizedRoles }).catch(() => {
-      // Background sync, fallback stays in local store
-    });
-  }
   return person;
 }
 
 /** Gives a person one or two roles (anything else is ignored). */
-export function setStaffRoles(id: string, roles: Role[]) {
+export async function setStaffRoles(id: string, roles: Role[]): Promise<void> {
   if (roles.length < 1 || roles.length > MAX_STAFF_ROLES) return;
-  const updated = getMockCollection("staff").map((person) => (person.id === id ? { ...person, roles } : person));
-  write(updated);
-
-  if (!isMockMode()) {
-    apiUpdateStaff(id, { roles }).catch(() => {});
-  }
+  if (!isMockMode()) await apiUpdateStaff(id, { roles });
+  write(getMockCollection("staff").map((person) => (person.id === id ? { ...person, roles } : person)));
 }
 
-export function toggleStaffStatus(id: string) {
-  const current = getMockCollection("staff").find((person) => person.id === id);
-  const nextStatus: StaffStatus = current?.status === "active" ? "suspended" : "active";
-  const updated = getMockCollection("staff").map((person) =>
-    person.id === id ? { ...person, status: nextStatus } : person
-  );
-  write(updated);
-
-  if (!isMockMode()) {
-    apiUpdateStaff(id, { status: nextStatus }).catch(() => {});
-  }
+/** Suspends a person or reinstates them. The caller says which: the store may not hold the person in real mode. */
+export async function setStaffStatus(id: string, status: Extract<StaffStatus, "active" | "suspended">): Promise<void> {
+  if (!isMockMode()) await apiUpdateStaff(id, { status });
+  write(getMockCollection("staff").map((person) => (person.id === id ? { ...person, status } : person)));
 }
 
-export function removeStaffMember(id: string) {
-  const updated = getMockCollection("staff").filter((person) => person.id !== id);
-  write(updated);
-
-  if (!isMockMode()) {
-    apiDeleteStaff(id).catch(() => {});
-  }
+/** Removes a person from the team. The server keeps their record, deactivated, and signs them out. */
+export async function removeStaffMember(id: string): Promise<void> {
+  if (!isMockMode()) await apiDeleteStaff(id);
+  write(getMockCollection("staff").filter((person) => person.id !== id));
 }
 
 /** The people held to a KPI: active team members who hold one of its owner roles. This is the list any scorecard or owner choice uses. */
