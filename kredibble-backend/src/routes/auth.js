@@ -5,13 +5,14 @@ import bcrypt from 'bcryptjs';
 const DUMMY_HASH = '$2a$12$bRWsa/PC32qEk5cFCdQ/n.DrtmNZZeIr7Fc15SfH6SoezqktcAbCO';
 import { Router } from 'express';
 import { requireAuth, requireAdminOrStaffAuth, signToken, signAdminToken, setAdminCookie, clearAdminCookie, setAdminRefreshCookie, clearAdminRefreshCookie, generateRefreshToken, hashRefreshToken } from '../middleware/auth.js';
+import { resolveStaffRoles } from '../middleware/portal-auth.js';
 import { validate } from '../middleware/validate.js';
 import { loginSchema, registerSchema, refreshSchema, forgotPasswordSchema,
 resetPasswordSchema, changePasswordSchema, deleteAccountSchema } from '../schemas/auth.js';
 import { acceptInviteSchema } from '../schemas/accounts.js';
 import { ApiError, asyncHandler, itemResponse } from '../utils/http.js';
 import { User, StaffMember, RefreshToken, hashRefreshToken as hashRefreshTokenUtil, EmailVerificationCode, PasswordResetCode } from '../models/User.js';
-import { computeGrants, getEffectiveToggles, normalizeLegacyRole } from '../lib/permissions.js';
+import { computeGrants, getEffectiveToggles } from '../lib/permissions.js';
 import { SeekerProfile, HirerAccount } from '../models/Profiles.js';
 import { Applicant, EventAttendee, CompanyVerification, VerificationDoc, Opportunity, GrantApplication } from '../models/Platform.js';
 import { Channel, ChannelPost, CommunityMembership } from '../models/Community.js';
@@ -666,14 +667,12 @@ authRouter.get(
       return res.status(401).json({ error: { message: 'Invalid admin session' } });
     }
 
-    const staff = await StaffMember.findOne({ userId: user._id, status: 'active' }).lean();
-    if (user.role !== 'admin' && !staff) {
+    // SEC-131: the same roles the guards enforce, so the UI never shows a
+    // screen the API refuses. A suspended or invited staffer has none.
+    const { roles, staff } = await resolveStaffRoles(req);
+    if (roles.length === 0) {
       return res.status(401).json({ error: { message: 'Invalid admin session' } });
     }
-
-    const roles = staff?.roles?.length
-      ? staff.roles
-      : (user.role === 'admin' ? ['super_admin'] : normalizeLegacyRole(staff?.role));
 
     const toggles = await getEffectiveToggles();
     const screens = computeGrants(roles, toggles);
