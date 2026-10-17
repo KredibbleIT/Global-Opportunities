@@ -458,6 +458,76 @@ describe('BE-029: history and photo upload for the Network page', () => {
   });
 });
 
+describe('BE-029: import fields are editable from the ambassador form', () => {
+  const create = (caller, body) => request(app).post(api('/admin/ambassadors')).set(...caller.cookie).send({
+    fullName: 'Form Person', email: `form-${Math.random()}@example.com`, country: 'Ghana', city: 'Accra', campus: 'Legon', ...body,
+  });
+  const patch = (caller, id, body) => request(app).patch(api(`/admin/ambassadors/${id}`)).set(...caller.cookie).send(body);
+
+  it('stores WhatsApp, region and a Drive link on create, and queues the picture copy', async () => {
+    const caller = await superAdmin();
+    const res = await create(caller, { whatsapp: '0200000222', region: 'Ashanti', pictureSourceUrl: 'https://drive.google.com/open?id=FORMFILE001' });
+    expect(res.statusCode).toBe(201);
+    const stored = await Ambassador.findById(res.body.data.id).lean();
+    expect(stored).toMatchObject({ whatsapp: '0200000222', region: 'Ashanti', pictureSourceUrl: 'https://drive.google.com/open?id=FORMFILE001' });
+    expect(stored.pictureImport).toMatchObject({ status: 'pending', attempts: 0 });
+  });
+
+  it('a new link queues a fresh copy, the same link leaves a finished copy alone, and clearing it drops the job', async () => {
+    const caller = await superAdmin();
+    const ambassador = await seedAmbassador({ email: 'edit-pic@example.com', pictureSourceUrl: 'https://drive.google.com/open?id=OLDFORM0001', pictureImport: { status: 'done', attempts: 1 } });
+
+    await patch(caller, ambassador._id, { pictureSourceUrl: 'https://drive.google.com/open?id=OLDFORM0001', region: 'Volta' });
+    expect((await Ambassador.findById(ambassador._id).lean())).toMatchObject({ region: 'Volta', pictureImport: { status: 'done' } });
+
+    await patch(caller, ambassador._id, { pictureSourceUrl: 'https://drive.google.com/file/d/NEWFORM0002/view' });
+    expect((await Ambassador.findById(ambassador._id).lean()).pictureImport).toMatchObject({ status: 'pending', attempts: 0 });
+
+    await patch(caller, ambassador._id, { pictureSourceUrl: '' });
+    const cleared = await Ambassador.findById(ambassador._id).lean();
+    expect(cleared.pictureSourceUrl).toBe('');
+    expect(cleared.pictureImport).toBeUndefined();
+  });
+
+  it('saving again after a failed copy tries once more, with fresh attempts', async () => {
+    const caller = await superAdmin();
+    const link = 'https://drive.google.com/open?id=FAILEDFORM01';
+    const ambassador = await seedAmbassador({ email: 'retry-pic@example.com', pictureSourceUrl: link, pictureImport: { status: 'failed', attempts: 3, lastError: 'The file is not shared as "anyone with the link"' } });
+    await patch(caller, ambassador._id, { pictureSourceUrl: link });
+    expect((await Ambassador.findById(ambassador._id).lean()).pictureImport).toEqual({ status: 'pending', attempts: 0 });
+  });
+
+  it('a link that is not a Drive file is kept as the source and nothing is queued', async () => {
+    const caller = await superAdmin();
+    const res = await create(caller, { pictureSourceUrl: 'https://example.com/photo.jpg' });
+    const stored = await Ambassador.findById(res.body.data.id).lean();
+    expect(stored.pictureSourceUrl).toBe('https://example.com/photo.jpg');
+    expect(stored.pictureImport).toBeUndefined();
+  });
+
+  it.each([
+    ['a picture link that is not a web address', { pictureSourceUrl: 'drive.google.com/open?id=X' }],
+    ['a WhatsApp number over 50 characters', { whatsapp: '0'.repeat(51) }],
+    ['a region over 100 characters', { region: 'r'.repeat(101) }],
+  ])('refuses %s (400)', async (_label, body) => {
+    const caller = await superAdmin();
+    const ambassador = await seedAmbassador({ email: 'bounds@example.com' });
+    expect((await patch(caller, ambassador._id, body)).statusCode).toBe(400);
+  });
+
+  it('the detail route names the linked account, and says null when there is none', async () => {
+    const caller = await superAdmin();
+    const seeker = await User.create({ name: 'Linked Seeker', email: 'linked29@example.com', emailNormalized: 'linked29@example.com', role: 'seeker', passwordHash: 'x' });
+    const linked = await seedAmbassador({ email: 'with-link@example.com', linkedUserId: seeker._id });
+    const unlinked = await seedAmbassador({ email: 'no-link@example.com' });
+
+    const withLink = await request(app).get(api(`/admin/ambassadors/${linked._id}/detail`)).set(...caller.cookie);
+    expect(withLink.body.data.linkedAccount).toEqual({ id: String(seeker._id), name: 'Linked Seeker', email: 'linked29@example.com' });
+    const without = await request(app).get(api(`/admin/ambassadors/${unlinked._id}/detail`)).set(...caller.cookie);
+    expect(without.body.data.linkedAccount).toBeNull();
+  });
+});
+
 describe('BE-029: the import lock', () => {
   it('lets one holder in, refuses the second, and frees on release or expiry', async () => {
     const first = await acquireLock('test-lock', 60_000);

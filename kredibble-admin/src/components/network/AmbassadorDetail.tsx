@@ -37,12 +37,20 @@ import { useToast } from "@/components/ui/Toast";
 import { TruncatedText } from "@/components/ui/TruncatedText";
 import { useBreadcrumbLabel } from "@/lib/breadcrumb-label";
 import { formatDate } from "@/lib/format";
-import { AMBASSADOR_TIER_LABELS, MEMBER_TYPE_LABELS, type SocialPlatform } from "@/lib/mock-entities";
+import { AMBASSADOR_TIER_LABELS, MEMBER_TYPE_LABELS, type Ambassador, type SocialPlatform } from "@/lib/mock-entities";
 import { loadAmbassador, recordShare, subscribeNetwork } from "@/lib/services/network";
 import { useDetailData } from "@/lib/use-detail-data";
 
 /** How many log entries the card lists; the rest is counted in the line under it. */
 const LOG_LIMIT = 20;
+
+/** Where the server's copy of the picture source stands, in words (nothing when there is nothing to copy). */
+function pictureCopyText(job: Ambassador["pictureImport"]): string | undefined {
+  if (!job) return undefined;
+  if (job.status === "done") return "Copied into our storage";
+  if (job.status === "failed") return `Could not copy it${job.lastError ? `: ${job.lastError}` : ""}. Saving this ambassador again tries once more.`;
+  return "Waiting to be copied";
+}
 
 export function AmbassadorDetail({ id }: { id: string }) {
   const { can } = useRoles();
@@ -160,6 +168,17 @@ export function AmbassadorDetail({ id }: { id: string }) {
                   { label: "Place", value: `${ambassador.city}, ${ambassador.country}` },
                   { label: "Email", value: ambassador.email },
                   { label: "Phone", value: ambassador.phone },
+                  { label: "WhatsApp", value: ambassador.whatsapp },
+                  { label: "Region", value: ambassador.region },
+                  {
+                    label: "Picture source",
+                    value: ambassador.pictureSourceUrl ? (
+                      <a href={ambassador.pictureSourceUrl} target="_blank" rel="noopener noreferrer" className="break-all font-semibold text-purple-700 underline-offset-2 hover:underline">
+                        {ambassador.pictureSourceUrl}
+                      </a>
+                    ) : undefined,
+                  },
+                  { label: "Picture copy", value: pictureCopyText(ambassador.pictureImport) },
                   { label: "Joined", value: formatDate(ambassador.joinedAt) },
                   {
                     label: "Trained",

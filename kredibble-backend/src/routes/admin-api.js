@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { requireAdminOrStaffAuth, requireAdminAuth } from '../middleware/auth.js';
 import { requirePortalRoles, requireScreen } from '../middleware/portal-auth.js';
 import { ambassadorsRouter } from './ambassadors.js';
+import { pictureJobFor, schedulePictureCopies } from '../lib/ambassador-pictures.js';
 import { ApiError, asyncHandler, itemResponse, listResponse, notFound } from '../utils/http.js';
 import { Opportunity, CompanyVerification } from '../models/Platform.js';
 import { StaffMember, User } from '../models/User.js';
@@ -339,6 +340,7 @@ const addManagedRoutes = ({
         outcome: 'success',
         metadata: { name: record.fullName, referralCode: record.referralCode },
       });
+      if (record.pictureImport?.status === 'pending') schedulePictureCopies([String(record._id)]);
     }
     res.status(201).json({ data: { ...transform(record), sync } });
   }));
@@ -362,6 +364,7 @@ const addManagedRoutes = ({
         outcome: 'success',
         metadata: { name: record.fullName, status: record.status, tier: record.tier },
       });
+      if (record.pictureImport?.status === 'pending') schedulePictureCopies([String(record._id)]);
     }
     itemResponse(res, { ...transform(record), sync });
   }));
@@ -1124,6 +1127,10 @@ const prepareAmbassador = (body, authSub, existing = {}) => {
   const description = body.description !== undefined ? String(body.description || '').trim() : existing.description;
   const roleTitle = body.roleTitle !== undefined ? String(body.roleTitle || '').trim() : existing.roleTitle;
   const profilePhoto = body.profilePhoto ?? body.photoUrl ?? existing.profilePhoto;
+  // BE-029: the fields the CSV import brings in, editable from the form too.
+  const whatsapp = body.whatsapp !== undefined ? String(body.whatsapp || '').trim() : existing.whatsapp;
+  const region = body.region !== undefined ? String(body.region || '').trim() : existing.region;
+  const pictureSourceUrl = body.pictureSourceUrl !== undefined ? String(body.pictureSourceUrl || '').trim() : existing.pictureSourceUrl;
 
   let tier = String(body.tier ?? existing.tier ?? 'ambassador').toLowerCase();
   if (tier.includes('senior')) tier = 'senior';
@@ -1169,7 +1176,18 @@ const prepareAmbassador = (body, authSub, existing = {}) => {
     trained,
     joinedAt,
     dormantSince,
+    whatsapp,
+    region,
+    pictureSourceUrl,
   };
+
+  // A new picture link starts a fresh copy into our storage (Drive links only; anything else is kept as the source).
+  // Clearing the link, or a link we cannot copy, drops any copy still waiting. Saving the same link again after a
+  // failed copy (say, once the file is shared) tries once more.
+  const retryFailedCopy = body.pictureSourceUrl !== undefined && existing.pictureImport?.status === 'failed';
+  if (pictureSourceUrl !== existing.pictureSourceUrl || retryFailedCopy) {
+    result.pictureImport = pictureJobFor(pictureSourceUrl);
+  }
 
   if (!isUpdate && body.referralCode) {
     result.referralCode = String(body.referralCode).trim().toUpperCase();
@@ -1391,9 +1409,15 @@ adminApiRouter.get('/ambassadors/:id/detail', requireAdminOrStaffAuth, requireSc
     signups: verifiedBeneficiaries,
   };
 
+  // The user account this ambassador also has, by name, so the page can say who it is (id alone means nothing).
+  const linked = clientAmb.linkedUserId && mongoose.isValidObjectId(clientAmb.linkedUserId)
+    ? await User.findById(clientAmb.linkedUserId).select('name email').lean()
+    : null;
+
   itemResponse(res, {
     ambassador: clientAmb,
     leadName: clientAmb.leadName,
+    linkedAccount: linked ? { id: String(linked._id), name: linked.name, email: linked.email } : null,
     logs: logs.map(toAmplificationClientObject),
     stats,
   });

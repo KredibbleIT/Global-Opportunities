@@ -53,3 +53,64 @@ services:
         sync: false
       - key: WORDPRESS_API_KEY
         sync: false
+
+  # BE-029: the picture safety net. Copies imported ambassadors' Google Drive
+  # pictures into Cloudinary: anything still pending, failures with attempts
+  # left, and copies a restart interrupted (the API also starts copies right
+  # after each import). Same image as the API; it loads the same config, so it
+  # gets the API's secrets and origins (production boot refuses weak or
+  # shared JWT secrets and a non-deployed CORS_ORIGIN).
+  - type: cron
+    name: kredibble-ambassador-pictures
+    env: docker
+    region: oregon
+    rootDir: kredibble-backend
+    plan: starter
+    schedule: "15 * * * *"
+    dockerCommand: node scripts/ambassador-pictures.js --limit=200
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        fromService:
+          type: web
+          name: kredibble-api
+          envVarKey: DATABASE_URL
+      - key: JWT_SECRET
+        fromService:
+          type: web
+          name: kredibble-api
+          envVarKey: JWT_SECRET
+      - key: ADMIN_JWT_SECRET
+        fromService:
+          type: web
+          name: kredibble-api
+          envVarKey: ADMIN_JWT_SECRET
+      - key: CORS_ORIGIN
+        fromService:
+          type: web
+          name: kredibble-api
+          envVarKey: CORS_ORIGIN
+      - key: CLOUDINARY_CLOUD_NAME
+        fromService:
+          type: web
+          name: kredibble-api
+          envVarKey: CLOUDINARY_CLOUD_NAME
+      - key: CLOUDINARY_API_KEY
+        fromService:
+          type: web
+          name: kredibble-api
+          envVarKey: CLOUDINARY_API_KEY
+      - key: CLOUDINARY_API_SECRET
+        fromService:
+          type: web
+          name: kredibble-api
+          envVarKey: CLOUDINARY_API_SECRET
+      - key: AI_ENABLED
+        value: "false"
+      - key: EMAIL_ENABLED
+        value: "false"
+      - key: WORDPRESS_SYNC_ENABLED
+        value: "false"
