@@ -2396,6 +2396,19 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
   - Full real run: 432 passed; of the 2 failures, one passed serially and the other was the `addedById` bug above (rule tests 10/10 after the fix).
   - Full mock run: 1059 passed, 31 skipped (real-only), 0 failed.
   - The backend is unchanged on this branch.
+- 2026-10-17 — BE-030 Showcase done on `feature/BE-030-showcase` (stacked on the Database/Social/Testimonials PR):
+  - Backend: `/admin/showcase` (read everything, history, entries, categories) and `GET /showcase` for the app (visible only, in category order, no `providedBy`, `private, no-cache` with an ETag). Roles come from the session through the new `resolveStaffRoles`, which BE-029's `requireStaffRoles` now uses too. The server lists the four Showcase screens, with the same grants as the admin. Every change writes an audit row.
+  - Admin: real mode reads and writes the API, waits for every save, shows the server's refusal, uploads a picked photo (`showcase-photo` purpose), and loads the History and "Start from an existing record" from the API. The "sample data" notice is gone.
+  - App: `getShowcase()` calls the API, and the sample data is deleted.
+  - Deviations are on the BE-030 card (history route, audit not in a transaction, no own-country limit yet, photo host check left to BE-031). The Showcase routes stay clear of SEC-131's `requireScreen` bypass.
+  - Verified:
+    - be-030 34/34. Covers a table of every role (plus the root admin and a suspended staffer) against every category; the Country Lead can't move an entry into Partners; deleting a built-in or non-empty category is refused; places stay 1..n; one audit row per change; `providedBy` never reaches the app.
+    - Full backend 731/731 (`--maxWorkers=4`) and `eslint` clean. be-001 now expects 32 screens. The admin-API contract test caught write calls whose HTTP method a helper hid; they are now written inline.
+    - Admin `typecheck` and `lint` clean. Showcase Playwright, real mode: 11 passed (3 new real-API tests: entries saved, reloaded and in the History; a refused change leaves the row as it was; categories with a server-side name clash). Mock mode: 30 passed.
+    - Full real admin run: 434 passed. The 3 failures (Tabs keyboard, two Verification-detail tests, all outside this change) pass serially.
+    - App `typecheck` + `lint` clean; app tests 101/101 (getShowcase sends the token and surfaces the server's error).
+    - `check:encoding` 0 failing.
+  - Fixed along the way: a shell `sed -i` had turned `task.md`'s CRLF line endings into LF. They are restored, so the file merges normally again.
 | 2026-10-16 | SEC-129 | security/SEC-129-reference-data-manifest | Done | Manifest allowlist already present on `origin/main` (merged after 2026-10-15 sync); made AI 503 test env-independent (`env.aiEnabled=false` save/restore in `tests/security.p0.test.js`). `npm test -- tests/security.p0.test.js`: 71/71 with local `.env` AI keys AND with `.env` neutralized (CI-equivalent). Backend `npm run lint` clean. |
 
 ---
