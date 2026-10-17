@@ -2,6 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { env } from '../config/env.js';
 import { requireAdminAuth } from '../middleware/auth.js';
+import { resolveStaffRoles } from '../middleware/portal-auth.js';
 import { validate } from '../middleware/validate.js';
 import {
   ApiError,
@@ -48,27 +49,19 @@ const toClientObject = (document) => {
 };
 
 /**
- * BE-028: Super-Admin-only guard. Reads the caller's roles from the
- * verified session: an active StaffMember record, or — for the
- * CLI-provisioned root admin, which has no staff record — the verified
- * admin audience itself (same precedent as /admin/me). Staff members whose
- * record is not active get no fallback: suspension/invitation revokes this
- * access even if a stale token somehow passes the session check.
+ * BE-028: Super-Admin-only guard. The caller's roles come from
+ * resolveStaffRoles (SEC-131): an active StaffMember record, or super_admin
+ * for the CLI-provisioned root admin, which has no staff record. Staff
+ * members whose record is not active get no fallback: suspension/invitation
+ * revokes this access even if a stale token somehow passes the session check.
  */
 export const requireSuperAdmin = async (req, res, next) => {
   try {
-    const activeStaff = await StaffMember.findOne({ userId: req.auth?.sub, status: 'active' })
-      .select('roles')
-      .lean();
-    let roles = activeStaff?.roles?.length ? activeStaff.roles : [];
-    if (roles.length === 0 && req.auth?.role === 'admin' && req.auth?.aud === 'kredibble-admin') {
-      const anyStaff = await StaffMember.findOne({ userId: req.auth.sub }).select('_id').lean();
-      if (!anyStaff) roles = ['super_admin'];
-    }
+    const { roles, staff } = await resolveStaffRoles(req);
     if (!roles.includes('super_admin')) {
       return next(new ApiError(403, 'Super Admin access required'));
     }
-    req.superAdminStaff = activeStaff || null;
+    req.superAdminStaff = staff;
     return next();
   } catch (error) {
     return next(error);
