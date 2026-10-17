@@ -22,6 +22,7 @@
         "sync:website-pull": "node scripts/website-pull.js",
         "sync:news-ingest": "node scripts/news-ingest.js",
         "sync:website-tally": "node scripts/website-tally.js",
+        "sync:ambassador-pictures": "node scripts/ambassador-pictures.js",
         "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest",
         "lint": "eslint .",
         "docs:generate": "node scripts/generate-docs.js",
