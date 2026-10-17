@@ -2056,7 +2056,7 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
   - [x] `GET /admin/beneficiaries/sources?month=`: returns counts across the 5 canonical sources.
   - [x] Pending verification count: `GET /admin/beneficiaries/pending-count` and `pendingRecords` on `GET /dashboard/summary` for sidebar pill.
   - [x] Verification criteria: "Beneficiaries verified" for a month counts records verified in it, filtered strictly by `verifiedAt`.
-  - [x] Admin client API (`kredibble-admin/src/lib/api.ts`), nav counts service (`kredibble-admin/src/lib/services/nav-counts.ts`), and database service (`kredibble-admin/src/lib/services/database.ts`) wired to live endpoints.
+  - [x] Admin client API (`kredibble-admin/src/lib/api.ts`), nav counts service (`kredibble-admin/src/lib/services/nav-counts.ts`), and database service (`kredibble-admin/src/lib/services/database.ts`) wired to live endpoints. *Corrected 2026-10-17:* only partly true, and the page still showed the "sample data" notice. Real-mode reads fell back to the seed on ANY API error, without saying so, and stopped at 100 rows. The page rebuilt its rows from the mock store, so the ambassador, opportunity and "added by" names were blank. Saves, verify and undo were fire-and-forget (errors went only to the console), and the form's choices were sample ids. Done for real on `feature/database-social-testimonials-api`: every page of `/admin/beneficiaries` with the server's names; the pace from `/admin/beneficiaries/pace`; awaited `saveRecord` (the server's 409 duplicate shows as the duplicate with a link), `verifyRecordSaved` and `undoVerifySaved`; ambassador and opportunity choices from the API; and the duplicate check as you type runs against the server's records. The notice is removed.
 - **Verify:** "Beneficiaries verified" for a month counts records verified in it, by `verifiedAt`. (Verified with `tests/be-008-beneficiaries.test.js`, 15/15 tests passing; full suite 28 suites / 310 tests passing; admin API contract tests passing; admin typecheck and eslint clean).
 
 #### BE-009 — Social posts
@@ -2067,7 +2067,7 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
   - [x] CRUD endpoints: `GET /admin/social-posts` with pagination, month/platform/status filters, and populated listing title; `POST /admin/social-posts`, `PATCH /admin/social-posts/:id`, `DELETE /admin/social-posts/:id` with audit logging.
   - [x] `GET /admin/social-posts/monthly-totals?month=`: returns team totals (`posts`, `reach`, `engagement`, `targets`), platform breakdown table sorted with leading platform first, and excludes drafts/scheduled items.
   - [x] Parity with dashboard KPIs: "Posts published", "Social reach", and "Social engagement" strictly match social monthly totals.
-  - [x] Admin frontend client (`kredibble-admin/src/lib/api.ts`) and social service facade (`kredibble-admin/src/lib/services/social.ts`) wired to live endpoints.
+  - [x] Admin frontend client (`kredibble-admin/src/lib/api.ts`) and social service facade (`kredibble-admin/src/lib/services/social.ts`) wired to live endpoints. *Corrected 2026-10-17:* only partly true (the page still showed the "sample data" notice). Reads fell back to the seed on any API error and read one page of 25. The totals were always worked out from the mock store, logging a post was fire-and-forget, and the opportunity choices were sample ids. Done for real on `feature/database-social-testimonials-api`: every page of the month's posts, totals from `/admin/social-posts/monthly-totals`, awaited `savePost`, and published opportunities from the API. The notice is removed.
 - **Verify:** equals the KPIs "Posts published", "Social reach" and "Social engagement". (Verified with `tests/be-009-social-posts.test.js`, 14/14 tests passing; full suite 29 suites / 324 tests passing; admin API contract tests passing; admin typecheck and eslint clean).
 
 #### BE-010 — Testimonials
@@ -2084,7 +2084,7 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
   - [x] Public feed `GET /testimonials` returns only approved testimonials.
   - [x] Asymmetric PII protection: author email and staff decider details visible to staff only, never in public previews or endpoints.
   - [x] Pending counts: `GET /api/v1/admin/testimonials/pending-count` and `pendingTestimonials` field on `GET /api/v1/dashboard/summary`.
-  - [x] Admin frontend client (`kredibble-admin/src/lib/api.ts`) and testimonials service (`kredibble-admin/src/lib/services/testimonials.ts`) wired to live endpoints.
+  - [x] Admin frontend client (`kredibble-admin/src/lib/api.ts`) and testimonials service (`kredibble-admin/src/lib/services/testimonials.ts`) wired to live endpoints. *Corrected 2026-10-17:* only partly true (the page still showed the "sample data" notice). The queue fell back to the seed on any API error and read only the first 100. The page showed the mock store, and moderation was fire-and-forget. Done for real on `feature/database-social-testimonials-api`: every page from the API, awaited `moderateTestimonial` (a refused move shows the server message and nothing moves), and the queue shows the server's list. The notice is removed.
 - **Verify:** Pending count matches queue; state machine transitions adhere to allowed moves; author email never leaks publicly. (Verified with `tests/be-010-testimonials.test.js`, 19/19 tests passing; full test suite and admin API contract tests passing; admin typecheck and eslint clean).
 
 #### BE-011 — Listings curation
@@ -2376,6 +2376,16 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
   - Full real run: 398 passed, and all 27 failures plus the 5 that did not run pass serially (32/32). The failures were browser and server crashes from local memory pressure: 2.7 GB free, "Target crashed", "worker exited unexpectedly".
   - Full mock run: 1051 passed, and the 8 failures pass serially (8/8).
   - Backend 697/697 (`--maxWorkers=4`); be-005 + be-006 19/19, including the new unlink test.
+- 2026-10-17 — BE-008/009/010 admin wiring done on `feature/database-social-testimonials-api` (stacked on the Programs/Partners PR). All three cards said "admin wired", but in real mode Database, Social and Testimonials read the seed behind the "sample data" notice, and saves were fire-and-forget with silent fallbacks to sample rows; the cards are corrected above. Now:
+  - Database: the list, detail page and form read `/admin/beneficiaries`; a sample id such as `rec-001` is "not found". Add, edit and verify wait for the server. A 409 duplicate names the matching field and record, Undo of a verify is a real `PATCH`, and the pace gauge reads `/admin/beneficiaries/pace`.
+  - Social: the month's posts and totals come from `/admin/social-posts`, the opportunity choices from `/admin/opportunities`, and "Log post" waits for the save.
+  - Testimonials: the queue reads `/admin/testimonials`; approve, reject, unpublish and re-approve wait for the server, and a refused change (409) leaves the row as it was.
+  - The "sample data" notice is gone from all three pages, and the real-run notice test covers `/database`, `/database/new`, `/social` and `/testimonials`.
+  - Fixed on the way: mock-mode records lost their "added by" (`addedById`) once `currentRecorder()` became mode-aware.
+  - Verified: admin `typecheck` + `lint` clean, `check:encoding` 0 failing. New real-API Playwright tests: 3 (database add/duplicate/verify/undo; a logged post listed after reload; testimonial approve plus a 409 that changes nothing).
+  - Full real run: 432 passed; of the 2 failures, one passed serially and the other was the `addedById` bug above (rule tests 10/10 after the fix).
+  - Full mock run: 1059 passed, 31 skipped (real-only), 0 failed.
+  - The backend is unchanged on this branch.
 | 2026-10-16 | SEC-129 | security/SEC-129-reference-data-manifest | Done | Manifest allowlist already present on `origin/main` (merged after 2026-10-15 sync); made AI 503 test env-independent (`env.aiEnabled=false` save/restore in `tests/security.p0.test.js`). `npm test -- tests/security.p0.test.js`: 71/71 with local `.env` AI keys AND with `.env` neutralized (CI-equivalent). Backend `npm run lint` clean. |
 
 ---

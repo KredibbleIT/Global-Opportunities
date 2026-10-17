@@ -12,7 +12,8 @@
  * - Actions (only for a role that can edit testimonials: the Communications Officer, Desk Lead and Super Admin; every other role
  *   sees no action and no email, they are not rendered): Approve and Reject on pending, Unpublish on approved, Re-approve on
  *   unpublished and rejected. Reject and Unpublish ask first (ConfirmDialog); every action shows a toast.
- * Outside mock mode a notice says the page shows sample data. The dev ?state=loading|empty|error switch works.
+ * Real mode reads /admin/testimonials and every action waits for the server (a refusal shows an error toast and nothing
+ * moves). Mock mode shows the sample data, and the dev ?state=loading|empty|error switch works there.
  */
 import { useMemo, useState } from "react";
 import { Quote } from "lucide-react";
@@ -24,13 +25,13 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { useConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Tabs, tabId, tabPanelId } from "@/components/ui/Tabs";
 import { useToast } from "@/components/ui/Toast";
 import { TESTIMONIAL_STATUSES, type Testimonial, type TestimonialStatus } from "@/lib/mock-entities";
 import { useMockCollection } from "@/lib/mock-store";
-import { applyTestimonialAction, loadTestimonials, sortTestimonials, subscribeTestimonials, testimonialCounts, type TestimonialAction } from "@/lib/services/testimonials";
+import { loadTestimonials, moderateTestimonial, sortTestimonials, subscribeTestimonials, testimonialCounts, type TestimonialAction } from "@/lib/services/testimonials";
+import { isMockMode } from "@/lib/services/mock-mode";
 import { getStatusMeta } from "@/lib/status-map";
 import { useListData } from "@/lib/use-list-data";
 
@@ -59,22 +60,29 @@ function TestimonialsContent() {
   const [tab, setTab] = useState<TestimonialStatus>("pending");
   const canEdit = can("testimonials", "edit");
 
-  // The queue works on the live store once the first load is done (a forced ?state=empty keeps it empty).
-  const all = useMemo(() => (loaded === null ? null : loaded.length === 0 ? [] : sortTestimonials(live)), [loaded, live]);
+  // Real mode shows what the server sent. Mock mode works on the live store once the first load is done (a forced
+  // ?state=empty keeps it empty).
+  const all = useMemo(
+    () => (!isMockMode() ? loaded : loaded === null ? null : loaded.length === 0 ? [] : sortTestimonials(live)),
+    [loaded, live],
+  );
   const counts = useMemo(() => (all ? testimonialCounts(all) : null), [all]);
   const tabs = TESTIMONIAL_STATUSES.map((value) => ({ value, label: getStatusMeta(value).label, count: counts ? counts[value] : undefined }));
   const visible = (all ?? []).filter((item) => item.status === tab);
 
-  const run = (action: TestimonialAction, item: Testimonial) => {
-    // TODO(backend): persist this change
-    if (!applyTestimonialAction(item.id, action)) return;
+  const run = async (action: TestimonialAction, item: Testimonial) => {
     const message: Record<TestimonialAction, string> = {
       approve: `${item.author}'s testimonial was approved and is now public.`,
       reject: `${item.author}'s testimonial was rejected.`,
       unpublish: `${item.author}'s testimonial was unpublished.`,
       reapprove: `${item.author}'s testimonial was approved again and is public.`,
     };
-    toast.success(message[action]);
+    try {
+      if (!(await moderateTestimonial(item, action))) return;
+      toast.success(message[action]);
+    } catch (problem) {
+      toast.error(problem instanceof Error ? problem.message : `${item.author}'s testimonial could not be moved. Try again.`);
+    }
   };
 
   const onAction = (action: TestimonialAction, item: Testimonial) => {
@@ -83,16 +91,16 @@ function TestimonialsContent() {
         title: "Reject this testimonial?",
         description: <>{item.author}&apos;s testimonial will not be shown on the public site. You can re-approve it later.</>,
         confirmLabel: "Reject testimonial",
-        onConfirm: () => run(action, item),
+        onConfirm: () => void run(action, item),
       });
     } else if (action === "unpublish") {
       confirm({
         title: "Unpublish this testimonial?",
         description: <>{item.author}&apos;s testimonial will be taken off the public site. You can re-approve it later.</>,
         confirmLabel: "Unpublish testimonial",
-        onConfirm: () => run(action, item),
+        onConfirm: () => void run(action, item),
       });
-    } else run(action, item);
+    } else void run(action, item);
   };
 
   return (
@@ -101,7 +109,6 @@ function TestimonialsContent() {
       subtitle="Stories from seekers, hirers and partners, waiting for a decision."
       toolbar={
         <div className="space-y-4">
-          <NotConnectedNotice />
           <Tabs tabs={tabs} value={tab} onChange={setTab} ariaLabel="Testimonial status" idPrefix={ID_PREFIX} />
         </div>
       }

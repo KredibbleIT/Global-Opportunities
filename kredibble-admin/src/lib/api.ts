@@ -352,12 +352,15 @@ const defaultFetchOpts: RequestInit = {
 export class ApiError extends Error {
   status: number;
   retryAfter?: number;
+  /** The whole error response, for the few callers that read more than the message (a 409's duplicate record). */
+  details?: unknown;
 
-  constructor(message: string, status: number, retryAfter?: number) {
+  constructor(message: string, status: number, retryAfter?: number, details?: unknown) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.retryAfter = retryAfter;
+    this.details = details;
   }
 }
 
@@ -429,7 +432,7 @@ async function refreshOrSignOut(): Promise<void> {
 function apiErrorFrom(response: Response, payload: { error?: { message?: string } } | null): ApiError {
   const errorMsg = payload?.error?.message || `Request failed with status ${response.status}`;
   const retryAfter = Number(response.headers.get("Retry-After"));
-  return new ApiError(errorMsg, response.status, Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : undefined);
+  return new ApiError(errorMsg, response.status, Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : undefined, payload ?? undefined);
 }
 
 /**
@@ -530,6 +533,13 @@ export const updateVerificationStatus = async (companyId: string, status: string
 export const getOpportunities = async <T = Record<string, unknown>>(status?: string) => {
   const query = status ? `?status=${status}` : "";
   return request<T[]>(`/admin/opportunities${query}`);
+};
+
+/** One page of the admin opportunities list (use with fetchAll to read them all). */
+export const getOpportunitiesPage = async (params: { status?: string; page: number; limit: number }) => {
+  const query = new URLSearchParams({ page: String(params.page), limit: String(params.limit) });
+  if (params.status) query.set("status", params.status);
+  return requestPage<OpportunityRecord>(`/admin/opportunities?${query.toString()}`);
 };
 
 export const loginAdmin = async (email: string, password: string) => {

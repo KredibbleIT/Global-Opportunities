@@ -14,8 +14,8 @@
  * - Everything comes from dated posts: logging one changes the totals, the platform table, the chart, the list and the Posts
  *   published, Social reach and Social engagement KPIs in the same render. A post dated in an earlier month changes THAT month
  *   (switch the month to see it). A past month is read-only.
- * Outside mock mode a notice says the page shows sample data (posts have no backend yet). The dev ?state=loading|empty|error
- * switch works.
+ * Real mode reads the month's posts and totals from the API (services/social.ts); logging a post waits for the server.
+ * Mock mode shows the sample data, and the dev ?state=loading|empty|error switch works there.
  */
 import { useCallback, useMemo } from "react";
 import { ExternalLink, Share2 } from "lucide-react";
@@ -27,11 +27,12 @@ import type { Column } from "@/components/list/types";
 import { LogPostCard } from "@/components/social/LogPostCard";
 import { MonthlyTotalsCard } from "@/components/social/MonthlyTotalsCard";
 import { PlatformBadge } from "@/components/social/PlatformBadge";
-import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 import { TruncatedLink, TruncatedText } from "@/components/ui/TruncatedText";
 import { formatDate, formatMonth } from "@/lib/format";
 import { useMockCollection, useMockStoreVersion } from "@/lib/mock-store";
-import { loadMonthPosts, socialMonth, subscribeSocial, toPostRows, type PostRow } from "@/lib/services/social";
+import { loadMonthPosts, loadMonthSocialTotals, socialMonth, subscribeSocial, toPostRows, type PostRow, type SocialMonth } from "@/lib/services/social";
+import { isMockMode } from "@/lib/services/mock-mode";
+import { useAsync } from "@/lib/use-async";
 import { useListData } from "@/lib/use-list-data";
 import { useMonth } from "@/lib/use-month";
 
@@ -53,10 +54,18 @@ function SocialContent() {
   const canEdit = can("social", "edit");
   const linkOpportunity = can("opportunities_queue", "view");
 
-  // The list and the totals work on the live store once the first load is done (a forced ?state=empty keeps the list empty).
-  const rows = useMemo(() => (loaded === null ? null : loaded.length === 0 ? [] : toPostRows(posts, month)), [loaded, posts, month]);
+  // Real mode shows what the server sent, and its totals (asked again each time the list loads). Mock mode works on the live
+  // store once the first load is done (a forced ?state=empty keeps the list empty).
+  const live = !isMockMode();
+  const rows = useMemo(() => (live ? loaded : loaded === null ? null : loaded.length === 0 ? [] : toPostRows(posts, month)), [live, loaded, posts, month]);
+  const loadTotals = useCallback(
+    (): Promise<SocialMonth | null> => (live && loaded !== null ? loadMonthSocialTotals(month) : Promise.resolve(null)),
+    [live, loaded, month],
+  );
+  const { data: liveTotals } = useAsync(loadTotals);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const totals = useMemo(() => (rows === null || (loaded !== null && loaded.length === 0) ? null : socialMonth(month)), [rows, loaded, month, storeVersion]);
+  const mockTotals = useMemo(() => (live || rows === null || (loaded !== null && loaded.length === 0) ? null : socialMonth(month)), [live, rows, loaded, month, storeVersion]);
+  const totals = live ? liveTotals : mockTotals;
 
   const columns: Column<PostRow>[] = [
     {
@@ -102,7 +111,6 @@ function SocialContent() {
       subtitle="Log the desk's social media posts and see what they reached."
       toolbar={
         <div className="space-y-4">
-          <NotConnectedNotice />
           <div className={canEdit ? "grid gap-4 lg:grid-cols-2 lg:items-stretch" : "grid gap-4"}>
             {canEdit && (
               <div className="flex min-w-0 flex-col">
