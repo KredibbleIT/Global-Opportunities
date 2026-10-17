@@ -2038,7 +2038,12 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
   - [x] Signups attributed through verified database records (`Beneficiary` with `ambassadorId`, `verified === true`, and `verifiedAt` within calendar month).
   - [x] `GET /admin/network/summary?month=`: returns `{ size, active, sharedActive, activityRate, month }` where `activityRate = active > 0 ? sharedActive / active : null`.
   - [x] `GET /admin/leaderboard?month=`: ranked deterministically by verified signups (desc), distinct clicks (desc), logged shares (desc), and ambassador name (asc); applicants excluded.
-  - [x] Admin network service facade (`kredibble-admin/src/lib/services/network.ts`) and API client (`kredibble-admin/src/lib/api.ts`) wired to live API endpoints.
+  - [ ] *(reopened 2026-10-17)* Admin network service wired to the live API. **Only writes are wired**, as fire-and-forget calls next to the in-memory store. In real mode every read comes from the deterministic seed (`mock-seed.ts`, 40 fake ambassadors), and the pages say so with `NotConnectedNotice`: `loadAmbassadorRows`, `loadAmbassador`, `loadLeaderboard`, `NetworkSummary`, and `leadOptions`/`seekerOptions` in `AmbassadorForm`. The API client functions exist but nothing calls them (`getAmbassadors`, `getAmbassadorDetailApi`, `getLeaderboardApi`, `getNetworkSummaryApi`, `getStaff`, `getSeekers`). Plan, on branch `feature/BE-007-network-api` (stacked on BE-029's PR #116):
+    - In real mode, the loaders call those APIs through `fetchAll`/`orMissing` and map records to `Ambassador`. Treat 400/404 on detail as not found. Leads come from `getStaff` (`userId`), linked accounts from `getSeekers` (`userId`).
+    - Writes are awaited in real mode, with an error toast on failure, and a real-mode change emitter feeds `subscribeNetwork`.
+    - Import and export then call `POST /admin/ambassadors/import|export` (BE-029), and the client-side `recordAudit` for those two actions is dropped in real mode.
+    - Remove `NotConnectedNotice` from the Network list, detail, form and leaderboard.
+    - Un-skip the real-mode UI tests in `tests/ambassadors-import-export.spec.ts`.
 - **Verify:** the leaderboard order and the activity rate equal the admin's unit tests on the same data. (Verified with `tests/be-007-ambassadors.test.js`, 8/8 tests passing; full suite 27 suites / 295 tests passing; admin API contract tests passing; admin typecheck and eslint clean).
 
 #### BE-008 — Database records
