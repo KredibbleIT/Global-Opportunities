@@ -2376,6 +2376,16 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
   - Full real run: 398 passed, and all 27 failures plus the 5 that did not run pass serially (32/32). The failures were browser and server crashes from local memory pressure: 2.7 GB free, "Target crashed", "worker exited unexpectedly".
   - Full mock run: 1051 passed, and the 8 failures pass serially (8/8).
   - Backend 697/697 (`--maxWorkers=4`); be-005 + be-006 19/19, including the new unlink test.
+- 2026-10-17 — BE-008/009/010 admin wiring done on `feature/database-social-testimonials-api` (stacked on the Programs/Partners PR). All three cards said "admin wired", but in real mode Database, Social and Testimonials read the seed behind the "sample data" notice, and saves were fire-and-forget with silent fallbacks to sample rows; the cards are corrected above. Now:
+  - Database: the list, detail page and form read `/admin/beneficiaries`; a sample id such as `rec-001` is "not found". Add, edit and verify wait for the server. A 409 duplicate names the matching field and record, Undo of a verify is a real `PATCH`, and the pace gauge reads `/admin/beneficiaries/pace`.
+  - Social: the month's posts and totals come from `/admin/social-posts`, the opportunity choices from `/admin/opportunities`, and "Log post" waits for the save.
+  - Testimonials: the queue reads `/admin/testimonials`; approve, reject, unpublish and re-approve wait for the server, and a refused change (409) leaves the row as it was.
+  - The "sample data" notice is gone from all three pages, and the real-run notice test covers `/database`, `/database/new`, `/social` and `/testimonials`.
+  - Fixed on the way: mock-mode records lost their "added by" (`addedById`) once `currentRecorder()` became mode-aware.
+  - Verified: admin `typecheck` + `lint` clean, `check:encoding` 0 failing. New real-API Playwright tests: 3 (database add/duplicate/verify/undo; a logged post listed after reload; testimonial approve plus a 409 that changes nothing).
+  - Full real run: 432 passed; of the 2 failures, one passed serially and the other was the `addedById` bug above (rule tests 10/10 after the fix).
+  - Full mock run: 1059 passed, 31 skipped (real-only), 0 failed.
+  - The backend is unchanged on this branch.
 | 2026-10-16 | SEC-129 | security/SEC-129-reference-data-manifest | Done | Manifest allowlist already present on `origin/main` (merged after 2026-10-15 sync); made AI 503 test env-independent (`env.aiEnabled=false` save/restore in `tests/security.p0.test.js`). `npm test -- tests/security.p0.test.js`: 71/71 with local `.env` AI keys AND with `.env` neutralized (CI-equivalent). Backend `npm run lint` clean. |
 
 ---
