@@ -2394,27 +2394,25 @@ export interface ShowcaseHistoryApiEntry {
   metadata: Record<string, unknown>;
 }
 
-const showcaseJson = (method: string, body: unknown): RequestInit => ({ method, body: JSON.stringify(body) });
-
 export const getShowcaseApi = async () => request<ShowcaseApiData>("/admin/showcase");
 export const getShowcaseHistoryApi = async () => request<ShowcaseHistoryApiEntry[]>("/admin/showcase/history");
 
 export const createShowcaseEntryApi = async (body: ShowcaseEntryWriteInput) =>
-  request<ShowcaseEntry>("/admin/showcase/entries", showcaseJson("POST", body));
+  request<ShowcaseEntry>("/admin/showcase/entries", { method: "POST", body: JSON.stringify(body) });
 export const updateShowcaseEntryApi = async (id: string, body: Partial<ShowcaseEntryWriteInput>) =>
-  request<ShowcaseEntry>(`/admin/showcase/entries/${id}`, showcaseJson("PATCH", body));
+  request<ShowcaseEntry>(`/admin/showcase/entries/${id}`, { method: "PATCH", body: JSON.stringify(body) });
 export const setShowcaseEntryVisibleApi = async (id: string, visible: boolean) =>
-  request<ShowcaseEntry>(`/admin/showcase/entries/${id}/visibility`, showcaseJson("POST", { visible }));
+  request<ShowcaseEntry>(`/admin/showcase/entries/${id}/visibility`, { method: "POST", body: JSON.stringify({ visible }) });
 export const moveShowcaseEntryApi = async (id: string, direction: "up" | "down") =>
-  request<{ from: number; to: number }>(`/admin/showcase/entries/${id}/move`, showcaseJson("POST", { direction }));
+  request<{ from: number; to: number }>(`/admin/showcase/entries/${id}/move`, { method: "POST", body: JSON.stringify({ direction }) });
 export const deleteShowcaseEntryApi = async (id: string) => request<undefined>(`/admin/showcase/entries/${id}`, { method: "DELETE" });
 
 export const createShowcaseCategoryApi = async (body: { name: string; kind: ShowcaseKind }) =>
-  request<ShowcaseCategory>("/admin/showcase/categories", showcaseJson("POST", body));
+  request<ShowcaseCategory>("/admin/showcase/categories", { method: "POST", body: JSON.stringify(body) });
 export const updateShowcaseCategoryApi = async (id: string, body: { name?: string; kind?: ShowcaseKind; visible?: boolean }) =>
-  request<ShowcaseCategory>(`/admin/showcase/categories/${id}`, showcaseJson("PATCH", body));
+  request<ShowcaseCategory>(`/admin/showcase/categories/${id}`, { method: "PATCH", body: JSON.stringify(body) });
 export const moveShowcaseCategoryApi = async (id: string, direction: "up" | "down") =>
-  request<{ from: number; to: number }>(`/admin/showcase/categories/${id}/move`, showcaseJson("POST", { direction }));
+  request<{ from: number; to: number }>(`/admin/showcase/categories/${id}/move`, { method: "POST", body: JSON.stringify({ direction }) });
 export const deleteShowcaseCategoryApi = async (id: string) => request<undefined>(`/admin/showcase/categories/${id}`, { method: "DELETE" });
 
 /** Upload a Showcase picture; store the returned https `url` on the entry. */
