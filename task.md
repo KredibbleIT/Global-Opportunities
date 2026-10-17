@@ -298,6 +298,7 @@ Note: the audit's own text reached the same conclusion on #10 ("Actually this on
 | SEC-128 | Mobile test coverage: 0 screen/UI component tests; 116 ESLint warnings across screens | P2 | Mobile tests | ✅ Done (MOB-019 Completed on main; `kredibble-app/__tests__/screen-integration.test.ts` present, 95/95 per 2026-10-09 log) |
 | SEC-129 | SEC-002 manifest red on main: BE-017 public `GET /reference-data` routes not in `PUBLIC_ROUTES` | P1 | Backend tests | ✅ Done (2026-10-16: allowlist already on `origin/main`; AI 503 test made env-independent, 71/71 with and without local `.env` AI key) |
 | SEC-130 | Gitleaks ignore-list pinned to line numbers; breaks on every `routes/index.js` change | P3 | CI/CD + Repo hygiene | 🔴 Open — filed 2026-10-16 after BE-028's +4-line mount shifted the `verification/companies` policyKey false positives and failed the secret scan |
+| SEC-131 | Every staff member passes every screen check: `requireScreen` / `requirePortalRoles` wave through any admin session, and all staff sign in with one | P1 | Backend authz | 🔴 Open — filed 2026-10-17 after a `support`-only staffer got 200/201 on `/admin/partners` |
 
 ---
 
@@ -1532,6 +1533,17 @@ Found while planning the move to the company infrastructure platform (`Company_I
 **Fix:** Decide public-by-design (reference taxonomy is non-sensitive) and add both routes to `PUBLIC_ROUTES` + reachable check, or put them behind auth. Either way the sweep must be green.
 **Acceptance criteria:**
 - [x] `npx jest tests/security.p0.test.js` is green on `main` (with and without a local `.env` AI key) — verified 2026-10-16, 71/71 both ways
+
+### SEC-131 — Every staff member passes every screen check: the admin-session bypass in `requireScreen` / `requirePortalRoles`
+**Priority:** P1
+**Evidence (probed 2026-10-17 on `main` at `e1cff62`):** `requireScreen` and `requirePortalRoles` (`kredibble-backend/src/middleware/portal-auth.js:16,82`) both begin with `if (req.auth?.role === 'admin' && req.auth?.aud === 'kredibble-admin') return next()`. Every staff member signs in with an admin session, because staff Users have `role: 'admin'` (BE-028's `POST /admin/accounts` creates them that way, `src/routes/accounts.js:107-114`). So the matrix is never consulted for staff: a staff member whose only role is `support` got 200 on `GET /admin/partners` and 201 on `POST /admin/partners`, though Support has no Partners access. BE-001's "a request without the grant returns 403" holds only for user-realm Bearer tokens, which the admin UI never sends. `/auth/admin/me` has the same gap the other way round: an admin with no ACTIVE staff record is reported as `super_admin`, so the UI shows a suspended staffer every screen.
+**Risk:** every staff account, whatever its role, can read and write every admin screen: partners, beneficiaries, staff invites, notifications broadcast, settings, integrations. The role matrix is cosmetic. A compromised low-privilege staff account is a full admin compromise.
+**Fix:** one role resolver for every guard, the same rule `requireSuperAdmin` (BE-028) and `requireStaffRoles` (BE-029) already use: an ACTIVE `StaffMember` record's roles decide; only an admin session with NO staff record at all (the CLI-provisioned root admin) counts as `super_admin`; a suspended or invited record gets nothing. `requireScreen` then applies `roleCan` / `getEffectiveToggles` as before. `requirePortalRoles`' older role lists never name Super Admin, so a resolved `super_admin` passes them (the matrix gives it everything). `/auth/admin/me` uses the same resolver.
+**Acceptance criteria:**
+- [ ] `requireScreen`, `requirePortalRoles`, `requireStaffRoles` and `requireSuperAdmin` share one role resolver; no admin-session bypass is left
+- [ ] Table-driven test: every role × every `requireScreen` screen at view and edit, through real routes, for admin-session staff and user-realm staff tokens, matches `roleCan`
+- [ ] A suspended Super Admin (admin session) gets 403; the root admin (no staff record) keeps full access
+- [ ] Backend suite green; admin Playwright green in mock and real mode (the e2e admin is a root admin)
 
 # Execution Order
 
