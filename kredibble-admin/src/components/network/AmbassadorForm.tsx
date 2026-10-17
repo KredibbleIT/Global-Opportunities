@@ -11,7 +11,8 @@
  * THE REFERRAL CODE IS NOT A FIELD. It is generated when the ambassador is added (GOD-XXXXXX, unique) and shown read-only
  * (ReferralCodeCard: a locked look and a Copy button). There is no input for it anywhere, and saving an edit never changes it.
  * Validation: errors show after a field is left and on submit; the first invalid field takes focus. Leaving with unsaved
- * changes asks first. Each save carries a TODO(backend).
+ * changes asks first. Saving waits for services/network.ts saveAmbassador (the API in real mode, which also uploads a
+ * newly picked photo); a failure shows an error toast and keeps the form open with what was typed.
  *
  * Props: ambassador? (the ambassador being edited; omit for a new one)
  */
@@ -28,7 +29,9 @@ import {
   type AmbassadorTier,
   type MemberType,
 } from "@/lib/mock-entities";
-import { createAmbassador, leadOptions, seekerOptions, updateAmbassador, type AmbassadorFields } from "@/lib/services/network";
+import { loadLeadOptions, loadSeekerOptions, saveAmbassador, type AmbassadorFields } from "@/lib/services/network";
+import { isMockMode } from "@/lib/services/mock-mode";
+import { useAsync } from "@/lib/use-async";
 import { ReferralCodeCard } from "@/components/network/ReferralCodeCard";
 import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/form/Field";
@@ -41,7 +44,6 @@ import { Switch } from "@/components/ui/form/Switch";
 import { Textarea } from "@/components/ui/form/Textarea";
 import { focusFirstInvalid, useTouched } from "@/components/ui/form/use-touched";
 import { useUnsavedGuard } from "@/components/ui/form/use-unsaved-guard";
-import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 import { useToast } from "@/components/ui/Toast";
 import { getStatusMeta } from "@/lib/status-map";
 
@@ -125,8 +127,8 @@ export function validateAmbassador(form: FormState): Errors {
 }
 
 export function AmbassadorForm({ ambassador }: { ambassador?: Ambassador }) {
-  const leads = useMemo(() => leadOptions(), []);
-  const seekers = useMemo(() => seekerOptions(), []);
+  const { data: leads } = useAsync(loadLeadOptions);
+  const { data: seekers } = useAsync(loadSeekerOptions);
   const initial = useMemo<FormState>(() => (ambassador ? fromAmbassador(ambassador) : EMPTY), [ambassador]);
   const [form, setForm] = useState<FormState>(initial);
   const [saving, setSaving] = useState(false);
@@ -137,8 +139,8 @@ export function AmbassadorForm({ ambassador }: { ambassador?: Ambassador }) {
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
   const guard = useUnsavedGuard(dirty && !saving);
   const errors = validateAmbassador(form);
-  const leadSelect: SelectOption<string>[] = [{ value: NONE, label: "No lead assigned" }, ...leads.map((person) => ({ value: person.id, label: person.name, description: person.title }))];
-  const seekerSelect: SelectOption<string>[] = [{ value: NONE, label: "No linked account" }, ...seekers.map((seeker) => ({ value: seeker.id, label: seeker.name, description: seeker.email }))];
+  const leadSelect: SelectOption<string>[] = [{ value: NONE, label: "No lead assigned" }, ...(leads ?? []).map((person) => ({ value: person.id, label: person.name, description: person.title }))];
+  const seekerSelect: SelectOption<string>[] = [{ value: NONE, label: "No linked account" }, ...(seekers ?? []).map((seeker) => ({ value: seeker.id, label: seeker.name, description: seeker.email }))];
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((current) => ({ ...current, [key]: value }));
 
@@ -150,8 +152,8 @@ export function AmbassadorForm({ ambassador }: { ambassador?: Ambassador }) {
       return;
     }
     setSaving(true);
-    // TODO(backend): persist this change (create or update the ambassador; the API generates the referral code).
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    // Mock mode saves instantly; a short pause shows the saving state as a real save would.
+    if (isMockMode()) await new Promise((resolve) => setTimeout(resolve, 600));
     const fields: AmbassadorFields = {
       name: form.name.trim(),
       email: form.email.trim(),
@@ -169,11 +171,14 @@ export function AmbassadorForm({ ambassador }: { ambassador?: Ambassador }) {
       trained: form.trained,
       linkedSeekerId: form.linkedSeekerId === NONE ? undefined : form.linkedSeekerId,
     };
-    const saved = ambassador ? updateAmbassador(ambassador.id, fields) : createAmbassador(fields);
-    toast.success(
-      ambassador ? `${fields.name} was updated.` : `${fields.name} was added to the network.${saved ? ` Their referral code is ${saved.referralCode}.` : ""}`,
-    );
-    guard.leaveNow(saved ? `${LIST_HREF}/${saved.id}` : LIST_HREF);
+    try {
+      const saved = await saveAmbassador(fields, ambassador?.id);
+      toast.success(ambassador ? `${fields.name} was updated.` : `${fields.name} was added to the network. Their referral code is ${saved.referralCode}.`);
+      guard.leaveNow(`${LIST_HREF}/${saved.id}`);
+    } catch (problem) {
+      setSaving(false);
+      toast.error(problem instanceof Error ? problem.message : "The ambassador could not be saved. Try again.");
+    }
   };
 
   return (
@@ -185,7 +190,6 @@ export function AmbassadorForm({ ambassador }: { ambassador?: Ambassador }) {
         <p className="page-subtitle mt-1 mb-6">
           {ambassador ? "Change this ambassador's details. Their referral code stays as it is." : "Add someone to the ambassador network. Their referral code is made when you save."}
         </p>
-        <NotConnectedNotice className="mb-4" />
 
         <div className="space-y-4">
           <Card>

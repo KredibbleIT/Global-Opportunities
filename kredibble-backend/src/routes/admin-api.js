@@ -1438,9 +1438,10 @@ adminApiRouter.post('/ambassadors/:id/amplifications', requireAdminOrStaffAuth, 
   res.status(201).json({ data: toAmplificationClientObject(amplification) });
 }));
 
-// BE-029: CSV import/export (POST /ambassadors/import, /ambassadors/export).
-// Each route carries its own Super Admin / Desk Lead guard. Both are POSTs, so
-// they never collide with the managed GET /ambassadors/:id below.
+// BE-029: CSV import/export (POST /ambassadors/import, /ambassadors/export)
+// and GET /ambassadors/history. Each route carries its own Super Admin / Desk
+// Lead guard. Mounted before the managed routes, so GET /ambassadors/:id below
+// never reads "history" as an id.
 adminApiRouter.use('/ambassadors', ambassadorsRouter);
 
 addManagedRoutes({

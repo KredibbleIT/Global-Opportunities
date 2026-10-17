@@ -757,7 +757,7 @@ const mountAdminDataRoutes = (router) => {
   // Article banners: images only, stored outside any user's folder.
   router.use('/admin/upload', createUploadRouter({
     authenticate: requireAdminAuth,
-    purposes: ['article-banner'],
+    purposes: ['article-banner', 'ambassador-photo'],
     folderFor: (req, purpose) => `kredibble/admin/${purpose}`,
     allowedMimeTypes: IMAGE_MIME_TYPES,
   }));

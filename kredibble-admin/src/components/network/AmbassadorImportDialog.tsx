@@ -1,8 +1,9 @@
 "use client";
 
 /**
- * AmbassadorImportDialog: a four-step wizard that imports ambassadors from a CSV file. Everything runs in the browser; nothing
- * is saved until the person confirms in step 3. Step structure and keyboard ideas come from the 21st.dev "Wizard Steps" and
+ * AmbassadorImportDialog: a four-step wizard that imports ambassadors from a CSV file. The preview runs in the browser; nothing
+ * is saved until the person confirms in step 3. In real mode the confirm sends the file itself to the server, which checks
+ * every row again; step 4 shows the SERVER's counts and its error report (it may refuse a row the preview passed). Step structure and keyboard ideas come from the 21st.dev "Wizard Steps" and
  * "Stepper" candidates (numbered indicators, aria-current="step"), restyled to the brief.
  *
  *   1. Upload   a drop area and a "Choose a CSV file" button (.csv only, 5 MB), plus "Download template". The file is read in
@@ -18,7 +19,8 @@
  * Accessibility: focus moves to the dialog title on every step; a polite live region announces each step and the result; the
  * file input has a label; no status is shown by colour alone (every chip has an icon and a word).
  *
- * Props: onClose, onCommit(preview, choice, status, fileName) -> the result (the page checks the permission, saves and writes the audit entry).
+ * Props: existing (emails already in the network -> ambassador id), onClose, onCommit(preview, choice, status, file) -> a
+ * promise of the result (the page checks the permission and saves). A rejected commit shows its message in step 3.
  */
 import { useRef, useState, type DragEvent, type ReactNode } from "react";
 import { AlertTriangle, CheckCircle2, FileUp, GitMerge, Info, UserCheck, XCircle } from "lucide-react";
@@ -35,11 +37,11 @@ import {
   type ExistingChoice,
   type ImportStatus,
   type ImportPreview,
-  type ImportResult,
   type ImportRow,
 } from "@/lib/ambassador-io";
-import { downloadTextFile, parseCsv } from "@/lib/csv";
-import { existingEmails } from "@/lib/services/ambassador-import";
+import { csvWithBom, downloadTextFile, parseCsv, toCsv } from "@/lib/csv";
+import type { ImportOutcome } from "@/lib/services/ambassador-import";
+import { isMockMode } from "@/lib/services/mock-mode";
 import { DataTable } from "@/components/list/DataTable";
 import type { Column } from "@/components/list/types";
 import { Button } from "@/components/ui/Button";
@@ -104,13 +106,16 @@ const makeColumns = (status: ImportStatus): Column<ImportRow>[] => [
 ];
 
 interface AmbassadorImportDialogProps {
+  existing: ReadonlyMap<string, string>;
   onClose: () => void;
-  onCommit: (preview: ImportPreview, choice: ExistingChoice, status: ImportStatus, fileName: string) => ImportResult;
+  onCommit: (preview: ImportPreview, choice: ExistingChoice, status: ImportStatus, file: File) => Promise<ImportOutcome>;
 }
 
-export function AmbassadorImportDialog({ onClose, onCommit }: AmbassadorImportDialogProps) {
+export function AmbassadorImportDialog({ existing, onClose, onCommit }: AmbassadorImportDialogProps) {
   const [step, setStep] = useState<Step>(1);
+  const [file, setFile] = useState<File | null>(null);
   const [fileName, setFileName] = useState("");
+  const [commitError, setCommitError] = useState<string | null>(null);
   const [progress, setProgress] = useState<number | null>(null); // 0..1 while reading, null otherwise
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -121,7 +126,7 @@ export function AmbassadorImportDialog({ onClose, onCommit }: AmbassadorImportDi
   const [status, setStatus] = useState<ImportStatus>(DEFAULT_IMPORT_STATUS);
   const [hasStatusColumn, setHasStatusColumn] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [result, setResult] = useState<ImportResult | null>(null);
+  const [result, setResult] = useState<ImportOutcome | null>(null);
   const [dragging, setDragging] = useState(false);
   const [announcement, setAnnouncement] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -149,6 +154,7 @@ export function AmbassadorImportDialog({ onClose, onCommit }: AmbassadorImportDi
       setError(`That file is ${(file.size / 1024 / 1024).toFixed(1)} MB. The limit is 5 MB.`);
       return;
     }
+    setFile(file);
     setFileName(file.name);
     try {
       setProgress(0);
@@ -164,7 +170,7 @@ export function AmbassadorImportDialog({ onClose, onCommit }: AmbassadorImportDi
       }
       if (table.length < 2) throw new Error("The file has a header row but no people below it.");
       const rows = readRows(table.slice(1), mapping);
-      const analysed = analyseImport(rows, existingEmails());
+      const analysed = analyseImport(rows, existing);
       setIgnored(mapping.ignored);
       setHasStatusColumn(mapping.columns.includes("status"));
       setPreview(analysed);
@@ -210,17 +216,29 @@ export function AmbassadorImportDialog({ onClose, onCommit }: AmbassadorImportDi
     : [];
 
   const confirmImport = async () => {
-    if (!preview) return;
+    if (!preview || !file) return;
     setSaving(true);
-    await nextTurn(); // show "Importing…" for a frame; the store write itself is instant
-    const done = onCommit(preview, choice, status, fileName);
-    setResult(done);
-    setSaving(false);
-    go(4, `Done. ${done.created} created as ${IMPORT_STATUS_LABEL[done.status]}, ${done.updated} updated, ${done.skipped} skipped, ${done.failed} failed, ${done.merged} duplicates merged.`);
+    setCommitError(null);
+    await nextTurn(); // show "Importing…" for at least a frame
+    try {
+      const done = await onCommit(preview, choice, status, file);
+      setResult(done);
+      setSaving(false);
+      go(4, `Done. ${done.created} created as ${IMPORT_STATUS_LABEL[done.status]}, ${done.updated} updated, ${done.skipped} skipped, ${done.failed} failed, ${done.merged} duplicates merged.`);
+    } catch (problem) {
+      setSaving(false);
+      const message = problem instanceof Error ? problem.message : "The import could not be saved.";
+      setCommitError(message);
+      announce(`Nothing was imported. ${message}`);
+    }
   };
 
+  // The server's own list of failed rows when it sent one (real mode), otherwise the preview's.
   const downloadErrors = () => {
-    if (preview) downloadTextFile(`ambassadors-import-errors.csv`, buildErrorReportCsv(preview));
+    if (result?.errors) {
+      const lines = [["row", "email", "reason"], ...result.errors.map((row) => [String(row.row), row.email, row.reason])];
+      downloadTextFile(`ambassadors-import-errors.csv`, csvWithBom(toCsv(lines)));
+    } else if (preview) downloadTextFile(`ambassadors-import-errors.csv`, buildErrorReportCsv(preview));
   };
 
   const stepper = (
@@ -254,8 +272,11 @@ export function AmbassadorImportDialog({ onClose, onCommit }: AmbassadorImportDi
       <Info size={18} strokeWidth={1.75} aria-hidden="true" className="mt-0.5 shrink-0 text-purple-700" />
       <p className="caption text-ink">
         <span className="font-semibold">Pictures:</span> the picture column holds Google Drive links, not images. They are saved as a source link and the
-        list shows an initials avatar. A backend job must later download each file into our own storage, and the files must be shared as{" "}
-        <span className="font-semibold">&ldquo;Anyone with the link&rdquo;</span> for that to work.
+        list shows an initials avatar{" "}
+        {isMockMode()
+          ? "(sample data: nothing is copied). With live data the server copies each file into our own storage"
+          : "until the server has copied each file into our own storage, shortly after the import"}
+        . The files must be shared as <span className="font-semibold">&ldquo;Anyone with the link&rdquo;</span> for that to work.
       </p>
     </div>
   );
@@ -438,6 +459,14 @@ export function AmbassadorImportDialog({ onClose, onCommit }: AmbassadorImportDi
 
       {step === 3 && counts && (
         <section aria-label="Options" className="space-y-4">
+          {commitError && (
+            <div role="alert" className="flex gap-3 rounded-control bg-danger-soft p-3" data-testid="import-commit-error">
+              <XCircle size={18} strokeWidth={1.75} aria-hidden="true" className="mt-0.5 shrink-0 text-danger" />
+              <p className="body-sm text-ink">
+                <span className="font-semibold">Nothing was imported.</span> {commitError}
+              </p>
+            </div>
+          )}
           <div data-testid="status-choice">
             <p className="body-sm mb-2 font-semibold text-ink">Status for imported ambassadors</p>
             <SegmentedControl
@@ -509,6 +538,12 @@ export function AmbassadorImportDialog({ onClose, onCommit }: AmbassadorImportDi
             <MiniStat compact value={result.merged} label="Duplicates merged" />
           </div>
           {result.failed > 0 && <p className="caption">Rows that failed were not imported. Download the error report to see the line and the reason for each.</p>}
+          {result.picturesQueued !== undefined && result.picturesQueued > 0 && (
+            <p className="caption" data-testid="result-pictures">
+              {result.picturesQueued} {result.picturesQueued === 1 ? "picture is" : "pictures are"} being copied from Google Drive. Each one shows on the
+              ambassador once it has been copied.
+            </p>
+          )}
           {pictureNote}
         </section>
       )}

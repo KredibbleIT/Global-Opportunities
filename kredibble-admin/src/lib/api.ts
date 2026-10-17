@@ -403,24 +403,52 @@ async function requestPayload<P>(path: string, init: RequestInit = {}, retried =
   const payload = await response.json().catch(() => null);
 
   if (!response.ok) {
-    const errorMsg = payload?.error?.message || `Request failed with status ${response.status}`;
     // On 401, try to refresh once and retry
     // A 401 from the LOGIN call means wrong credentials, not an expired session: show the server's message.
     if (response.status === 401 && !retried && !path.startsWith("/auth/admin/login")) {
-      try {
-        await refreshAdminSession();
-        // Retry the original request
-        return requestPayload<P>(path, init, true);
-      } catch {
-        clearAdminSession();
-        throw new Error("Session expired, please log in again");
-      }
+      await refreshOrSignOut();
+      return requestPayload<P>(path, init, true);
     }
-    const retryAfter = Number(response.headers.get("Retry-After"));
-    throw new ApiError(errorMsg, response.status, Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : undefined);
+    throw apiErrorFrom(response, payload);
   }
 
   return payload as P;
+}
+
+/** One refresh after a 401; a failed refresh signs the admin out. */
+async function refreshOrSignOut(): Promise<void> {
+  try {
+    await refreshAdminSession();
+  } catch {
+    clearAdminSession();
+    throw new Error("Session expired, please log in again");
+  }
+}
+
+/** The ApiError for a non-2xx response: the server's message, the status, and Retry-After for a 429. */
+function apiErrorFrom(response: Response, payload: { error?: { message?: string } } | null): ApiError {
+  const errorMsg = payload?.error?.message || `Request failed with status ${response.status}`;
+  const retryAfter = Number(response.headers.get("Retry-After"));
+  return new ApiError(errorMsg, response.status, Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : undefined);
+}
+
+/**
+ * A response that is not JSON (a CSV download), as text. Errors are JSON like everywhere else and become an ApiError;
+ * an expired session is refreshed once, as for `request`. Note: decoding drops a leading byte-order mark.
+ */
+export async function requestText(path: string, init: RequestInit = {}, retried = false): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...defaultFetchOpts,
+    ...init,
+    headers: { ...defaultFetchOpts.headers, ...init.headers },
+  });
+  if (response.ok) return response.text();
+  const payload = await response.json().catch(() => null);
+  if (response.status === 401 && !retried) {
+    await refreshOrSignOut();
+    return requestText(path, init, true);
+  }
+  throw apiErrorFrom(response, payload);
 }
 
 /** One record or action result: the response's `data`. Bodyless responses (204) give `undefined`. */
@@ -1206,6 +1234,11 @@ export interface AmbassadorApiRecord {
   referralCode: string;
   joinedAt: string;
   dormantSince?: string;
+  /** BE-029 import fields. */
+  whatsapp?: string;
+  region?: string;
+  pictureSourceUrl?: string;
+  submittedAt?: string;
 }
 
 export interface AmplificationLogApiRecord {
@@ -1275,14 +1308,23 @@ export const getAmbassadorDetailApi = async (id: string, month?: string) => {
   }>(`/admin/ambassadors/${id}/detail${query}`);
 };
 
-export const createAmbassadorApi = async (data: Partial<AmbassadorApiRecord>) => {
+/** What the admin form sends. `null` clears an optional link (lead, linked account); the server sets code and dates. */
+export type AmbassadorWriteInput = Omit<
+  Partial<AmbassadorApiRecord>,
+  "id" | "referralCode" | "joinedAt" | "dormantSince" | "assignedLeadId" | "linkedUserId" | "linkedSeekerId" | "leadName"
+> & {
+  assignedLeadId?: string | null;
+  linkedUserId?: string | null;
+};
+
+export const createAmbassadorApi = async (data: AmbassadorWriteInput) => {
   return request<AmbassadorApiRecord>("/admin/ambassadors", {
     method: "POST",
     body: JSON.stringify(data),
   });
 };
 
-export const updateAmbassadorApi = async (id: string, data: Partial<AmbassadorApiRecord>) => {
+export const updateAmbassadorApi = async (id: string, data: AmbassadorWriteInput) => {
   return request<AmbassadorApiRecord>(`/admin/ambassadors/${id}`, {
     method: "PATCH",
     body: JSON.stringify(data),
@@ -1318,6 +1360,71 @@ export const getLeaderboardApi = async (month?: string) => {
   const query = month ? `?month=${encodeURIComponent(month)}` : "";
   return request<LeaderboardRowApiRecord[]>(`/admin/leaderboard${query}`);
 };
+
+/** Upload an ambassador's profile photo; store the returned `url` as the ambassador's photo. */
+export const uploadAmbassadorPhoto = async (file: File) => {
+  const body = new FormData();
+  body.append("file", file);
+  return request<UploadResult>(`/admin/upload?purpose=ambassador-photo`, { method: "POST", body });
+};
+
+// --- Ambassador CSV import / export (BE-029) -----------------------------------------------------
+
+/** One failed row as the server judged it (the server re-checks every row of the file). */
+export interface AmbassadorImportErrorRow {
+  row: number;
+  email: string;
+  reason: string;
+}
+
+export interface AmbassadorImportApiResult {
+  choice: "skip" | "update";
+  status: "active" | "pending";
+  created: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  merged: number;
+  /** Google Drive pictures queued for copying into our storage. */
+  picturesQueued: number;
+  counts: { total: number; valid: number; warnings: number; errors: number; merged: number; exists: number };
+  errors: AmbassadorImportErrorRow[];
+  ignoredColumns: string[];
+}
+
+/** Sends the CSV file itself: the server parses and validates it again and writes the audit entry. */
+export const importAmbassadorsApi = async (file: File, choice: "skip" | "update", status: "active" | "pending") => {
+  const body = new FormData();
+  body.append("choice", choice);
+  body.append("status", status);
+  body.append("file", file);
+  return request<AmbassadorImportApiResult>("/admin/ambassadors/import", { method: "POST", body });
+};
+
+export interface AmbassadorExportRequest {
+  scope: "all" | "filtered" | "selected";
+  columns: string[];
+  /** True only when a sensitive column (email, phone, WhatsApp) was ticked: the server drops them otherwise. */
+  includeSensitive: boolean;
+  ids?: string[];
+  filters?: { status?: string; tier?: string; country?: string; search?: string };
+}
+
+/** The export file's text (UTF-8 with a byte-order mark). The server writes the audit entry. */
+export const exportAmbassadorsApi = async (body: AmbassadorExportRequest) =>
+  requestText("/admin/ambassadors/export", { method: "POST", body: JSON.stringify(body) });
+
+export interface AmbassadorHistoryApiEntry {
+  id: string;
+  at: string;
+  action: "ambassadors.import" | "ambassadors.export";
+  outcome: "success" | "failure";
+  actorName: string | null;
+  metadata: Record<string, unknown>;
+}
+
+/** The latest imports and exports, newest first. */
+export const getAmbassadorHistoryApi = async () => request<AmbassadorHistoryApiEntry[]>("/admin/ambassadors/history");
 
 export type BeneficiarySource = "organic" | "ambassador" | "event" | "partner" | "import";
 

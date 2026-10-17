@@ -11,7 +11,8 @@
  *   Referral code card (read-only, with Copy).
  * "Log amplification" opens a small form (LogAmplificationDialog): Channel and an optional note. Saving adds an entry to the
  * log dated today, adds one to this month's shares (here and on the leaderboard) and shows a toast.
- * Data: services/network.ts (live store). Each action carries a TODO(backend).
+ * Data: services/network.ts (the API in real mode, the mock store in mock mode). Logging a share waits for the save; a
+ * failure shows an error toast and keeps the dialog open.
  *
  * Props: id (the ambassador id)
  */
@@ -29,7 +30,6 @@ import { ReferralCodeCard } from "@/components/network/ReferralCodeCard";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { KeyValueList } from "@/components/ui/KeyValueList";
 import { MiniStat } from "@/components/ui/MiniStat";
-import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TagPill } from "@/components/ui/TagPill";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -38,7 +38,7 @@ import { TruncatedText } from "@/components/ui/TruncatedText";
 import { useBreadcrumbLabel } from "@/lib/breadcrumb-label";
 import { formatDate } from "@/lib/format";
 import { AMBASSADOR_TIER_LABELS, MEMBER_TYPE_LABELS, type SocialPlatform } from "@/lib/mock-entities";
-import { loadAmbassador, logAmplification, subscribeNetwork } from "@/lib/services/network";
+import { loadAmbassador, recordShare, subscribeNetwork } from "@/lib/services/network";
 import { useDetailData } from "@/lib/use-detail-data";
 
 /** How many log entries the card lists; the rest is counted in the line under it. */
@@ -60,11 +60,14 @@ export function AmbassadorDetail({ id }: { id: string }) {
 
   const { ambassador, leadName, linkedSeekerName, logs, stats } = record;
 
-  const save = (channel: SocialPlatform, note: string) => {
-    // TODO(backend): persist this change
-    logAmplification(ambassador.id, channel, note);
-    setLogging(false);
-    toast.success(`A share on ${PLATFORM_LABELS[channel]} was logged for ${ambassador.name}.`);
+  const save = async (channel: SocialPlatform, note: string) => {
+    try {
+      await recordShare(ambassador.id, channel, note);
+      setLogging(false);
+      toast.success(`A share on ${PLATFORM_LABELS[channel]} was logged for ${ambassador.name}.`);
+    } catch (problem) {
+      toast.error(problem instanceof Error ? problem.message : "The share could not be logged. Try again.");
+    }
   };
 
   const actions = canEdit ? (
@@ -94,7 +97,6 @@ export function AmbassadorDetail({ id }: { id: string }) {
 
   return (
     <>
-      <NotConnectedNotice className="mb-4" />
       <DetailPage
         header={
           <DetailHeader
@@ -131,7 +133,7 @@ export function AmbassadorDetail({ id }: { id: string }) {
                     {logs.slice(0, LOG_LIMIT).map((log) => (
                       <li key={log.id} data-testid="log-entry" className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0">
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-ink">{PLATFORM_LABELS[log.channel]}</p>
+                          <p className="text-sm font-semibold text-ink">{PLATFORM_LABELS[log.channel] ?? log.channel}</p>
                           {log.note ? <TruncatedText text={log.note} lines={2} className="caption" /> : <p className="caption">{log.listingId ? "A published listing" : "No note"}</p>}
                         </div>
                         <div className="shrink-0 text-right">

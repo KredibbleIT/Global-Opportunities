@@ -860,5 +860,102 @@ test.describe('Ambassadors: access, history and accessibility (mock mode)', () =
   });
 });
 
-// Keep the helper names used above in one place so a change to the files is a one-line edit.
-void writeFileSync;
+// ---------------------------------------------------------------------------------------------------------------------
+// UI (real API run): the Network page reads /admin/ambassadors, the import sends the file to /admin/ambassadors/import
+// and the export comes from /admin/ambassadors/export (BE-029). The e2e database is shared by the whole run and can
+// outlive it locally, so every test writes its own file with emails no other test or run uses.
+// ---------------------------------------------------------------------------------------------------------------------
+const HEADER = 'fullName,email,phone,country,city,pictureSourceUrl,bio';
+
+/** A CSV in a fresh temp folder; returns its path. */
+const writeCsv = (name: string, lines: string[]): string => {
+  const file = path.join(mkdtempSync(path.join(tmpdir(), 'amb-live-')), name);
+  writeFileSync(file, `${lines.join('\r\n')}\r\n`, 'utf8');
+  return file;
+};
+
+const openLiveNetwork = async (page: Page) => {
+  await page.goto(`${BASE_URL}/network`, { timeout: 30_000 });
+  await expect(page.getByTestId('page-title')).toHaveText('Network');
+  await expect(page.getByTestId('import-open')).toBeVisible();
+  await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
+};
+
+test.describe('Ambassadors: import and export against the real API', () => {
+  test.skip(MOCK_RUN, 'real API run only: see npm run test:e2e');
+  // The server allows one import at a time platform-wide (a second gets 409), so these never run side by side.
+  test.describe.configure({ mode: 'serial' });
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test('import: the server re-checks the file, the error report is its own, and the new person is in the list and on their page', async ({ page }) => {
+    const stamp = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+    const name = `Live Import ${stamp}`;
+    const file = writeCsv(`live-${stamp}.csv`, [
+      HEADER,
+      `${name},live.${stamp}@example.com,0200000123,Ghana,Accra,https://drive.google.com/open?id=FAKEID${stamp},Fake bio.`,
+      `Broken Row ${stamp},broken ${stamp}@example.com,0200000124,Ghana,Accra,,Fake bio.`,
+    ]);
+    await openLiveNetwork(page);
+    const dialog = await runImport(page, file);
+    expect(await resultCounts(page)).toMatchObject({ Created: 1, Updated: 0, Skipped: 0, Failed: 1 });
+    await expect(dialog.getByTestId('result-pictures')).toContainText('1 picture is being copied');
+
+    const [report] = await Promise.all([page.waitForEvent('download'), dialog.getByTestId('download-error-report').click()]);
+    const reportFile = path.join(mkdtempSync(path.join(tmpdir(), 'amb-live-')), 'errors.csv');
+    await report.saveAs(reportFile);
+    const lines = readFileSync(reportFile, 'utf8').replace(BOM, '').split('\r\n');
+    expect(lines[0]).toBe('row,email,reason');
+    expect(lines[1]).toMatch(/^3,broken .*Email contains spaces/);
+
+    await dialog.getByTestId('import-done').click();
+    await page.getByLabel('Search ambassadors').fill(name);
+    const row = page.locator('main tbody tr').filter({ hasText: name });
+    await expect(row).toHaveCount(1);
+    await row.getByRole('link').first().click();
+    await expect(page.getByTestId('page-title')).toHaveText(name);
+    await expect(page.locator('main')).toContainText(/GOD-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{6}/);
+    await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
+  });
+
+  test('update: the same file again with Update changes the person instead of adding a second one', async ({ page }) => {
+    const stamp = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+    const name = `Live Update ${stamp}`;
+    const email = `update.${stamp}@example.com`;
+    await openLiveNetwork(page);
+    await runImport(page, writeCsv(`first-${stamp}.csv`, [HEADER, `${name},${email},0200000125,Ghana,Kumasi,,First bio.`]));
+    await page.getByTestId('import-done').click();
+
+    await runImport(page, writeCsv(`second-${stamp}.csv`, [HEADER, `${name},${email},0200000126,Ghana,Kumasi,,Second bio.`]), 'Update');
+    expect(await resultCounts(page)).toMatchObject({ Created: 0, Updated: 1, Skipped: 0, Failed: 0 });
+    await page.getByTestId('import-done').click();
+    await page.getByLabel('Search ambassadors').fill(name);
+    await expect(page.locator('main tbody tr').filter({ hasText: name })).toHaveCount(1);
+  });
+
+  test('export and history: the file comes from the server, contact columns only when ticked, and both actions are recorded', async ({ page }) => {
+    const stamp = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+    const name = `Live Export ${stamp}`;
+    const fileName = `export-${stamp}.csv`;
+    await openLiveNetwork(page);
+    await runImport(page, writeCsv(fileName, [HEADER, `${name},export.${stamp}@example.com,0200000127,Ghana,Tema,,Fake bio.`]));
+    await page.getByTestId('import-done').click();
+    await page.getByLabel('Search ambassadors').fill(name);
+    await expect(page.locator('main tbody tr').filter({ hasText: name })).toHaveCount(1);
+
+    const withContacts = await exportAll(page, /^Export filtered results/);
+    expect(withContacts.text.startsWith(BOM)).toBe(true);
+    expect(withContacts.text.replace(BOM, '').split('\r\n')[0]).toBe(TEMPLATE_HEADERS.join(','));
+    expect(withContacts.text).toContain(`export.${stamp}@example.com`);
+    expect(withContacts.text).toContain('020 000 0127');
+
+    const plain = await exportAll(page, /^Export filtered results/, { allColumns: false });
+    expect(plain.text).toContain(name);
+    expect(plain.text).not.toContain(`export.${stamp}@example.com`);
+    expect(plain.text).not.toContain('020 000 0127');
+
+    await page.getByTestId('history-open').click();
+    const history = page.getByTestId('history-dialog');
+    await expect(history.getByTestId('history-entry').filter({ hasText: `Imported ${fileName}` })).toHaveCount(1);
+    await expect(history.getByTestId('history-entry').filter({ hasText: 'Exported 1 ambassador (filtered)' }).first()).toBeVisible();
+  });
+});
