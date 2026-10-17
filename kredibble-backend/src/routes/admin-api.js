@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import crypto from 'node:crypto';
 import { requireAdminOrStaffAuth, requireAdminAuth } from '../middleware/auth.js';
 import { requirePortalRoles, requireScreen } from '../middleware/portal-auth.js';
+import { ambassadorsRouter } from './ambassadors.js';
 import { ApiError, asyncHandler, itemResponse, listResponse, notFound } from '../utils/http.js';
 import { Opportunity, CompanyVerification } from '../models/Platform.js';
 import { StaffMember, User } from '../models/User.js';
@@ -1436,6 +1437,11 @@ adminApiRouter.post('/ambassadors/:id/amplifications', requireAdminOrStaffAuth, 
 
   res.status(201).json({ data: toAmplificationClientObject(amplification) });
 }));
+
+// BE-029: CSV import/export (POST /ambassadors/import, /ambassadors/export).
+// Each route carries its own Super Admin / Desk Lead guard. Both are POSTs, so
+// they never collide with the managed GET /ambassadors/:id below.
+adminApiRouter.use('/ambassadors', ambassadorsRouter);
 
 addManagedRoutes({
   path: '/ambassadors',

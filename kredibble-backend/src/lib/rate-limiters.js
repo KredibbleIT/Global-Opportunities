@@ -385,3 +385,17 @@ export const webhookLimiter = createRateLimiter({
   limit: 120,
   message: { error: { message: 'Too many webhook deliveries, please try again after an hour' } },
 });
+
+/**
+ * BE-029: 30 ambassador import/export operations per hour per authenticated
+ * admin. Keys on the admin id so each admin behind a shared proxy (CGNAT,
+ * Vercel egress) gets an independent bucket; falls back to IP when there is
+ * no authenticated admin.
+ */
+export const ambassadorIoLimiter = createRateLimiter({
+  prefix: 'ambassador-io',
+  windowMs: 60 * 60 * 1000,
+  limit: 30,
+  message: { error: { message: 'Too many ambassador import/export requests, please try again after an hour' } },
+  keyGenerator: (req) => req.auth?.sub || ipKeyGenerator(req.ip, { ipv6Subnet: 56 }),
+});

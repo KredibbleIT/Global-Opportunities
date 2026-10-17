@@ -78,6 +78,8 @@ export const AUDIT_ACTIONS = {
   ACCOUNT_DEACTIVATE: 'account.deactivate',
   ACCOUNT_REACTIVATE: 'account.reactivate',
   ACCOUNT_ACTIVATE: 'account.activate',
+  AMBASSADORS_IMPORT: 'ambassadors.import',
+  AMBASSADORS_EXPORT: 'ambassadors.export',
 };
 
 export const AUDIT_RESOURCE_TYPES = {

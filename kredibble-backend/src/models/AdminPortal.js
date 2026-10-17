@@ -105,6 +105,16 @@ export function generateReferralCode() {
   return code;
 }
 
+// BE-029: state of the background copy of pictureSourceUrl into our storage.
+// 'processing' is a claim; a claim older than the job's stale window is retried.
+export const PICTURE_IMPORT_STATUSES = ['pending', 'processing', 'done', 'failed'];
+const pictureImportSchema = new mongoose.Schema({
+  status: { type: String, enum: PICTURE_IMPORT_STATUSES, required: true },
+  attempts: { type: Number, default: 0, min: 0 },
+  lastAttemptAt: Date,
+  lastError: String,
+}, { _id: false });
+
 const ambassadorSchema = new mongoose.Schema({
   fullName: { type: String, required: true },
   email: { type: String, required: true, lowercase: true, trim: true, index: true },
@@ -136,6 +146,14 @@ const ambassadorSchema = new mongoose.Schema({
   dormantSince: { type: String, match: /^\d{4}-\d{2}-\d{2}$/, index: true },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   wordpressSync: syncField(),
+  // BE-029: fields the CSV import brings in (the sign-up form sheet's columns).
+  whatsapp: String,
+  region: String,
+  // Where the picture came from (a Google Drive share link). profilePhoto is
+  // only ever OUR copy, filled by the picture job (lib/ambassador-pictures.js).
+  pictureSourceUrl: String,
+  submittedAt: Date,
+  pictureImport: { type: pictureImportSchema, default: undefined },
 }, { timestamps: true });
 
 // A signed-in user's request to become an ambassador. The snapshot is built by the server from the
@@ -197,6 +215,7 @@ ambassadorSchema.index({ status: 1, joinedAt: -1 });
 ambassadorSchema.index({ joinedAt: -1 });
 ambassadorSchema.index({ status: 1, dormantSince: 1 });
 ambassadorSchema.index({ linkedUserId: 1 });
+ambassadorSchema.index({ 'pictureImport.status': 1, 'pictureImport.lastAttemptAt': 1 }, { sparse: true });
 
 const ambassadorAmplificationSchema = new mongoose.Schema({
   ambassadorId: { type: mongoose.Schema.Types.ObjectId, ref: 'Ambassador', required: true, index: true },
@@ -969,3 +988,17 @@ const accountInviteSchema = new mongoose.Schema(
 accountInviteSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 export const AccountInvite = mongoose.model('AccountInvite', accountInviteSchema);
+
+// BE-029: a named lease that only one holder can own at a time, across every
+// API instance. `_id` is the lock name, so two holders racing to create the
+// same lock collide on the primary key (see lib/job-lock.js).
+const jobLockSchema = new mongoose.Schema(
+  {
+    _id: { type: String },
+    holder: { type: String, required: true },
+    lockedUntil: { type: Date, required: true },
+  },
+  { timestamps: true },
+);
+
+export const JobLock = mongoose.model('JobLock', jobLockSchema);
