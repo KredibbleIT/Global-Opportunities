@@ -1,5 +1,6 @@
 import { StaffMember } from '../models/User.js';
 import { ApiError } from '../utils/http.js';
+import { requireAdminAuth } from './auth.js';
 import { roleCan, normalizeLegacyRole, getEffectiveToggles } from '../lib/permissions.js';
 
 const toCanonicalRole = (role) => {
@@ -141,4 +142,33 @@ export const requireScreen = (screen, level = 'view') => async (req, res, next) 
   } catch (error) {
     next(error);
   }
+};
+
+const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+/** Runs middlewares one after another, stopping at the first error. */
+const runInOrder = (middlewares, req, res, next) => {
+  const [first, ...rest] = middlewares;
+  if (!first) return next();
+  return first(req, res, (error) => (error ? next(error) : runInOrder(rest, req, res, next)));
+};
+
+/**
+ * SEC-132: the guard for the `/admin` data collections and other routes that
+ * used to take any admin session. An admin session (requireAdminAuth), then the
+ * BE-001 screen: `view` for reads, `edit` for writes. With
+ * `{ writes: 'super_admin' }`, writes need Super Admin whatever the screen
+ * (staff records: roles change only through BE-028's accounts routes).
+ *
+ * @param {string | string[] | ((req: import('express').Request) => string | string[])} screen - the screen(s), or a function of the request
+ * @param {{ writes?: 'screen' | 'super_admin' }} [options]
+ */
+export const requireAdminScreen = (screen, { writes = 'screen' } = {}) => {
+  const superAdminWrites = requireStaffRoles(['super_admin'], 'Only a Super Admin can change this');
+  return (req, res, next) => {
+    const screens = typeof screen === 'function' ? screen(req) : screen;
+    const read = READ_METHODS.has(req.method);
+    const authorize = !read && writes === 'super_admin' ? superAdminWrites : requireScreen(screens, read ? 'view' : 'edit');
+    return runInOrder([requireAdminAuth, authorize], req, res, next);
+  };
 };

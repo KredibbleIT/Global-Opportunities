@@ -37,18 +37,19 @@ import {
   deletePartnerApi,
   getAdminUser,
   getPartnerById,
+  getPartnerOwnerOptionsApi,
   getPartners,
-  getPrograms,
-  getStaff,
   getTargets,
   movePartnerApi,
   updatePartnerApi,
   type PartnerApiRecord,
+  type PartnerDetailApiRecord,
   type PartnerWriteInput,
 } from "@/lib/api";
+import { ROLES, type Role } from "@/config/roles";
 import { fetchAll } from "@/lib/services/api-helpers";
 import { isMockMode } from "@/lib/services/mock-mode";
-import { toProgramRow } from "@/lib/services/programs";
+import { toLinkedProgram } from "@/lib/services/programs";
 
 const MOCK_DELAY_MS = 300;
 // The first load of a page takes a moment (a skeleton shows). Every later read is instant: a card that was just moved
@@ -143,16 +144,15 @@ export async function loadPartnerRows(): Promise<PartnerRow[]> {
 /** One partner with its linked programs, or undefined. Real mode: a bad id (400) or no such partner (404) is undefined. */
 export async function loadPartner(id: string): Promise<PartnerDetailRow | undefined> {
   if (!isMockMode()) {
-    let record: PartnerApiRecord;
+    let record: PartnerDetailApiRecord;
     try {
       record = await getPartnerById(id);
     } catch (error) {
       if (error instanceof ApiError && (error.status === 400 || error.status === 404)) return undefined;
       throw error;
     }
-    // The programs list has no partner filter; there are few programs, so they are matched here.
-    const programs = await fetchAll((page, limit) => getPrograms({ page, limit }));
-    return { ...toPartnerRow(record), programs: programs.map(toProgramRow).filter((program) => program.partnerId === id) };
+    // SEC-135: the partner comes with its linked programs, under the Partners grant (a Partnerships Officer has no Programs screen).
+    return { ...toPartnerRow(record), programs: (record.programs ?? []).map(toLinkedProgram) };
   }
   const partner = getMockCollection("partners").find((entry) => entry.id === id);
   return afterDelay(partner ? { ...withNames(partner), programs: programsOfPartner(partner.id) } : undefined);
@@ -175,16 +175,18 @@ export function partnerOwnerOptions(): OwnerOption[] {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
+const rolesLabel = (roles: readonly string[]): string | undefined =>
+  roles.map((role) => (role in ROLES ? ROLES[role as Role].label : role)).join(" + ") || undefined;
+
 /**
- * The owner choices for the form. Real mode: active staff, by their user id (what the API stores as the owner), plus the
- * signed-in admin when they have no staff record (the CLI-made root admin), so they can own what they add.
+ * The owner choices for the form. Real mode: active staff by user id (what the API stores as the owner), from
+ * /admin/partners/owner-options, which the Partners edit grant covers (SEC-135: a Partnerships Officer has no Team screen),
+ * plus the signed-in admin when they have no staff record (the CLI-made root admin), so they can own what they add.
  */
 export async function loadPartnerOwnerOptions(): Promise<OwnerOption[]> {
   if (isMockMode()) return partnerOwnerOptions();
-  const staff = await fetchAll((page, limit) => getStaff({ page, limit }));
-  const options: OwnerOption[] = staff
-    .filter((person) => person.status === "active" && person.userId)
-    .map((person) => ({ id: person.userId, name: person.name, title: person.role }));
+  const staff = await getPartnerOwnerOptionsApi();
+  const options: OwnerOption[] = staff.map((person) => ({ id: person.id, name: person.name, title: rolesLabel(person.roles) }));
   const me = getAdminUser();
   if (me?.id && !options.some((option) => option.id === me.id)) options.push({ id: me.id, name: me.name });
   return options.sort((a, b) => a.name.localeCompare(b.name));

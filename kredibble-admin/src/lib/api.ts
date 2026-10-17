@@ -1167,9 +1167,23 @@ export const getPartners = async (params?: { page?: number; limit?: number; stag
   return requestPage<PartnerApiRecord>(`/admin/partners${queryString}`);
 };
 
+/** SEC-135: a partner's linked programs, sent with its page under the Partners grant: only what the page shows. */
+export type LinkedProgramApiRecord = Pick<ProgramApiRecord, "id" | "title" | "programType" | "status" | "startAt" | "endAt" | "partnerId">;
+
+/** A partner's page: the partner and its linked programs. */
+export interface PartnerDetailApiRecord extends PartnerApiRecord {
+  programs?: LinkedProgramApiRecord[];
+}
+
 export const getPartnerById = async (id: string) => {
-  return request<PartnerApiRecord>(`/admin/partners/${id}`);
+  return request<PartnerDetailApiRecord>(`/admin/partners/${id}`);
 };
+
+/** SEC-135: who can own a partner (active staff, by user id), under the Partners edit grant. */
+export const getPartnerOwnerOptionsApi = async () => request<{ id: string; name: string; roles: string[] }[]>("/admin/partners/owner-options");
+
+/** SEC-135: the program form's partner choices, under the Programs edit grant. */
+export const getProgramPartnerOptionsApi = async () => request<{ id: string; name: string }[]>("/admin/programs/partner-options");
 
 /** What the partner form sends. The stage and its history change only through movePartnerApi. */
 export type PartnerWriteInput = Omit<

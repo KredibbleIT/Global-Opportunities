@@ -1,15 +1,15 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
 import { authRouter } from './auth.js';
-import { uploadRouter, createUploadRouter, IMAGE_MIME_TYPES } from './upload.js';
+import { uploadRouter, createUploadRouter, IMAGE_MIME_TYPES, requireAdminUploadScreen } from './upload.js';
 import { assistantRouter } from './assistant.js';
 import { newsRouter } from './news.js';
-import { adminApiRouter, getAttentionCounts } from './admin-api.js';
+import { adminApiRouter, getAttentionCounts, requireAdminScreen } from './admin-api.js';
 import { accountsRouter } from './accounts.js';
 import { ambassadorRouter } from './ambassador.js';
 import { syncRouter } from './sync.js';
 import { asyncHandler, itemResponse, listResponse, notFound, stripSensitive, ApiError, parsePagination } from '../utils/http.js';
-import { requireAuth, requireAdminAuth, optionalAuth, requireEmailVerified } from '../middleware/auth.js';
+import { requireAuth, optionalAuth, requireEmailVerified } from '../middleware/auth.js';
 import { env } from '../config/env.js';
 import { validate } from '../middleware/validate.js';
 import { staffInviteSchema } from '../schemas/admin.js';
@@ -698,14 +698,14 @@ const decorateHirers = async (items) => {
 };
 
 /**
- * SEC-075 / SEC-077: the admin dashboard's data API. Every route takes only an
- * admin session (admin secret and audience, via cookie or Bearer). A user
- * Bearer token is rejected even for an admin account. The paths mirror
+ * SEC-075 / SEC-077 / SEC-132: the admin dashboard's data API. Every route takes an admin
+ * session AND the BE-001 screen it serves (requireAdminScreen; staff writes are Super
+ * Admin only). A user Bearer token is rejected even for an admin account. The paths mirror
  * kredibble-admin/src/lib/api.ts, and tests/admin-api-contract.test.js holds
  * the two together.
  */
 const mountAdminDataRoutes = (router) => {
-  router.get('/admin/analytics', requireAdminAuth, asyncHandler(async (req, res) => {
+  router.get('/admin/analytics', requireAdminScreen('overview'), asyncHandler(async (req, res) => {
     const [seekers, activeSeekers, hirers, verifiedHirers, applications, reports, openReports, byType] = await Promise.all([
       SeekerProfile.countDocuments(),
       SeekerProfile.countDocuments({ status: 'active' }),
@@ -726,7 +726,7 @@ const mountAdminDataRoutes = (router) => {
   }));
 
   // Staff are existing Kredibble accounts; there is no email-invite flow (2026-10-04 decision).
-  router.post('/admin/staff/invite', requireAdminAuth, validate(staffInviteSchema), asyncHandler(async (req, res) => {
+  router.post('/admin/staff/invite', requireAdminScreen('team', { writes: 'super_admin' }), validate(staffInviteSchema), asyncHandler(async (req, res) => {
     const user = await User.findOne({ emailNormalized: req.body.email.trim().toLowerCase(), role: { $ne: 'deleted' } });
     if (!user) throw new ApiError(404, 'No Kredibble account uses that email. Ask them to sign up first.');
     if (await StaffMember.exists({ userId: user._id })) {
@@ -756,14 +756,14 @@ const mountAdminDataRoutes = (router) => {
 
   // Article banners: images only, stored outside any user's folder.
   router.use('/admin/upload', createUploadRouter({
-    authenticate: requireAdminAuth,
+    authenticate: requireAdminUploadScreen,
     purposes: ['article-banner', 'ambassador-photo'],
     folderFor: (req, purpose) => `kredibble/admin/${purpose}`,
     allowedMimeTypes: IMAGE_MIME_TYPES,
   }));
 
   // Nested lists first, so the collection mounts' `/:id` never sees them.
-  router.get('/admin/verification/companies/:companyId/documents', requireAdminAuth, asyncHandler(async (req, res) => {
+  router.get('/admin/verification/companies/:companyId/documents', requireAdminScreen('verification'), asyncHandler(async (req, res) => {
     if (!mongoose.isValidObjectId(req.params.companyId)) throw notFound('Company verification');
     const verification = await CompanyVerification.findById(req.params.companyId).select('hirerId').lean();
     if (!verification) throw notFound('Company verification');
@@ -782,7 +782,7 @@ const mountAdminDataRoutes = (router) => {
     listResponse(res, docs.map(toClientObject), total, page, limit);
   }));
 
-  router.get('/admin/community/channels/:channelId/posts', requireAdminAuth, asyncHandler(async (req, res) => {
+  router.get('/admin/community/channels/:channelId/posts', requireAdminScreen('channels'), asyncHandler(async (req, res) => {
     if (!mongoose.isValidObjectId(req.params.channelId)) throw notFound('Channel');
     const filter = { channelId: req.params.channelId };
     const { page, limit, skip } = parsePagination(req.query);
@@ -796,67 +796,67 @@ const mountAdminDataRoutes = (router) => {
 
   const adminCollection = (path, options) => router.use(
     `/admin${path}`,
-    collectionRoutes({ ...options, authenticate: requireAdminAuth, populateAlways: true }),
+    collectionRoutes({ ...options, authenticate: requireAdminScreen(options.screen, { writes: options.writes }), populateAlways: true }),
   );
 
   adminCollection('/seekers', {
-    Model: SeekerProfile, resourceName: 'Seeker', policyKey: 'seekers',
+    Model: SeekerProfile, resourceName: 'Seeker', policyKey: 'seekers', screen: 'seekers',
     populate: { path: 'userId', select: ADMIN_USER_FIELDS },
     searchFilter: searchProfilesByUser(['profession', 'university', 'country']),
     filterFields: ['verified', 'status', 'country'],
     decorate: async (items) => items.map(flattenProfileUser),
   });
   adminCollection('/hirers', {
-    Model: HirerAccount, resourceName: 'Hirer', policyKey: 'hirers',
+    Model: HirerAccount, resourceName: 'Hirer', policyKey: 'hirers', screen: 'hirers',
     populate: { path: 'userId', select: ADMIN_USER_FIELDS },
     searchFilter: searchProfilesByUser(['companyName', 'industry', 'location', 'companyEmail']),
     filterFields: ['verified', 'status', 'industry'],
     decorate: decorateHirers,
   });
   adminCollection('/verification/companies', {
-    Model: CompanyVerification, resourceName: 'Company verification', policyKey: 'verification/companies',
+    Model: CompanyVerification, resourceName: 'Company verification', policyKey: 'verification/companies', screen: 'verification',
     searchFields: ['name', 'industry', 'companyEmail'], filterFields: ['overallStatus'],
   });
   adminCollection('/verification/documents', {
-    Model: VerificationDoc, resourceName: 'VerificationDoc', policyKey: 'verification/documents',
+    Model: VerificationDoc, resourceName: 'VerificationDoc', policyKey: 'verification/documents', screen: 'verification',
     searchFields: ['label', 'fileName'], filterFields: ['status'],
   });
   adminCollection('/events', {
-    Model: Event, resourceName: 'Event', policyKey: 'events',
+    Model: Event, resourceName: 'Event', policyKey: 'events', screen: 'events',
     searchFields: ['title', 'location', 'hirer'], filterFields: ['status'],
   });
   adminCollection('/grants', {
-    Model: Grant, resourceName: 'Grant', policyKey: 'grants',
+    Model: Grant, resourceName: 'Grant', policyKey: 'grants', screen: 'grants',
     searchFields: ['title', 'sector', 'hirer'], filterFields: ['status', 'sector'],
   });
   adminCollection('/articles', {
-    Model: Article, resourceName: 'Article', policyKey: 'articles',
+    Model: Article, resourceName: 'Article', policyKey: 'articles', screen: 'career_resources',
     searchFields: ['title', 'category'], filterFields: ['status', 'category'],
   });
   adminCollection('/staff', {
-    Model: StaffMember, resourceName: 'Staff', policyKey: 'staff',
+    Model: StaffMember, resourceName: 'Staff', policyKey: 'staff', screen: 'team', writes: 'super_admin',
     searchFields: ['name', 'email'], filterFields: ['role', 'status'],
   });
   adminCollection('/reports', {
-    Model: Report, resourceName: 'Report', policyKey: 'reports',
+    Model: Report, resourceName: 'Report', policyKey: 'reports', screen: 'reports_queue',
     searchFields: ['reason', 'details', 'targetLabel'], filterFields: ['status', 'targetType'],
   });
   adminCollection('/community/channels', {
-    Model: Channel, resourceName: 'Channel', policyKey: 'community/channels',
+    Model: Channel, resourceName: 'Channel', policyKey: 'community/channels', screen: 'channels',
     searchFields: ['name', 'category'], filterFields: ['status', 'category', 'visibility'],
   });
   adminCollection('/community/posts', {
-    Model: ChannelPost, resourceName: 'ChannelPost', policyKey: 'community/posts',
+    Model: ChannelPost, resourceName: 'ChannelPost', policyKey: 'community/posts', screen: 'channels',
     populate: { path: 'authorId', select: 'name email avatarUrl' },
     searchFields: ['title', 'body'], filterFields: ['channelId', 'flagged'],
   });
   adminCollection('/grant-applications', {
-    Model: GrantApplication, resourceName: 'GrantApplication', policyKey: 'grant-applications',
+    Model: GrantApplication, resourceName: 'GrantApplication', policyKey: 'grant-applications', screen: 'grants',
     searchFields: ['applicantName'], filterFields: ['grantId', 'status'],
   });
 
   // The staff-portal router has list/update/delete for postings but no read by id.
-  router.get('/admin/opportunities/:id', requireAdminAuth, asyncHandler(async (req, res) => {
+  router.get('/admin/opportunities/:id', requireAdminScreen('opportunities_queue'), asyncHandler(async (req, res) => {
     if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Opportunity');
     const opportunity = await Opportunity.findById(req.params.id);
     if (!opportunity) throw notFound('Opportunity');
@@ -925,9 +925,9 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
     });
   });
 
-  // SEC-003: platform-wide counts are admin-only. `requireAdminAuth` validates the
-  // admin cookie or header and enforces role=admin + audience=kredibble-admin.
-  router.get('/dashboard/summary', requireAdminAuth, asyncHandler(async (req, res) => {
+  // SEC-003 / SEC-132: platform-wide counts need an admin session (cookie or header,
+  // role=admin, audience=kredibble-admin) AND the overview screen from staff roles.
+  router.get('/dashboard/summary', requireAdminScreen('overview'), asyncHandler(async (req, res) => {
     const attentionCounts = await getAttentionCounts();
     const [
       pendingOpportunities,

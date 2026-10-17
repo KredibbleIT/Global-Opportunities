@@ -1,8 +1,8 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
 import crypto from 'node:crypto';
-import { requireAdminOrStaffAuth, requireAdminAuth } from '../middleware/auth.js';
-import { requirePortalRoles, requireScreen, resolveStaffRoles } from '../middleware/portal-auth.js';
+import { requireAdminOrStaffAuth } from '../middleware/auth.js';
+import { requireAdminScreen, requireScreen, resolveStaffRoles } from '../middleware/portal-auth.js';
 import { ambassadorsRouter } from './ambassadors.js';
 import { revokeAllSessions } from './auth.js';
 import { pictureJobFor, schedulePictureCopies } from '../lib/ambassador-pictures.js';
@@ -145,18 +145,11 @@ import {
 } from '../schemas/ambassador.js';
 
 export const adminApiRouter = Router();
+// index.js guards its own /admin mounts with the same check (SEC-132).
+export { requireAdminScreen };
 
-const ALL_PORTAL_ROLES = [
-  'Partnerships Officer', 'Opportunities Officer', 'Writer', 'Training and Capacity Development Officer',
-  'Database Officer', 'Communications Officer', 'Social Media Manager', 'Country Lead', 'Admin Support', 'Desk Lead',
-];
-const OPPORTUNITY_ROLES = ['Opportunities Officer', 'Writer', 'Desk Lead'];
-const PROGRAM_ROLES = ['Training and Capacity Development Officer', 'Desk Lead'];
-const PARTNER_ROLES = ['Partnerships Officer', 'Desk Lead'];
-const AMBASSADOR_ROLES = ['Communications Officer', 'Social Media Manager', 'Country Lead', 'Desk Lead'];
-const SOCIAL_ROLES = ['Communications Officer', 'Social Media Manager', 'Desk Lead'];
-const TESTIMONIAL_VIEW_ROLES = ['Communications Officer', 'Social Media Manager', 'Desk Lead'];
-const TESTIMONIAL_EDIT_ROLES = ['Communications Officer', 'Desk Lead'];
+// SEC-133: every route's access comes from requireScreen and the BE-001 matrix
+// alone (lib/permissions.js). The older per-route role lists disagreed with it.
 const configured = (value) => Boolean(value && !value.includes('placeholder'));
 const escapedRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const pageOptions = (query) => {
@@ -284,7 +277,6 @@ const addManagedRoutes = ({
   path,
   Model,
   resource,
-  roles,
   screen,
   prepare = (data) => data,
   transform = toClientObject,
@@ -292,13 +284,10 @@ const addManagedRoutes = ({
   validateCreate,
   validateUpdate,
   filters = [],
+  decorateOne,
 }) => {
-  const viewAuth = screen
-    ? [requireAdminOrStaffAuth, requireScreen(screen, 'view')]
-    : [requireAdminOrStaffAuth, requirePortalRoles(...roles)];
-  const editAuth = screen
-    ? [requireAdminOrStaffAuth, requireScreen(screen, 'edit')]
-    : [requireAdminOrStaffAuth, requirePortalRoles(...roles)];
+  const viewAuth = [requireAdminOrStaffAuth, requireScreen(screen, 'view')];
+  const editAuth = [requireAdminOrStaffAuth, requireScreen(screen, 'edit')];
 
   adminApiRouter.get(path, ...viewAuth, asyncHandler(async (req, res) => {
     const filter = {};
@@ -321,7 +310,7 @@ const addManagedRoutes = ({
     if (populate) query = query.populate(populate);
     const record = await query;
     if (!record) throw notFound(resource);
-    itemResponse(res, transform(record));
+    itemResponse(res, decorateOne ? await decorateOne(record, transform(record)) : transform(record));
   }));
 
   const postMiddlewares = [...editAuth];
@@ -550,7 +539,7 @@ const prepareOpportunity = (data, actorId, existing = {}) => {
   return next;
 };
 
-adminApiRouter.get('/opportunities/counts', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'view'), requirePortalRoles(...OPPORTUNITY_ROLES), asyncHandler(async (req, res) => {
+adminApiRouter.get('/opportunities/counts', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'view'), asyncHandler(async (req, res) => {
   const [unvettedDrafts, drafts, published, pending, vetted, total] = await Promise.all([
     Opportunity.countDocuments({ status: 'draft', vetted: false }),
     Opportunity.countDocuments({ status: 'draft' }),
@@ -562,7 +551,7 @@ adminApiRouter.get('/opportunities/counts', requireAdminOrStaffAuth, requireScre
   itemResponse(res, { unvettedDrafts, drafts, published, pending, vetted, total });
 }));
 
-adminApiRouter.get('/opportunities', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'view'), requirePortalRoles(...OPPORTUNITY_ROLES), asyncHandler(async (req, res) => {
+adminApiRouter.get('/opportunities', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'view'), asyncHandler(async (req, res) => {
   const filter = {};
   for (const key of ['country', 'type', 'status', 'moderationStatus', 'vetted']) {
     const value = req.query[key];
@@ -593,7 +582,7 @@ adminApiRouter.get('/opportunities', requireAdminOrStaffAuth, requireScreen('opp
   listResponse(res, records.map(toOpportunityAdminObject), total, page, limit);
 }));
 
-adminApiRouter.get('/opportunities/:id', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'view'), requirePortalRoles(...OPPORTUNITY_ROLES), asyncHandler(async (req, res) => {
+adminApiRouter.get('/opportunities/:id', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'view'), asyncHandler(async (req, res) => {
   const record = await Opportunity.findById(validId(req.params.id, 'Opportunity'))
     .populate('vettedBy', 'name fullName email')
     .populate('writerId', 'name fullName email')
@@ -602,7 +591,7 @@ adminApiRouter.get('/opportunities/:id', requireAdminOrStaffAuth, requireScreen(
   itemResponse(res, toOpportunityAdminObject(record));
 }));
 
-adminApiRouter.post('/opportunities', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'edit'), requirePortalRoles(...OPPORTUNITY_ROLES), validate(opportunityCreateSchema), asyncHandler(async (req, res) => {
+adminApiRouter.post('/opportunities', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'edit'), validate(opportunityCreateSchema), asyncHandler(async (req, res) => {
   const prepared = prepareOpportunity(req.body, req.auth.sub);
   const record = new Opportunity({ ...prepared, createdBy: req.auth.sub });
   await record.save();
@@ -625,7 +614,7 @@ adminApiRouter.post('/opportunities', requireAdminOrStaffAuth, requireScreen('op
   res.status(201).json({ data: { ...toOpportunityAdminObject(record), sync } });
 }));
 
-adminApiRouter.patch('/opportunities/:id', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'edit'), requirePortalRoles(...OPPORTUNITY_ROLES), validate(opportunityUpdateSchema), asyncHandler(async (req, res) => {
+adminApiRouter.patch('/opportunities/:id', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'edit'), validate(opportunityUpdateSchema), asyncHandler(async (req, res) => {
   const record = await Opportunity.findById(validId(req.params.id, 'Opportunity'));
   if (!record) throw notFound('Opportunity');
   const wasVetted = record.vetted;
@@ -672,7 +661,7 @@ adminApiRouter.patch('/opportunities/:id', requireAdminOrStaffAuth, requireScree
   itemResponse(res, { ...toOpportunityAdminObject(record), sync });
 }));
 
-adminApiRouter.post('/opportunities/:id/unpublish', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'edit'), requirePortalRoles(...OPPORTUNITY_ROLES), asyncHandler(async (req, res) => {
+adminApiRouter.post('/opportunities/:id/unpublish', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'edit'), asyncHandler(async (req, res) => {
   const record = await Opportunity.findById(validId(req.params.id, 'Opportunity'));
   if (!record) throw notFound('Opportunity');
 
@@ -693,7 +682,7 @@ adminApiRouter.post('/opportunities/:id/unpublish', requireAdminOrStaffAuth, req
   itemResponse(res, toOpportunityAdminObject(record));
 }));
 
-adminApiRouter.get('/opportunities/:id/metrics', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'view'), requirePortalRoles(...OPPORTUNITY_ROLES), asyncHandler(async (req, res) => {
+adminApiRouter.get('/opportunities/:id/metrics', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'view'), asyncHandler(async (req, res) => {
   const record = await Opportunity.findById(validId(req.params.id, 'Opportunity'));
   if (!record) throw notFound('Opportunity');
 
@@ -712,7 +701,7 @@ adminApiRouter.get('/opportunities/:id/metrics', requireAdminOrStaffAuth, requir
   });
 }));
 
-adminApiRouter.get('/opportunities/:id/analytics', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'view'), requirePortalRoles(...OPPORTUNITY_ROLES), asyncHandler(async (req, res) => {
+adminApiRouter.get('/opportunities/:id/analytics', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'view'), asyncHandler(async (req, res) => {
   const opportunity = await Opportunity.findById(validId(req.params.id, 'Opportunity'));
   if (!opportunity) throw notFound('Opportunity');
   const totals = await OpportunityEngagement.aggregate([
@@ -739,7 +728,7 @@ adminApiRouter.get('/opportunities/:id/analytics', requireAdminOrStaffAuth, requ
   itemResponse(res, analytics);
 }));
 
-adminApiRouter.delete('/opportunities/:id', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'edit'), requirePortalRoles(...OPPORTUNITY_ROLES), asyncHandler(async (req, res) => {
+adminApiRouter.delete('/opportunities/:id', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'edit'), asyncHandler(async (req, res) => {
   const record = await Opportunity.findById(validId(req.params.id, 'Opportunity'));
   if (!record) throw notFound('Opportunity');
   let sync;
@@ -764,7 +753,7 @@ adminApiRouter.delete('/opportunities/:id', requireAdminOrStaffAuth, requireScre
   itemResponse(res, { id: req.params.id, sync });
 }));
 
-adminApiRouter.post('/opportunities/:id/retry-wordpress-sync', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'edit'), requirePortalRoles(...OPPORTUNITY_ROLES), asyncHandler(async (req, res) => {
+adminApiRouter.post('/opportunities/:id/retry-wordpress-sync', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'edit'), asyncHandler(async (req, res) => {
   const record = await Opportunity.findById(validId(req.params.id, 'Opportunity'));
   if (!record) throw notFound('Opportunity');
   itemResponse(res, { ...toOpportunityAdminObject(record), sync: await syncManagedRecord('opportunities', record) });
@@ -870,11 +859,22 @@ adminApiRouter.get('/programs/upcoming', requireAdminOrStaffAuth, requireScreen(
   listResponse(res, records.map(toProgramClientObject));
 }));
 
+/**
+ * SEC-135: the program form's partner choices, under the Programs edit grant
+ * (a Training Officer has no Partners screen): id and name only.
+ */
+adminApiRouter.get('/programs/partner-options', requireAdminOrStaffAuth, requireScreen('programs', 'edit'), asyncHandler(async (req, res) => {
+  const partners = await Partner.find().select('organizationName').lean();
+  const options = partners
+    .map((partner) => ({ id: String(partner._id), name: partner.organizationName }))
+    .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  itemResponse(res, options);
+}));
+
 addManagedRoutes({
   path: '/programs',
   Model: Program,
   resource: 'programs',
-  roles: PROGRAM_ROLES,
   screen: 'programs',
   prepare: prepareProgram,
   transform: toProgramClientObject,
@@ -1035,11 +1035,34 @@ adminApiRouter.post('/partners/:id/move', requireAdminOrStaffAuth, requireScreen
   });
 }));
 
+/**
+ * SEC-135: the partner form's owner choices, under the Partners edit grant (a
+ * Partnerships Officer has no Team screen): active staff by user id (what a
+ * partner stores as its owner), with name and roles only.
+ */
+adminApiRouter.get('/partners/owner-options', requireAdminOrStaffAuth, requireScreen('partners', 'edit'), asyncHandler(async (req, res) => {
+  const staff = await StaffMember.find({ status: 'active', userId: { $ne: null } }).select('userId name roles').sort({ name: 1 }).lean();
+  itemResponse(res, staff.map((person) => ({ id: String(person.userId), name: person.name, roles: person.roles ?? [] })));
+}));
+
+/** SEC-135: a partner's linked programs for its page, under the Partners grant: the fields the page shows, nothing more. */
+const linkedProgramsOf = async (partnerId) => {
+  const programs = await Program.find({ partnerId }).sort({ startAt: -1 }).select('title programType status startAt endAt partnerId').lean();
+  return programs.map((program) => ({
+    id: String(program._id),
+    title: program.title,
+    programType: program.programType,
+    status: program.status,
+    startAt: program.startAt,
+    endAt: program.endAt,
+    partnerId: String(program.partnerId),
+  }));
+};
+
 addManagedRoutes({
   path: '/partners',
   Model: Partner,
   resource: 'partners',
-  roles: PARTNER_ROLES,
   screen: 'partners',
   prepare: preparePartner,
   transform: toPartnerClientObject,
@@ -1047,6 +1070,7 @@ addManagedRoutes({
   validateCreate: validate(partnerCreateSchema),
   validateUpdate: validate(partnerUpdateSchema),
   filters: ['stage', 'country', 'partnerType', 'closed'],
+  decorateOne: async (record, partner) => ({ ...partner, programs: await linkedProgramsOf(record._id) }),
 });
 export const toAmbassadorClientObject = (doc) => {
   if (!doc) return doc;
@@ -1371,14 +1395,7 @@ adminApiRouter.get('/network/summary', requireAdminOrStaffAuth, requireScreen('n
   itemResponse(res, summary);
 }));
 
-adminApiRouter.get('/leaderboard', requireAdminOrStaffAuth, (req, res, next) => {
-  if (req.user?.role === 'admin') return next();
-  const screens = req.user?.screens || {};
-  if (screens.leaderboard === 'view' || screens.leaderboard === 'edit' || screens.network === 'view' || screens.network === 'edit') {
-    return next();
-  }
-  return requireScreen('leaderboard', 'view')(req, res, next);
-}, asyncHandler(async (req, res) => {
+adminApiRouter.get('/leaderboard', requireAdminOrStaffAuth, requireScreen(['leaderboard', 'network'], 'view'), asyncHandler(async (req, res) => {
   const leaderboard = await calculateLeaderboard(req.query.month);
   listResponse(res, leaderboard);
 }));
@@ -1475,7 +1492,6 @@ addManagedRoutes({
   path: '/ambassadors',
   Model: Ambassador,
   resource: 'ambassadors',
-  roles: AMBASSADOR_ROLES,
   screen: 'network',
   prepare: prepareAmbassador,
   transform: toAmbassadorClientObject,
@@ -1588,12 +1604,12 @@ export const calculateSocialMonthlyTotals = async (monthQuery) => {
   };
 };
 
-adminApiRouter.get('/social-posts/monthly-totals', requireAdminOrStaffAuth, requireScreen('social', 'view'), requirePortalRoles(...SOCIAL_ROLES), asyncHandler(async (req, res) => {
+adminApiRouter.get('/social-posts/monthly-totals', requireAdminOrStaffAuth, requireScreen('social', 'view'), asyncHandler(async (req, res) => {
   const result = await calculateSocialMonthlyTotals(req.query.month);
   itemResponse(res, result);
 }));
 
-adminApiRouter.get('/social-posts', requireAdminOrStaffAuth, requireScreen('social', 'view'), requirePortalRoles(...SOCIAL_ROLES), asyncHandler(async (req, res) => {
+adminApiRouter.get('/social-posts', requireAdminOrStaffAuth, requireScreen('social', 'view'), asyncHandler(async (req, res) => {
   const filter = {};
   if (req.query.month) {
     const { start, end } = monthBounds(req.query.month);
@@ -1629,13 +1645,13 @@ adminApiRouter.get('/social-posts', requireAdminOrStaffAuth, requireScreen('soci
   listResponse(res, posts.map(toSocialPostClientObject), total, page, limit);
 }));
 
-adminApiRouter.get('/social-posts/:id', requireAdminOrStaffAuth, requireScreen('social', 'view'), requirePortalRoles(...SOCIAL_ROLES), asyncHandler(async (req, res) => {
+adminApiRouter.get('/social-posts/:id', requireAdminOrStaffAuth, requireScreen('social', 'view'), asyncHandler(async (req, res) => {
   const post = await SocialPost.findById(validId(req.params.id, 'SocialPost')).populate('opportunityId', 'title name');
   if (!post) throw notFound('SocialPost');
   itemResponse(res, toSocialPostClientObject(post));
 }));
 
-adminApiRouter.post('/social-posts', requireAdminOrStaffAuth, requireScreen('social', 'edit'), requirePortalRoles(...SOCIAL_ROLES), validate(socialPostCreateSchema), asyncHandler(async (req, res) => {
+adminApiRouter.post('/social-posts', requireAdminOrStaffAuth, requireScreen('social', 'edit'), validate(socialPostCreateSchema), asyncHandler(async (req, res) => {
   const body = req.body;
   const platform = normalizeSocialPlatform(body.platform);
   const reach = Math.max(0, Math.round(Number(body.reach) || 0));
@@ -1682,7 +1698,7 @@ adminApiRouter.post('/social-posts', requireAdminOrStaffAuth, requireScreen('soc
   res.status(201).json({ data: { ...clientObj, sync } });
 }));
 
-adminApiRouter.patch('/social-posts/:id', requireAdminOrStaffAuth, requireScreen('social', 'edit'), requirePortalRoles(...SOCIAL_ROLES), validate(socialPostUpdateSchema), asyncHandler(async (req, res) => {
+adminApiRouter.patch('/social-posts/:id', requireAdminOrStaffAuth, requireScreen('social', 'edit'), validate(socialPostUpdateSchema), asyncHandler(async (req, res) => {
   const post = await SocialPost.findById(validId(req.params.id, 'SocialPost'));
   if (!post) throw notFound('SocialPost');
 
@@ -1739,7 +1755,7 @@ adminApiRouter.patch('/social-posts/:id', requireAdminOrStaffAuth, requireScreen
   itemResponse(res, { ...toSocialPostClientObject(post), sync });
 }));
 
-adminApiRouter.delete('/social-posts/:id', requireAdminOrStaffAuth, requireScreen('social', 'edit'), requirePortalRoles(...SOCIAL_ROLES), asyncHandler(async (req, res) => {
+adminApiRouter.delete('/social-posts/:id', requireAdminOrStaffAuth, requireScreen('social', 'edit'), asyncHandler(async (req, res) => {
   const post = await SocialPost.findById(validId(req.params.id, 'SocialPost'));
   if (!post) throw notFound('SocialPost');
 
@@ -1760,7 +1776,7 @@ adminApiRouter.delete('/social-posts/:id', requireAdminOrStaffAuth, requireScree
   itemResponse(res, { id: req.params.id, deleted: true });
 }));
 
-adminApiRouter.post('/social-posts/:id/retry-wordpress-sync', requireAdminOrStaffAuth, requireScreen('social', 'edit'), requirePortalRoles(...SOCIAL_ROLES), asyncHandler(async (req, res) => {
+adminApiRouter.post('/social-posts/:id/retry-wordpress-sync', requireAdminOrStaffAuth, requireScreen('social', 'edit'), asyncHandler(async (req, res) => {
   const post = await SocialPost.findById(validId(req.params.id, 'SocialPost')).populate('opportunityId', 'title name');
   if (!post) throw notFound('SocialPost');
   itemResponse(res, { ...toSocialPostClientObject(post), sync: await syncManagedRecord('social-posts', post) });
@@ -1769,7 +1785,7 @@ adminApiRouter.post('/social-posts/:id/retry-wordpress-sync', requireAdminOrStaf
 // --- Ambassador applications -------------------------------------------------
 // Reviewed by an admin. Approving links the user to the ambassador registry and, optionally, a channel.
 
-adminApiRouter.get('/ambassador-requests', requireAdminAuth, asyncHandler(async (req, res) => {
+adminApiRouter.get('/ambassador-requests', requireAdminScreen('network'), asyncHandler(async (req, res) => {
   const filter = {};
   if (['pending', 'approved', 'rejected'].includes(req.query.status)) filter.status = req.query.status;
   if (['seeker', 'hirer'].includes(req.query.role)) filter.role = req.query.role;
@@ -1785,7 +1801,7 @@ adminApiRouter.get('/ambassador-requests', requireAdminAuth, asyncHandler(async 
   listResponse(res, rows.map(toRequestResponse), total, page, limit);
 }));
 
-adminApiRouter.get('/ambassador-requests/:id', requireAdminAuth, asyncHandler(async (req, res) => {
+adminApiRouter.get('/ambassador-requests/:id', requireAdminScreen('network'), asyncHandler(async (req, res) => {
   const request = await AmbassadorRequest.findById(validId(req.params.id, 'Ambassador request')).lean();
   if (!request) throw notFound('Ambassador request');
   const [user, seeker, hirer] = await Promise.all([
@@ -1826,7 +1842,7 @@ adminApiRouter.get('/ambassador-requests/:id', requireAdminAuth, asyncHandler(as
   });
 }));
 
-adminApiRouter.post('/ambassador-requests/:id/approve', requireAdminAuth, validate(approveAmbassadorRequestSchema), asyncHandler(async (req, res) => {
+adminApiRouter.post('/ambassador-requests/:id/approve', requireAdminScreen('network'), validate(approveAmbassadorRequestSchema), asyncHandler(async (req, res) => {
   const request = await AmbassadorRequest.findById(req.params.id);
   if (!request) throw notFound('Ambassador request');
   if (request.status !== 'pending') throw new ApiError(409, 'This request has already been decided');
@@ -1901,7 +1917,7 @@ adminApiRouter.post('/ambassador-requests/:id/approve', requireAdminAuth, valida
   itemResponse(res, toRequestResponse(request));
 }));
 
-adminApiRouter.post('/ambassador-requests/:id/reject', requireAdminAuth, validate(rejectAmbassadorRequestSchema), asyncHandler(async (req, res) => {
+adminApiRouter.post('/ambassador-requests/:id/reject', requireAdminScreen('network'), validate(rejectAmbassadorRequestSchema), asyncHandler(async (req, res) => {
   const request = await AmbassadorRequest.findById(req.params.id);
   if (!request) throw notFound('Ambassador request');
   if (request.status !== 'pending') throw new ApiError(409, 'This request has already been decided');
@@ -1926,7 +1942,7 @@ adminApiRouter.post('/ambassador-requests/:id/reject', requireAdminAuth, validat
   itemResponse(res, toRequestResponse(request));
 }));
 
-adminApiRouter.post('/ambassador-requests/:id/revoke', requireAdminAuth, validate(rejectAmbassadorRequestSchema), asyncHandler(async (req, res) => {
+adminApiRouter.post('/ambassador-requests/:id/revoke', requireAdminScreen('network'), validate(rejectAmbassadorRequestSchema), asyncHandler(async (req, res) => {
   const request = await AmbassadorRequest.findById(req.params.id);
   if (!request) throw notFound('Ambassador request');
   if (request.status !== 'approved') throw new ApiError(409, 'Only an approved ambassador can be removed');
@@ -1980,7 +1996,7 @@ adminApiRouter.post('/ambassador-requests/:id/revoke', requireAdminAuth, validat
 
 // --- Admin-managed channels: create, members and group chat ------------------
 
-adminApiRouter.post('/channels', requireAdminAuth, validate(createAdminChannelSchema), asyncHandler(async (req, res) => {
+adminApiRouter.post('/channels', requireAdminScreen('channels'), validate(createAdminChannelSchema), asyncHandler(async (req, res) => {
   const channel = await Channel.create({
     name: req.body.name,
     category: req.body.category,
@@ -1996,7 +2012,7 @@ adminApiRouter.post('/channels', requireAdminAuth, validate(createAdminChannelSc
   res.status(201).json({ data: toClientObject(channel) });
 }));
 
-adminApiRouter.get('/channels/:id/members', requireAdminAuth, asyncHandler(async (req, res) => {
+adminApiRouter.get('/channels/:id/members', requireAdminScreen('channels'), asyncHandler(async (req, res) => {
   const channel = await Channel.findById(validId(req.params.id, 'Channel'));
   if (!channel) throw notFound('Channel');
   const status = ['pending', 'active', 'removed', 'banned'].includes(req.query.status) ? req.query.status : 'active';
@@ -2013,7 +2029,7 @@ adminApiRouter.get('/channels/:id/members', requireAdminAuth, asyncHandler(async
   })));
 }));
 
-adminApiRouter.post('/channels/:id/members', requireAdminAuth, validate(addChannelMemberSchema), asyncHandler(async (req, res) => {
+adminApiRouter.post('/channels/:id/members', requireAdminScreen('channels'), validate(addChannelMemberSchema), asyncHandler(async (req, res) => {
   const channel = await Channel.findById(req.params.id);
   if (!channel) throw notFound('Channel');
   const user = await User.findById(req.body.userId).select('name role');
@@ -2027,7 +2043,7 @@ adminApiRouter.post('/channels/:id/members', requireAdminAuth, validate(addChann
   itemResponse(res, toClientObject(membership));
 }));
 
-adminApiRouter.delete('/channels/:id/members/:userId', requireAdminAuth, asyncHandler(async (req, res) => {
+adminApiRouter.delete('/channels/:id/members/:userId', requireAdminScreen('channels'), asyncHandler(async (req, res) => {
   const channel = await Channel.findById(validId(req.params.id, 'Channel'));
   if (!channel) throw notFound('Channel');
   if (String(channel.createdBy) === req.params.userId) throw new ApiError(400, 'The group creator cannot be removed');
@@ -2041,13 +2057,13 @@ adminApiRouter.delete('/channels/:id/members/:userId', requireAdminAuth, asyncHa
   itemResponse(res, toClientObject(membership));
 }));
 
-adminApiRouter.get('/channels/:id/messages', requireAdminAuth, asyncHandler(async (req, res) => {
+adminApiRouter.get('/channels/:id/messages', requireAdminScreen('channels'), asyncHandler(async (req, res) => {
   const channel = await Channel.findById(validId(req.params.id, 'Channel'));
   if (!channel) throw notFound('Channel');
   listResponse(res, await listChannelMessages(channel._id, { before: req.query.before, limit: req.query.limit }));
 }));
 
-adminApiRouter.get('/channels/:id/messages/:messageId/replies', requireAdminAuth, asyncHandler(async (req, res) => {
+adminApiRouter.get('/channels/:id/messages/:messageId/replies', requireAdminScreen('channels'), asyncHandler(async (req, res) => {
   const channel = await Channel.findById(validId(req.params.id, 'Channel'));
   if (!channel) throw notFound('Channel');
   const thread = await getThread(channel._id, validId(req.params.messageId, 'Message'));
@@ -2055,7 +2071,7 @@ adminApiRouter.get('/channels/:id/messages/:messageId/replies', requireAdminAuth
   itemResponse(res, thread);
 }));
 
-adminApiRouter.post('/channels/:id/messages', requireAdminAuth, asyncHandler(async (req, res) => {
+adminApiRouter.post('/channels/:id/messages', requireAdminScreen('channels'), asyncHandler(async (req, res) => {
   const parsed = chatMessageSchema.safeParse({ body: req.body, query: req.query, params: { channelId: req.params.id } });
   if (!parsed.success) throw new ApiError(400, 'Validation failed: ' + parsed.error.issues.map((i) => i.path.join('.') + ': ' + i.message).join(', '));
   const channel = await Channel.findById(parsed.data.params.channelId);
@@ -2068,7 +2084,7 @@ adminApiRouter.post('/channels/:id/messages', requireAdminAuth, asyncHandler(asy
 }));
 
 // Turn replies on or off for a post that is already published.
-adminApiRouter.patch('/channels/:id/messages/:messageId', requireAdminAuth, validate(allowRepliesSchema), asyncHandler(async (req, res) => {
+adminApiRouter.patch('/channels/:id/messages/:messageId', requireAdminScreen('channels'), validate(allowRepliesSchema), asyncHandler(async (req, res) => {
   const channel = await Channel.findById(req.params.id);
   if (!channel) throw notFound('Channel');
   const updated = await setAllowReplies(channel._id, req.params.messageId, req.body.allowReplies);
@@ -2718,7 +2734,7 @@ adminApiRouter.get('/change-history', requireAdminOrStaffAuth, requireScreen('se
 }));
 
 // Legacy PUT /targets/:metric kept for backward compatibility until all callers migrate
-adminApiRouter.put('/targets/:metric', requireAdminOrStaffAuth, requirePortalRoles('Desk Lead', 'Admin Support'), asyncHandler(async (req, res) => {
+adminApiRouter.put('/targets/:metric', requireAdminOrStaffAuth, requireScreen('settings_admin', 'edit'), asyncHandler(async (req, res) => {
   const { month } = monthBounds(req.body.month);
   const target = Number(req.body.target);
   if (!Number.isFinite(target) || target < 0) throw new ApiError(400, 'target must be a non-negative number');
@@ -2999,7 +3015,7 @@ adminApiRouter.get(
   })
 );
 
-adminApiRouter.get('/dashboard', requireAdminOrStaffAuth, requirePortalRoles(...ALL_PORTAL_ROLES), asyncHandler(async (req, res) => {
+adminApiRouter.get('/dashboard', requireAdminOrStaffAuth, requireScreen('overview', 'view'), asyncHandler(async (req, res) => {
   const { month, start } = monthBounds(req.query.month);
   const today = req.query.today ? new Date(req.query.today) : new Date();
   const [values, kpiCardsResult, pipeline, upcomingPrograms, activities, trend] = await Promise.all([
@@ -3244,12 +3260,6 @@ const handleChangePassword = asyncHandler(async (req, res) => {
 adminApiRouter.post('/settings/password', requireAdminOrStaffAuth, requireScreen('settings', 'edit'), reauthLimiter, validate(passwordChangeSchema), handleChangePassword);
 adminApiRouter.post('/settings/change-password', requireAdminOrStaffAuth, requireScreen('settings', 'edit'), reauthLimiter, validate(passwordChangeSchema), handleChangePassword);
 
-adminApiRouter.get('/leaderboard', requireAdminOrStaffAuth, requirePortalRoles(...AMBASSADOR_ROLES), asyncHandler(async (req, res) => {
-  const { month } = monthBounds(req.query.month);
-  const entries = await leaderboardEntries(month);
-  itemResponse(res, { month, entries });
-}));
-
 export const toTestimonialAdminObject = (document) => {
   if (!document) return null;
   const value = document.toJSON ? document.toJSON({ virtuals: true }) : document;
@@ -3304,7 +3314,7 @@ export const resolveTestimonialTransition = (currentStatus, target) => {
 
 // BE-022: ingested news moderation. Staff can hide (or re-show) items;
 // ingest never flips `hidden`, so a hide decision always wins.
-adminApiRouter.get('/news', requireAdminOrStaffAuth, requireScreen('social', 'view'), requirePortalRoles(...SOCIAL_ROLES), validate(newsAdminQuerySchema), asyncHandler(async (req, res) => {
+adminApiRouter.get('/news', requireAdminOrStaffAuth, requireScreen('social', 'view'), validate(newsAdminQuerySchema), asyncHandler(async (req, res) => {
   const filter = {};
   if (req.query.source) filter.source = req.query.source;
   if (req.query.hidden !== undefined) filter.hidden = req.query.hidden === 'true';
@@ -3320,7 +3330,7 @@ adminApiRouter.get('/news', requireAdminOrStaffAuth, requireScreen('social', 'vi
   listResponse(res, records.map(toClientObject), total, page, limit);
 }));
 
-adminApiRouter.patch('/news/:id', requireAdminOrStaffAuth, requireScreen('social', 'edit'), requirePortalRoles(...SOCIAL_ROLES), validate(newsModerateSchema), asyncHandler(async (req, res) => {
+adminApiRouter.patch('/news/:id', requireAdminOrStaffAuth, requireScreen('social', 'edit'), validate(newsModerateSchema), asyncHandler(async (req, res) => {
   const record = await NewsItem.findById(validId(req.params.id, 'News item'));
   if (!record) throw notFound('News item');
   const previous = record.hidden;
@@ -3338,11 +3348,11 @@ adminApiRouter.patch('/news/:id', requireAdminOrStaffAuth, requireScreen('social
   itemResponse(res, toClientObject(record));
 }));
 
-adminApiRouter.get('/testimonials/pending-count', requireAdminOrStaffAuth, requireScreen('testimonials', 'view'), requirePortalRoles(...TESTIMONIAL_VIEW_ROLES), asyncHandler(async (req, res) => { const count = await Testimonial.countDocuments({ status: 'pending' });
+adminApiRouter.get('/testimonials/pending-count', requireAdminOrStaffAuth, requireScreen('testimonials', 'view'), asyncHandler(async (req, res) => { const count = await Testimonial.countDocuments({ status: 'pending' });
   itemResponse(res, { count });
 }));
 
-adminApiRouter.get('/testimonials', requireAdminOrStaffAuth, requireScreen('testimonials', 'view'), requirePortalRoles(...TESTIMONIAL_VIEW_ROLES), asyncHandler(async (req, res) => {
+adminApiRouter.get('/testimonials', requireAdminOrStaffAuth, requireScreen('testimonials', 'view'), asyncHandler(async (req, res) => {
   const filter = {};
   if (req.query.status && TESTIMONIAL_STATUSES.includes(String(req.query.status).toLowerCase())) {
     filter.status = String(req.query.status).toLowerCase();
@@ -3374,7 +3384,7 @@ adminApiRouter.get('/testimonials', requireAdminOrStaffAuth, requireScreen('test
   listResponse(res, records.map(toTestimonialAdminObject));
 }));
 
-adminApiRouter.get('/testimonials/:id', requireAdminOrStaffAuth, requireScreen('testimonials', 'view'), requirePortalRoles(...TESTIMONIAL_VIEW_ROLES), asyncHandler(async (req, res) => {
+adminApiRouter.get('/testimonials/:id', requireAdminOrStaffAuth, requireScreen('testimonials', 'view'), asyncHandler(async (req, res) => {
   const record = await Testimonial.findById(validId(req.params.id, 'Testimonial'))
     .populate('decidedBy', 'name fullName email')
     .populate('moderatedBy', 'name fullName email');
@@ -3382,7 +3392,7 @@ adminApiRouter.get('/testimonials/:id', requireAdminOrStaffAuth, requireScreen('
   itemResponse(res, toTestimonialAdminObject(record));
 }));
 
-adminApiRouter.post('/testimonials/:id/moderate', requireAdminOrStaffAuth, requireScreen('testimonials', 'edit'), requirePortalRoles(...TESTIMONIAL_EDIT_ROLES), validate(testimonialModerateSchema), asyncHandler(async (req, res) => {
+adminApiRouter.post('/testimonials/:id/moderate', requireAdminOrStaffAuth, requireScreen('testimonials', 'edit'), validate(testimonialModerateSchema), asyncHandler(async (req, res) => {
   const record = await Testimonial.findById(validId(req.params.id, 'Testimonial'));
   if (!record) throw notFound('Testimonial');
 
@@ -3417,7 +3427,7 @@ adminApiRouter.post('/testimonials/:id/moderate', requireAdminOrStaffAuth, requi
   itemResponse(res, toTestimonialAdminObject(record));
 }));
 
-adminApiRouter.post('/testimonials', requireAdminOrStaffAuth, requireScreen('testimonials', 'edit'), requirePortalRoles(...TESTIMONIAL_EDIT_ROLES), validate(testimonialCreateSchema), asyncHandler(async (req, res) => {
+adminApiRouter.post('/testimonials', requireAdminOrStaffAuth, requireScreen('testimonials', 'edit'), validate(testimonialCreateSchema), asyncHandler(async (req, res) => {
   const name = String(req.body.name || req.body.author).trim();
   const email = String(req.body.email).trim().toLowerCase();
   const comment = String(req.body.comment || req.body.quote).trim();
@@ -3452,7 +3462,7 @@ adminApiRouter.post('/testimonials', requireAdminOrStaffAuth, requireScreen('tes
   res.status(201).json({ data: toTestimonialAdminObject(record) });
 }));
 
-adminApiRouter.patch('/testimonials/:id', requireAdminOrStaffAuth, requireScreen('testimonials', 'edit'), requirePortalRoles(...TESTIMONIAL_EDIT_ROLES), validate(testimonialUpdateSchema), asyncHandler(async (req, res) => {
+adminApiRouter.patch('/testimonials/:id', requireAdminOrStaffAuth, requireScreen('testimonials', 'edit'), validate(testimonialUpdateSchema), asyncHandler(async (req, res) => {
   const record = await Testimonial.findById(validId(req.params.id, 'Testimonial'));
   if (!record) throw notFound('Testimonial');
 
@@ -3503,7 +3513,7 @@ adminApiRouter.patch('/testimonials/:id', requireAdminOrStaffAuth, requireScreen
   itemResponse(res, toTestimonialAdminObject(record));
 }));
 
-adminApiRouter.delete('/testimonials/:id', requireAdminOrStaffAuth, requireScreen('testimonials', 'edit'), requirePortalRoles(...TESTIMONIAL_EDIT_ROLES), asyncHandler(async (req, res) => {
+adminApiRouter.delete('/testimonials/:id', requireAdminOrStaffAuth, requireScreen('testimonials', 'edit'), asyncHandler(async (req, res) => {
   const record = await Testimonial.findById(validId(req.params.id, 'Testimonial'));
   if (!record) throw notFound('Testimonial');
 
@@ -3809,13 +3819,13 @@ adminApiRouter.get('/reports/partner', requireAdminOrStaffAuth, requireScreen('m
   itemResponse(res, report);
 }));
 
-adminApiRouter.get('/reports/team', requireAdminOrStaffAuth, requirePortalRoles('super_admin', 'desk_lead', 'Super Admin', 'Desk Lead'), asyncHandler(async (req, res) => {
+adminApiRouter.get('/reports/team', requireAdminOrStaffAuth, requireScreen('team_scorecard', 'view'), asyncHandler(async (req, res) => {
   const { month } = monthBounds(req.query.month);
   const report = await buildTeamReport(month);
   itemResponse(res, report);
 }));
 
-adminApiRouter.get('/reports/monthly', requireAdminOrStaffAuth, requirePortalRoles(...ALL_PORTAL_ROLES), asyncHandler(async (req, res) => {
+adminApiRouter.get('/reports/monthly', requireAdminOrStaffAuth, requireScreen('monthly_report', 'view'), asyncHandler(async (req, res) => {
   const { month } = monthBounds(req.query.month);
   const audience = req.query.audience === 'partner' ? 'partner' : 'internal';
   if (audience === 'partner') {

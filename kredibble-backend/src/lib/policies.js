@@ -74,17 +74,24 @@ export const RESOURCE_POLICIES = {
     update: ADMIN_ONLY,
     delete: ADMIN_ONLY,
     // `passwordHash` is never writable over HTTP; passwords change through the
-    // dedicated auth flows only.
-    createFields: ['name', 'email', 'role', 'avatarUrl'],
-    updateFields: ['name', 'role', 'avatarUrl'],
+    // dedicated auth flows only. Nor is `role` (SEC-132/SEC-134): every staff
+    // User has role admin, and an admin with no staff record counts as the root
+    // admin, so setting role admin here would mint a Super Admin. Admins are
+    // made by `npm run user:create-admin` and BE-028's accounts routes only.
+    createFields: ['name', 'email', 'avatarUrl'],
+    updateFields: ['name', 'avatarUrl'],
   },
   staff: {
     read: ADMIN_ONLY,
     create: ADMIN_ONLY,
     update: ADMIN_ONLY,
-    delete: ADMIN_ONLY,
-    createFields: ['userId', 'name', 'email', 'role', 'status', 'joinedDate'],
-    updateFields: ['name', 'email', 'role', 'status', 'joinedDate'],
+    // SEC-134: nobody hard-deletes a staff record (an admin with no record is
+    // treated as the root admin); DELETE /admin/staff/:id deactivates instead.
+    delete: [],
+    // SEC-132: roles and status change only through BE-028's accounts routes
+    // (Super Admin, audited, sessions revoked), never through this collection.
+    createFields: ['userId', 'name', 'email', 'joinedDate'],
+    updateFields: ['name', 'email', 'joinedDate'],
   },
 
   // --- Profiles ---
