@@ -12,7 +12,8 @@
  *   A delivered program says it counts toward the monthly target.
  * - Danger zone (edit access, program not yet delivered or cancelled): "Cancel program", with a confirm dialog. It sets
  *   the status to Cancelled, so Active drops by one on the list and Delivered does not change.
- * Data: services/programs.ts (live store). Each action carries a TODO(backend).
+ * Data: services/programs.ts (the API in real mode, the mock store in mock mode). Cancelling waits for the save; a
+ * failure shows an error toast and the program stays as it was.
  *
  * Props: id (the program id)
  */
@@ -22,7 +23,7 @@ import { Ban, Pencil } from "lucide-react";
 import { useRoles, VIEW_ONLY_TOOLTIP } from "@/components/access/RoleProvider";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { useBreadcrumbLabel } from "@/lib/breadcrumb-label";
-import { cancelProgram, loadProgram, subscribeProgramStore } from "@/lib/services/programs";
+import { loadProgram, saveCancellation, subscribeProgramStore } from "@/lib/services/programs";
 import { useDetailData } from "@/lib/use-detail-data";
 import { DangerZone } from "@/components/detail/DangerZone";
 import { DetailHeader } from "@/components/detail/DetailHeader";
@@ -34,7 +35,6 @@ import { useConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { KeyValueList } from "@/components/ui/KeyValueList";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TagPill } from "@/components/ui/TagPill";
-import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { useToast } from "@/components/ui/Toast";
 import { PROGRAM_FORMAT_LABELS, PROGRAM_STATUS_LABELS, PROGRAM_TYPE_META } from "./program-meta";
@@ -69,9 +69,10 @@ export function ProgramDetail({ id }: { id: string }) {
       ),
       confirmLabel: "Cancel program",
       onConfirm: () => {
-        // TODO(backend): persist this change
-        cancelProgram(program.id);
-        toast.success(`${program.name} was cancelled.`);
+        void saveCancellation(program.id).then(
+          () => toast.success(`${program.name} was cancelled.`),
+          (problem: unknown) => toast.error(problem instanceof Error ? problem.message : "The program could not be cancelled. Try again."),
+        );
       },
     });
 
@@ -90,7 +91,6 @@ export function ProgramDetail({ id }: { id: string }) {
 
   return (
     <>
-      <NotConnectedNotice className="mb-4" />
       <DetailPage
         header={
           <DetailHeader

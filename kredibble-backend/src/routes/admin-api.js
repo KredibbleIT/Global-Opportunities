@@ -387,6 +387,8 @@ const addManagedRoutes = ({
       throw new ApiError(502, 'WordPress deletion failed. The local record was retained for retry.');
     }
     await record.deleteOne();
+    // Programs keep running without the partner; none may point at a partner that no longer exists.
+    if (resource === 'partners') await Program.updateMany({ partnerId: record._id }, { $unset: { partnerId: 1 } });
     await logActivity(req.auth.sub, 'deleted', resource, record);
     if (resource === 'ambassadors') {
       await auditReq(req, {

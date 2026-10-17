@@ -15,7 +15,8 @@
  *   - while the status is "planned" the count cannot be above the target
  * A "Delivered" status shows the note "Delivered programs count toward the monthly target" (a delivered program counts in
  * the month it ends). Leaving with unsaved changes asks first.
- * Data: services/programs.ts (shared mock store). Each save carries a TODO(backend).
+ * Data: services/programs.ts: saving waits for saveProgram (the API in real mode); a failure shows an error toast and
+ * keeps the form open with what was typed.
  *
  * Props: program? (the program being edited; omit for a new one)
  */
@@ -23,9 +24,10 @@ import { useMemo, useRef, useState, type FormEvent } from "react";
 import { Info } from "lucide-react";
 import { LISTING_COUNTRIES } from "@/config/countries";
 import { PROGRAM_FORMATS, PROGRAM_STATUSES, PROGRAM_TYPES, type Program, type ProgramFormat, type ProgramStatus, type ProgramType } from "@/lib/mock-entities";
-import { createProgram, programPartnerOptions, updateProgram, type ProgramFields } from "@/lib/services/programs";
+import { loadProgramPartnerOptions, saveProgram, type ProgramFields } from "@/lib/services/programs";
+import { isMockMode } from "@/lib/services/mock-mode";
+import { useAsync } from "@/lib/use-async";
 import { Card } from "@/components/ui/Card";
-import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 import { ChipsInput } from "@/components/ui/form/ChipsInput";
 import { Field } from "@/components/ui/form/Field";
 import { FormSection } from "@/components/ui/form/FormSection";
@@ -131,9 +133,10 @@ export function ProgramForm({ program }: { program?: Program }) {
   const dirty = JSON.stringify(form) !== JSON.stringify(initial);
   const guard = useUnsavedGuard(dirty && !saving);
   const errors = validateProgram(form);
+  const { data: partners } = useAsync(loadProgramPartnerOptions);
   const partnerOptions: SelectOption<string>[] = useMemo(
-    () => [{ value: NONE, label: "No linked partner" }, ...programPartnerOptions().map((partner) => ({ value: partner.id, label: partner.name }))],
-    [],
+    () => [{ value: NONE, label: "No linked partner" }, ...(partners ?? []).map((partner) => ({ value: partner.id, label: partner.name }))],
+    [partners],
   );
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((current) => ({ ...current, [key]: value }));
@@ -146,8 +149,8 @@ export function ProgramForm({ program }: { program?: Program }) {
       return;
     }
     setSaving(true);
-    // TODO(backend): persist this change (create or update the program).
-    await new Promise((resolve) => setTimeout(resolve, 600));
+    // Mock mode saves instantly; a short pause shows the saving state as a real save would.
+    if (isMockMode()) await new Promise((resolve) => setTimeout(resolve, 600));
     const fields: ProgramFields = {
       name: form.name.trim(),
       type: form.type,
@@ -163,9 +166,14 @@ export function ProgramForm({ program }: { program?: Program }) {
       endAt: form.endAt,
       notes: form.notes.trim() || undefined,
     };
-    const saved = program ? updateProgram(program.id, fields) : createProgram(fields);
-    toast.success(program ? `${fields.name} was updated.` : `${fields.name} was created.`);
-    guard.leaveNow(saved ? `${LIST_HREF}/${saved.id}` : LIST_HREF);
+    try {
+      const saved = await saveProgram(fields, program?.id);
+      toast.success(program ? `${fields.name} was updated.` : `${fields.name} was created.`);
+      guard.leaveNow(`${LIST_HREF}/${saved.id}`);
+    } catch (problem) {
+      setSaving(false);
+      toast.error(problem instanceof Error ? problem.message : "The program could not be saved. Try again.");
+    }
   };
 
   return (
@@ -178,7 +186,6 @@ export function ProgramForm({ program }: { program?: Program }) {
           {program ? "Change this program." : "Add something the desk runs: a training, a bootcamp, a webinar and so on."}
         </p>
 
-        <NotConnectedNotice className="mb-4" />
 
         <div className="space-y-4">
           <Card>
