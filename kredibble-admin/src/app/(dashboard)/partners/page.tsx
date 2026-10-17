@@ -18,8 +18,9 @@
  * - Roles: Partnerships Officer, Desk Lead and Super Admin edit; Country Lead only views (no menu, no drag handle).
  * When the filters match nothing (for example Type = Government, which no seeded partner has) the board is replaced by a
  * "no results" state with a "Clear filters" button, on phones too.
- * Outside mock mode a notice says the page shows sample data (partners have no backend yet). The dev ?state=
- * loading|empty|error switch works here.
+ * Real mode reads /admin/partners and this month's target from /admin/targets (services/partners.ts); a move waits for
+ * the server, and a failure shows an error toast with the card left where it was. Mock mode shows the sample data, and
+ * the dev ?state= loading|empty|error switch works there.
  */
 import { useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -35,14 +36,14 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Select, type SelectOption } from "@/components/ui/form/Select";
 import { KanbanBoard, type KanbanColumn } from "@/components/ui/KanbanBoard";
-import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 import { useToast } from "@/components/ui/Toast";
 import { CLOSED_STAGES, PARTNER_STAGES, PARTNER_TYPES, PARTNER_TYPE_LABELS, type PartnerStage, type PartnerType } from "@/lib/mock-entities";
 import { usePartnerStageLabels } from "@/lib/mock-store";
 import { pipelineHealth } from "@/lib/pipeline-health";
 import { demoHealth, parseHealthOverride } from "@/lib/pipeline-health-demo";
 import { isMockMode } from "@/lib/services/mock-mode";
-import { flattenMoves, loadPartnerRows, movePartner, nextMonthPartnersTarget, subscribePartners, type PartnerRow } from "@/lib/services/partners";
+import { flattenMoves, loadPartnerRows, loadPartnersTarget, movePartnerTo, subscribePartners, type PartnerRow } from "@/lib/services/partners";
+import { useAsync } from "@/lib/use-async";
 import { useListData } from "@/lib/use-list-data";
 
 const ALL = "all";
@@ -64,8 +65,9 @@ export default function PartnersPage() {
   const columns: KanbanColumn[] = PARTNER_STAGES.map((key) => ({ key, label: labels[key], marker: CLOSED_STAGES.includes(key) ? "Closed" : undefined }));
 
   // The health of the WHOLE pipeline, whatever the filters say.
-  const target = nextMonthPartnersTarget();
-  const realHealth = useMemo(() => (rows ? pipelineHealth(rows, flattenMoves(rows), target) : null), [rows, target]);
+  const { data: loadedTarget } = useAsync(loadPartnersTarget);
+  const target = loadedTarget ?? 0;
+  const realHealth = useMemo(() => (rows && loadedTarget !== null ? pipelineHealth(rows, flattenMoves(rows), target) : null), [rows, loadedTarget, target]);
   const demo = override ? demoHealth(override) : null;
   const health = demo ? demo.health : realHealth;
   const shownTarget = demo ? demo.target : target;
@@ -102,12 +104,15 @@ export default function PartnersPage() {
     setCountry(ALL);
   };
 
-  const onMove = (row: PartnerRow, to: string) => {
-    const result = movePartner(row.id, to as PartnerStage);
-    if (!result) return;
-    const closing = result.closedChange === "closed" ? " It is now closed." : result.closedChange === "reopened" ? " It is open again." : "";
-    // TODO(backend): persist this change
-    toast.success(`${row.name} moved to ${labels[result.to]}.${closing}`);
+  const onMove = async (row: PartnerRow, to: string) => {
+    try {
+      const result = await movePartnerTo(row.id, to as PartnerStage);
+      if (!result) return;
+      const closing = result.closedChange === "closed" ? " It is now closed." : result.closedChange === "reopened" ? " It is open again." : "";
+      toast.success(`${row.name} moved to ${labels[result.to]}.${closing}`);
+    } catch (problem) {
+      toast.error(problem instanceof Error ? problem.message : `${row.name} could not be moved. Try again.`);
+    }
   };
 
   return (
@@ -117,7 +122,6 @@ export default function PartnersPage() {
       action={canEdit ? { label: "New partner", href: "/partners/new", icon: Plus } : undefined}
       toolbar={
         <div className="space-y-4">
-          <NotConnectedNotice />
           {/* From 1280px: the two tiles stacked in a 240px column on the left, the health card taking the rest, in ONE row
               (so the board starts higher). Below 1280px they stack. */}
           <div className="space-y-4 xl:grid xl:grid-cols-[15rem_1fr] xl:items-stretch xl:gap-4 xl:space-y-0">

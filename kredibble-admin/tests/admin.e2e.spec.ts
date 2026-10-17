@@ -4984,26 +4984,22 @@ test.describe('Not connected yet', () => {
     await expect(page.getByTestId('not-connected-notice')).toBeVisible();
   });
 
-  test('Network and Leaderboard read the API in the real run: no sample-data notice on the list, the form or the leaderboard', async ({ page }) => {
+  test('Network, Leaderboard, Programs and Partners read the API in the real run: no sample-data notice on the lists or the forms', async ({ page }) => {
     test.skip(MOCK_RUN, 'the notice only shows outside mock mode');
-    for (const path of ['/network', '/network/new', '/leaderboard']) {
+    for (const path of ['/network', '/network/new', '/leaderboard', '/programs', '/programs/new', '/partners', '/partners/new']) {
       await page.goto(`${BASE_URL}${path}`);
       await expect(page.getByTestId('page-title')).toBeVisible();
       await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
     }
   });
 
-  test('Programs and Partners say they show sample data in the real API run, on the list, a detail page and the form', async ({ page }) => {
-    test.skip(MOCK_RUN, 'the notice only shows outside mock mode');
-    for (const path of ['/programs', '/programs/prg-01', '/programs/new', '/partners', '/partners/ptn-01', '/partners/new']) {
+  test('a sample id is "not found" in the real run, never a sample record', async ({ page }) => {
+    test.skip(MOCK_RUN, 'real API run only');
+    for (const path of ['/programs/prg-01', '/partners/ptn-01', '/network/amb-02']) {
       await page.goto(`${BASE_URL}${path}`);
-      await expect(page.getByTestId('page-title')).toBeVisible();
-      await expect(page.getByTestId('not-connected-notice')).toBeVisible();
+      await expect(page.getByText(/could not find|not found|no longer exists/i).first()).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
     }
-    // on the board the notice is ONE line, so it does not push the columns down
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(`${BASE_URL}/partners`);
-    expect((await page.getByTestId('not-connected-notice').boundingBox())!.height).toBeLessThan(48);
   });
 
   test('mock mode shows no notice, since everything is sample data on purpose', async ({ page }) => {
@@ -5011,6 +5007,104 @@ test.describe('Not connected yet', () => {
     await page.goto(`${BASE_URL}/team`);
     await expect(page.getByTestId('page-title')).toHaveText('Team');
     await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Programs and Partners against the real API (real run only). The e2e database is shared by the whole run and can
+// outlive it locally, so names carry a stamp, and the tests run in order: the partner made first is linked to the
+// program, then removed.
+// ---------------------------------------------------------------------------
+test.describe('Programs and Partners against the real API', () => {
+  test.skip(MOCK_RUN, 'real API run only: see npm run test:e2e');
+  test.describe.configure({ mode: 'serial' });
+  test.use({ viewport: { width: 1440, height: 900 } });
+  const stamp = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+  const partnerName = `Live Partner ${stamp}`;
+  const programName = `Live Program ${stamp}`;
+  const DB_ID = /\/([0-9a-f]{24})$/;
+  let partnerId = '';
+  let programId = '';
+  const open = async (page: import('@playwright/test').Page, path: string) => {
+    await page.goto(`${BASE_URL}${path}`, { timeout: 30_000 });
+    await page.getByTestId('sidebar-toggle').waitFor();
+  };
+
+  test('a new partner is saved at Prospect, moves on the board with the move in its history, and can be edited', async ({ page }) => {
+    await open(page, '/partners/new');
+    await expect(page.getByRole('combobox', { name: 'Assigned owner' })).toContainText('E2E Admin'); // the signed-in person
+    await page.getByLabel('Organisation name').fill(partnerName);
+    await page.getByRole('combobox', { name: 'Partner type' }).click();
+    await page.getByRole('option', { name: 'Foundation' }).click();
+    await page.getByRole('combobox', { name: 'Country' }).click();
+    await page.getByRole('option', { name: 'Ghana' }).click();
+    await page.getByLabel('What they provide').fill('Scholarship funding');
+    await page.getByLabel('Contact name').fill('Ama Boateng');
+    await page.getByLabel('Contact email').fill(`partner.${stamp}@example.org`);
+    await page.getByRole('button', { name: 'Add partner' }).click();
+    await expect(page.getByText(`${partnerName} was added at Prospect.`)).toBeVisible({ timeout: 15_000 });
+    await expect(page).toHaveURL(DB_ID, { timeout: 15_000 });
+    partnerId = DB_ID.exec(page.url())![1];
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(partnerName);
+    await expect(page.getByTestId('stage-badge')).toContainText('Prospect');
+    await expect(page.getByTestId('stage-history')).toContainText('Added at Prospect');
+
+    await open(page, '/partners');
+    await expect(page.getByTestId(`kanban-card-${partnerId}`)).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: new RegExp(`^Move ${partnerName} to`) }).click();
+    await page.getByRole('menu', { name: `Move ${partnerName} to another stage` }).getByRole('menuitem', { name: 'Outreach', exact: true }).click();
+    await expect(page.getByText(`${partnerName} moved to Outreach.`)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('kanban-column-outreach').getByTestId(`kanban-card-${partnerId}`)).toBeVisible();
+
+    await open(page, `/partners/${partnerId}/edit`);
+    await page.getByLabel('What they provide').fill('Scholarships and mentors');
+    await page.getByRole('button', { name: 'Save changes' }).click();
+    await expect(page.getByText(`${partnerName} was updated.`)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('stage-history')).toContainText('Prospect → Outreach'); // the edit kept the stage and history
+    await expect(page.locator('main')).toContainText('Scholarships and mentors');
+  });
+
+  test('a new program links to that partner, shows on the partner page, and can be cancelled', async ({ page }) => {
+    await open(page, '/programs/new');
+    await page.getByLabel('Title', { exact: true }).fill(programName);
+    await page.getByRole('combobox', { name: 'Country' }).click();
+    await page.getByRole('option', { name: 'Ghana' }).click();
+    await setDateTime(page, 'Start date and time', '2031-03-01', '09:00');
+    await setDateTime(page, 'End date and time', '2031-03-01', '12:30');
+    await page.getByLabel('Participant target').fill('30');
+    await page.getByRole('combobox', { name: 'Linked partner' }).click();
+    await page.getByRole('option', { name: partnerName }).click();
+    await page.getByRole('button', { name: 'Create program' }).click();
+    await expect(page.getByText(`${programName} was created.`)).toBeVisible({ timeout: 15_000 });
+    await expect(page).toHaveURL(DB_ID, { timeout: 15_000 });
+    programId = DB_ID.exec(page.url())![1];
+    await expect(page.getByTestId('participants-figure')).toHaveText('0 of 30');
+    await expect(page.getByTestId('partner-link')).toHaveText(partnerName);
+    // the wall-clock times come back exactly as typed
+    await expect(page.locator('main')).toContainText('9:00 AM');
+    await expect(page.locator('main')).toContainText('12:30 PM');
+
+    await open(page, `/partners/${partnerId}`);
+    await expect(page.getByTestId('linked-programs')).toContainText(programName);
+
+    await open(page, `/programs/${programId}`);
+    await page.getByRole('button', { name: 'Cancel program' }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Cancel program' }).click();
+    await expect(page.getByText(`${programName} was cancelled.`)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('main').getByText('Cancelled').first()).toBeVisible();
+  });
+
+  test('removing the partner takes it off the board and leaves its program without the link', async ({ page }) => {
+    await open(page, `/partners/${partnerId}`);
+    await page.getByRole('button', { name: 'Remove partner' }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Remove partner' }).click();
+    await expect(page.getByText(`${partnerName} was removed.`)).toBeVisible({ timeout: 15_000 });
+    await expect(page).toHaveURL(/\/partners$/, { timeout: 15_000 });
+    await expect(page.getByTestId(`kanban-card-${partnerId}`)).toHaveCount(0);
+
+    await open(page, `/programs/${programId}`);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(programName);
+    await expect(page.getByTestId('partner-link')).toHaveCount(0);
   });
 });
 
