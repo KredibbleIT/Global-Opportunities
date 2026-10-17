@@ -224,6 +224,8 @@ export interface Ambassador {
   pictureSourceUrl?: string;
   /** When the sign-up form was submitted (ISO date-time). Set by the CSV import. */
   submittedAt?: string;
+  /** Real mode: the server's copy of pictureSourceUrl into our storage (absent when there is nothing to copy). */
+  pictureImport?: { status: "pending" | "processing" | "done" | "failed"; lastError?: string };
   memberType: MemberType;
   description?: string;
   /** "Campus Lead, KNUST" */

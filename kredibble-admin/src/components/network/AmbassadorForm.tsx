@@ -4,7 +4,9 @@
  * AmbassadorForm: add (/network/new) or edit (/network/[id]/edit) one ambassador. Built on the shared form system.
  *
  * Fields (required ones have no "Optional" tag):
- *   Person       full name, email (checked for a valid address), phone (optional), country, city, profile photo (optional)
+ *   Person       full name, email (checked for a valid address), phone and WhatsApp (optional), country, city, region
+ *                (optional), profile photo (optional) and the picture source link (optional: a Google Drive link; saving a new one
+ *                makes the server copy that picture into our storage)
  *   Role         member type, role title (optional), campus, tier (Ambassador, Senior Ambassador, Campus or Regional Lead),
  *                status (applicant, onboarding, active, dormant), description (optional)
  *   Team         assigned lead (optional, a team member), trained (a switch), linked user account (optional, a seeker)
@@ -59,9 +61,12 @@ interface FormState {
   name: string;
   email: string;
   phone: string;
+  whatsapp: string;
   country: string;
   city: string;
+  region: string;
   photoUrl: string | undefined;
+  pictureSourceUrl: string;
   memberType: MemberType;
   roleTitle: string;
   campus: string;
@@ -77,9 +82,12 @@ const EMPTY: FormState = {
   name: "",
   email: "",
   phone: "",
+  whatsapp: "",
   country: "",
   city: "",
+  region: "",
   photoUrl: undefined,
+  pictureSourceUrl: "",
   memberType: "student",
   roleTitle: "",
   campus: "",
@@ -95,9 +103,12 @@ const fromAmbassador = (a: Ambassador): FormState => ({
   name: a.name,
   email: a.email,
   phone: a.phone ?? "",
+  whatsapp: a.whatsapp ?? "",
   country: a.country,
   city: a.city,
+  region: a.region ?? "",
   photoUrl: a.photoUrl,
+  pictureSourceUrl: a.pictureSourceUrl ?? "",
   memberType: a.memberType,
   roleTitle: a.roleTitle ?? "",
   campus: a.campus,
@@ -109,7 +120,7 @@ const fromAmbassador = (a: Ambassador): FormState => ({
   linkedSeekerId: a.linkedSeekerId ?? NONE,
 });
 
-type Errors = Partial<Record<"name" | "email" | "country" | "city" | "campus", string>>;
+type Errors = Partial<Record<"name" | "email" | "country" | "city" | "campus" | "pictureSourceUrl", string>>;
 
 /** A simple address check: something@something.something (the server decides what is really valid). */
 const isEmailLike = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
@@ -123,6 +134,9 @@ export function validateAmbassador(form: FormState): Errors {
   if (!form.country) errors.country = "Choose a country.";
   if (!form.city.trim()) errors.city = "Enter the city.";
   if (!form.campus.trim()) errors.campus = "Enter the campus.";
+  if (form.pictureSourceUrl.trim() && !/^https?:\/\/\S+$/i.test(form.pictureSourceUrl.trim())) {
+    errors.pictureSourceUrl = "Enter the full link, starting with https://.";
+  }
   return errors;
 }
 
@@ -158,6 +172,9 @@ export function AmbassadorForm({ ambassador }: { ambassador?: Ambassador }) {
       name: form.name.trim(),
       email: form.email.trim(),
       phone: form.phone.trim() || undefined,
+      whatsapp: form.whatsapp.trim() || undefined,
+      region: form.region.trim() || undefined,
+      pictureSourceUrl: form.pictureSourceUrl.trim() || undefined,
       country: form.country,
       city: form.city.trim(),
       photoUrl: form.photoUrl,
@@ -203,16 +220,38 @@ export function AmbassadorForm({ ambassador }: { ambassador?: Ambassador }) {
               <Field label="Phone" optional>
                 <Input type="tel" inputMode="tel" value={form.phone} onChange={(e) => set("phone", e.target.value)} placeholder="+233 24 000 0000" autoComplete="off" />
               </Field>
+              <Field label="WhatsApp" optional>
+                <Input type="tel" inputMode="tel" value={form.whatsapp} onChange={(e) => set("whatsapp", e.target.value)} placeholder="+233 24 000 0000" autoComplete="off" />
+              </Field>
               <Field label="Country" error={show("country") ? errors.country : undefined}>
                 <Select options={COUNTRY_OPTIONS} value={form.country} onChange={(value) => set("country", value)} onBlur={() => touch("country")} placeholder="Choose a country" sheetTitle="Country" />
               </Field>
               <Field label="City" error={show("city") ? errors.city : undefined}>
                 <Input value={form.city} onChange={(e) => set("city", e.target.value)} onBlur={() => touch("city")} placeholder="e.g. Kumasi" autoComplete="off" />
               </Field>
+              <Field label="Region" optional>
+                <Input value={form.region} onChange={(e) => set("region", e.target.value)} placeholder="e.g. Ashanti" autoComplete="off" />
+              </Field>
               <Field label="Profile photo" optional>
                 <div className="max-w-sm">
                   <FileDrop value={form.photoUrl} onChange={(url) => set("photoUrl", url)} alt="Profile photo" emptyLabel="Click to upload or drag a photo here" />
                 </div>
+              </Field>
+              <Field
+                label="Picture source link"
+                optional
+                helper="A Google Drive link to their photo. Saving a new link copies that picture into our storage; the file must be shared as Anyone with the link."
+                error={show("pictureSourceUrl") ? errors.pictureSourceUrl : undefined}
+              >
+                <Input
+                  type="url"
+                  inputMode="url"
+                  value={form.pictureSourceUrl}
+                  onChange={(e) => set("pictureSourceUrl", e.target.value)}
+                  onBlur={() => touch("pictureSourceUrl")}
+                  placeholder="https://drive.google.com/…"
+                  autoComplete="off"
+                />
               </Field>
             </FormSection>
           </Card>

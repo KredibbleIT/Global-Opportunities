@@ -226,6 +226,9 @@ export const MEMBER_TYPES = [
   'student', 'graduate', 'staff', 'volunteer',
 ];
 
+// BE-029: the picture source (usually a Google Drive share link) is a web address, or "" to clear it.
+const pictureSourceUrlField = z.union([z.literal(''), z.string().trim().max(1000).regex(/^https?:\/\/\S+$/i, 'pictureSourceUrl must be a web address')]).optional();
+
 export const ambassadorCreateSchema = z.object({
   body: z.object({
     fullName: z.string().trim().min(1, 'fullName is required').max(200).optional(),
@@ -239,6 +242,9 @@ export const ambassadorCreateSchema = z.object({
     description: z.string().max(2000).optional(),
     roleTitle: z.string().max(200).optional(),
     profilePhoto: z.string().max(1000).optional(),
+    whatsapp: z.string().max(50).optional(),
+    region: z.string().max(100).optional(),
+    pictureSourceUrl: pictureSourceUrlField,
     photoUrl: z.string().max(1000).optional(),
     tier: z.enum(AMBASSADOR_TIERS).optional(),
     status: z.enum(AMBASSADOR_STATUSES).optional(),
@@ -268,6 +274,9 @@ export const ambassadorUpdateSchema = z.object({
     description: z.string().max(2000).optional(),
     roleTitle: z.string().max(200).optional(),
     profilePhoto: z.string().max(1000).optional(),
+    whatsapp: z.string().max(50).optional(),
+    region: z.string().max(100).optional(),
+    pictureSourceUrl: pictureSourceUrlField,
     photoUrl: z.string().max(1000).optional(),
     tier: z.enum(AMBASSADOR_TIERS).optional(),
     status: z.enum(AMBASSADOR_STATUSES).optional(),

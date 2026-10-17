@@ -176,6 +176,7 @@ export function toAmbassador(record: AmbassadorApiRecord): Ambassador {
     photoUrl: record.photoUrl || record.profilePhoto || undefined,
     pictureSourceUrl: record.pictureSourceUrl || undefined,
     submittedAt: record.submittedAt || undefined,
+    pictureImport: record.pictureImport ? { status: record.pictureImport.status, lastError: record.pictureImport.lastError } : undefined,
     memberType: record.memberType,
     description: record.description || undefined,
     roleTitle: record.roleTitle || undefined,
@@ -240,8 +241,7 @@ export async function loadAmbassador(id: string): Promise<AmbassadorDetailData |
       return {
         ambassador: toAmbassador(detail.ambassador),
         leadName: detail.leadName || undefined,
-        // The API returns the linked account's id only; the detail page then shows no name for it.
-        linkedSeekerName: undefined,
+        linkedSeekerName: detail.linkedAccount?.name || undefined,
         logs: detail.logs.map(toAmplificationLog),
         stats: detail.stats,
       };
@@ -323,7 +323,7 @@ export async function loadSeekerOptions(): Promise<SeekerOption[]> {
 // ---- writes ----------------------------------------------------------------------------------------------------------
 
 /** What the form edits. The id, the referral code and the dates are decided by the service, never by the form. */
-export type AmbassadorFields = Omit<Ambassador, "id" | "referralCode" | "joinedAt" | "dormantSince">;
+export type AmbassadorFields = Omit<Ambassador, "id" | "referralCode" | "joinedAt" | "dormantSince" | "pictureImport">;
 
 // The four functions below write the MOCK STORE only (mock mode and the rule tests). The pages call saveAmbassador and
 // recordShare, which pick the store or the API.
@@ -408,6 +408,10 @@ export async function saveAmbassador(fields: AmbassadorFields, id?: string): Pro
     fullName: fields.name,
     email: fields.email,
     phone: fields.phone ?? "",
+    whatsapp: fields.whatsapp ?? "",
+    region: fields.region ?? "",
+    // A changed Drive link makes the server copy that picture into our storage.
+    pictureSourceUrl: fields.pictureSourceUrl ?? "",
     country: fields.country,
     city: fields.city,
     campus: fields.campus,
