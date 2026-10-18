@@ -851,13 +851,28 @@ export const prepareProgram = (data = {}, actorId, existing = {}) => {
   };
 };
 
-adminApiRouter.get('/programs/upcoming', requireAdminOrStaffAuth, requireScreen('programs', 'view'), asyncHandler(async (req, res) => {
+/**
+ * The Overview's "Programs in progress and upcoming" card, which every role
+ * sees. SEC-135: under the Overview grant as well as Programs (a Partnerships
+ * Officer has no Programs screen), so it sends only the fields the card shows.
+ */
+adminApiRouter.get('/programs/upcoming', requireAdminOrStaffAuth, requireScreen(['programs', 'overview'], 'view'), asyncHandler(async (req, res) => {
   const records = await Program.find({ status: { $in: ['planned', 'running'] } })
     .populate('partnerId', 'organizationName name')
     .sort({ startAt: 1, createdAt: -1 })
-    .limit(5);
+    .limit(5)
+    .lean();
 
-  listResponse(res, records.map(toProgramClientObject));
+  listResponse(res, records.map((program) => ({
+    id: String(program._id),
+    title: program.title,
+    programType: program.programType,
+    status: program.status,
+    startAt: program.startAt,
+    participantCount: program.participantCount ?? 0,
+    participantTarget: program.participantTarget ?? 0,
+    partnerName: program.partnerId?.organizationName || program.partnerId?.name || null,
+  })));
 }));
 
 /**

@@ -1609,6 +1609,7 @@ Found while planning the move to the company infrastructure platform (`Company_I
 - `GET /admin/partners/owner-options` (Partners edit) returns active staff as `{ id: userId, name, roles }`.
 - `GET /admin/programs/partner-options` (Programs edit) returns `{ id, name }`.
 - The admin's `loadPartner`, `loadPartnerOwnerOptions` and `loadProgramPartnerOptions` use these routes. No role gets the Programs, Team or Partners screen.
+- Found by the SEC-136 session: the Overview's "Programs in progress and upcoming" card, which every role sees, read `GET /admin/programs/upcoming` under the Programs screen only, so roles without it got an empty card. The route now takes Programs or Overview view and sends only the card's fields: id, title, type, status, start, the two participant counts and the partner name.
 
 **Acceptance criteria:**
 - [x] With admin sessions, a Partnerships Officer opens a partner's detail page and picks an owner, and a Training Officer links a program to a partner (real API; a Playwright test signs in as each role). `kredibble-admin/tests/role-lookups.spec.ts` makes both accounts through BE-028 and signs each in through the login form: 2/2. The officer sees the linked program and saves a new owner; the trainer creates a program linked to the partner.
