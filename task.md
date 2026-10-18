@@ -2009,7 +2009,7 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
 | BE-028 | Team account creation: invites, roles, deactivate (backend for PR #103) | P1 | BE-001 | [x] Done (2026-10-16 `feature/BE-028-team-accounts`: 6 endpoints, Super-Admin guard, 20/20 tests) |
 | BE-029 | Ambassador CSV import/export backend (for PR #103 wizard) | P2 | BE-001, BE-007 | [x] Done: backend 2026-10-17 `feature/BE-029-ambassador-io` (PR #116: import + export endpoints, picture job); admin wiring + history on `feature/BE-007-network-api` (real-mode Playwright import/export green) |
 | BE-030 | Showcase ("Meet our people"): categories, entries, public read and admin write | P1 | BE-001, BE-018 | [x] Done (2026-10-17 `feature/BE-030-showcase`: admin and app on the API, per-category role checks, 34/34 backend tests) |
-| BE-031 | Showcase photo upload and storage | P1 | BE-030 | [ ] Open (started in BE-030: the admin uploads a picked photo through the existing `/admin/upload` pipeline, purpose `showcase-photo`) |
+| BE-031 | Showcase photo upload and storage | P1 | BE-030 | [x] Done (2026-10-18, PR #124: own-Cloudinary pictures only, shaped per kind for the app, old uploads deleted; be-031 11/11) |
 
 (Product item 3, App Colours, is frontend only: no backend task.)
 
@@ -2376,6 +2376,12 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
 - **Today:** the admin form reads a picked picture into an in-memory `data:` URL (`FileDrop`) and keeps it on the entry; nothing is uploaded. The site's Content-Security-Policy allows `img-src 'self' data: https:`, so a stored picture must be an `https` URL.
 - **To do:** accept the photo with the entry (multipart or a separate upload route), through the existing upload pipeline: multer memory, MIME and magic-byte validation (PNG, JPEG, WebP), 5 MB cap (SEC-013), server-derived folder (for example `showcase/`), Cloudinary storage with a square-friendly transform for people and a logo-friendly one for organisations, return the `https` URL as `photoUrl`. Replace or remove deletes the old file. Rate limit the route; never trust a client-supplied URL or folder. Optionally prefill `photoUrl` from a linked ambassador (`pictureUrl` once the BE-029 picture job has filled it).
 - **Verify:** a non-image or a renamed executable is refused; over 5 MB is refused; the stored URL is `https`; deleting an entry removes its file; tests with a stubbed Cloudinary client (never reach the real one from the test server). New suite `tests/be-031-showcase-photo.test.js` green.
+- **Done 2026-10-18** (on `feature/BE-030-showcase`, PR #124):
+  - The picture goes through the existing admin upload route, purpose `showcase-photo`: multer memory, MIME plus magic-byte check, 5 MB cap, rate limit, server-derived folder. The admin uploads a newly picked photo before saving the entry.
+  - `photoUrl` is accepted only as one of OUR Cloudinary images (`lib/showcase-photos.js`): a `showcase-photo` upload, or an ambassador's stored picture (the admin's `ambassador-photo` uploads and the BE-029 `ambassadors` copies). Any other host, account, folder, query string or baked-in transformation is refused.
+  - The app gets a delivery URL shaped for the category: a face-centred square for people, a padded square for organisation logos. The admin keeps the stored URL.
+  - Replacing or removing a picture, or deleting the entry, deletes the old upload once no other entry shows it. Borrowed ambassador pictures are never deleted. A failed delete is logged and never blocks the change.
+  - Verified: be-031 11/11 with a stubbed store (the real client is never reached). Covers: the text file, the renamed executable and the over-5 MB file are refused; foreign URLs are refused; replace, remove and delete each clean up; shared and borrowed pictures are kept; each kind gets its own transform. be-030 34/34 with test-account picture URLs.
 
 ### Suggested order
 1. **BE-001, BE-018** (roles and audit): everything else depends on who may do what.
