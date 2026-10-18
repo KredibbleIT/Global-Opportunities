@@ -176,8 +176,8 @@ Note: the audit's own text reached the same conclusion on #10 ("Actually this on
 | SEC-006 | Hard-coded JWT fallback secrets shipped in source | P0 | Backend config | ✅ Done |
 | SEC-007 | Mass assignment — `req.body` spread into models | P0 | Backend routes | ✅ Done |
 | SEC-008 | Password policy allows 6 chars, no complexity | P1 | Backend auth | ✅ Done |
-| SEC-009 | 7-day JWT with role baked in, no refresh/rotation | P1 | Backend auth | ⚠️ Reopened — `tokenVersion` check is dead code → SEC-052 |
-| SEC-010 | Admin JWT stored in `localStorage` (XSS-readable) | P1 | Admin app | ⚠️ Reopened — cookie never reaches the API → SEC-074, SEC-075 |
+| SEC-009 | 7-day JWT with role baked in, no refresh/rotation | P1 | Backend auth | ✅ Done (closed 2026-10-18): fixed by SEC-052. `requireAuth` and both admin guards check `tokenVersion` on every request, refresh tokens rotate, and "sign out everywhere" revokes them |
+| SEC-010 | Admin JWT stored in `localStorage` (XSS-readable) | P1 | Admin app | ✅ Done (closed 2026-10-18): fixed by SEC-074 and SEC-075. Admin sessions are httpOnly cookies sent through the same-origin `/api` proxy; `localStorage` holds only the profile, never a token |
 | SEC-011 | No pagination or result limits on any list endpoint | P1 | Backend routes | ✅ Done |
 | SEC-012 | User-controlled `$regex` — regex injection / ReDoS | P1 | Backend routes | ✅ Done |
 | SEC-013 | Upload accepts any MIME type; `folder` param unvalidated | P1 | Backend upload | ✅ Done |
@@ -185,30 +185,30 @@ Note: the audit's own text reached the same conclusion on #10 ("Actually this on
 | SEC-015 | `apiRouter` mounted twice (`/` and `/api`), limiter double-counts | P1 | Backend app | ✅ Done |
 | SEC-016 | Clients fall back to plaintext HTTP, no HTTPS enforcement | P1 | App + Admin | ✅ Done |
 | SEC-017 | No audit log for admin/mutating actions | P1 | Backend | ✅ Done |
-| SEC-018 | Test suite empty — no auth or authorization tests exist | P1 | Backend | ⚠️ Reopened — 10/102 failing, CI not gating → SEC-070, SEC-071 |
-| SEC-019 | No API versioning — breaking changes ship silently | P2 | Backend | ⚠️ Partial — clients still call `/api`; live Vercel has no `/api/v1` → SEC-069 |
+| SEC-018 | Test suite empty — no auth or authorization tests exist | P1 | Backend | ✅ Done (closed 2026-10-18): fixed by SEC-070 and SEC-071. Every CI job gates with no masks, and the backend suite is green on `main` (CI on PR #128, 2026-10-18) |
+| SEC-019 | No API versioning — breaking changes ship silently | P2 | Backend | ⚠️ Partial: the mobile app calls `/api/v1`, but the admin's production proxy target is still the unversioned `…/api` alias (deprecated, sunset 2027-10-01). Remaining: set `API_PROXY_TARGET=https://kredibble-api.onrender.com/api/v1` in Vercel and update `kredibble-admin/.env.example` and `AGENTS.md` |
 | SEC-020 | `kredibble-app/.env` is tracked and committed | P2 | Repo hygiene | ✅ Done |
 | SEC-021 | Dev server starts and serves with no database | P2 | Backend | ✅ Done |
 | SEC-022 | CORS allows any `*.vercel.app` / `*.onrender.com` tenant | P2 | Backend app | ✅ Done |
-| SEC-023 | PII exposed through generic collection reads | P2 | Backend routes | ⚠️ Reopened — bypassed via `emailNormalized`, populate, search → SEC-054, SEC-055 |
-| SEC-024 | No rate limit on upload, search, or registration | P2 | Backend | ⚠️ Reopened — key generator bug, no limit applies → SEC-049 |
-| SEC-025 | No account lockout or progressive backoff on login | P2 | Backend auth | ⚠️ Reopened — lock never saved → SEC-050 |
+| SEC-023 | PII exposed through generic collection reads | P2 | Backend routes | ✅ Done (closed 2026-10-18): fixed by SEC-054 and SEC-055 (PII projection on reads, populate and search; tests green) |
+| SEC-024 | No rate limit on upload, search, or registration | P2 | Backend | ✅ Done (closed 2026-10-18): fixed by SEC-049 (rate-limit key generator; `tests/sec-049-050.test.js` green) |
+| SEC-025 | No account lockout or progressive backoff on login | P2 | Backend auth | ✅ Done (closed 2026-10-18): fixed by SEC-050 (lockout persisted; `tests/sec-049-050.test.js` green) |
 | SEC-026 | Client-supplied `userId` trusted for profile/saved/notification ops | P2 | Backend routes | ✅ Done |
 | SEC-027 | `passwordHash` reachable through generic update paths | P2 | Backend routes | ✅ Done |
 | SEC-028 | No email normalization — case-variant duplicate accounts | P2 | Backend auth | ✅ Done |
-| SEC-029 | No GDPR/CCPA data export or deletion endpoint | P2 | Backend | ⚠️ Reopened — tombstone not persisted, media kept, token still valid → SEC-065, SEC-052 |
+| SEC-029 | No GDPR/CCPA data export or deletion endpoint | P2 | Backend | ✅ Done (closed 2026-10-18): fixed by SEC-065 and SEC-052 (tombstone persisted, media deleted, tokens revoked; `tests/sec-065.test.js` green) |
 | SEC-030 | `console.log` in production paths violates logger guardrail | P3 | Backend | ✅ Done |
 | SEC-031 | Search fields have no indexes | P3 | Backend models | ✅ Done |
 | SEC-032 | N+1 reads in populated relation queries | P3 | Backend routes | ✅ Done |
-| SEC-033 | Next.js admin has no CSP / security headers | P3 | Admin app | ⚠️ Reopened — CSP blocks the API; unsafe-inline/eval → SEC-073, SEC-079 |
+| SEC-033 | Next.js admin has no CSP / security headers | P3 | Admin app | ⚠️ Partial: the CSP now allows the API (SEC-073) and drops `unsafe-eval` in production (SEC-079). `script-src` still allows `'unsafe-inline'`; removing it needs a nonce-based CSP in `next.config.ts` / middleware |
 | SEC-034 | Mobile TypeScript not in strict mode | P3 | App | ✅ Done |
 | SEC-035 | Root `package.json` carries unused `cuid` + `uuid` | P3 | Repo hygiene | ✅ Done |
-| SEC-036 | Grant allocation and applicant counters are non-atomic | P3 | Backend | ⚠️ Reopened — no allocation code exists on `main` → SEC-060 |
+| SEC-036 | Grant allocation and applicant counters are non-atomic | P3 | Backend | ✅ Done (closed 2026-10-18): fixed by SEC-060. Grant allocation is one conditional `$inc` (`allocated + amount <= fundingPool`) in `routes/index.js`, covered by tests |
 | SEC-037 | List fields stored as `String` instead of typed arrays | P3 | Backend models | ⚠️ Reopened — fields are still `String` with `'[]'` default; parse helpers still in use |
 | SEC-038 | `join_user` lets any client join any user's room | P3 | Backend realtime | ✅ Done (verified 2026-10-02) |
 | SEC-039 | No request correlation ID or structured logger | P3 | Backend | ✅ Done |
 | SEC-040 | Admin panel has no independent admin token audience | P3 | Backend auth | ✅ Done |
-| **SEC-041** | **Live Vercel backend serves users + password hashes to anonymous callers** | **P0** | **Deployment / incident** | 🔴 Open — act today |
+| **SEC-041** | **Live Vercel backend serves users + password hashes to anonymous callers** | **P0** | **Deployment / incident** | 🟡 Leaking host gone: `kredibble-backend.vercel.app` answers 404 on `/api/health` and `/api/users` (checked 2026-10-18). Still to confirm (owner steps): Atlas and JWT secrets rotated, pre-incident passwords reset, seed/test admins removed |
 | SEC-042 | Apply / grant-apply / verification-doc upload return 500 (audit logger) | P0 | Backend routes | ✅ Done |
 | SEC-043 | Community channel post routes missing from mounted router (404) | P0 | Backend routes | ✅ Done |
 | SEC-044 | Notifications always empty for non-admin users | P1 | Backend routes | ✅ Done (scoped by audience & active status) |
@@ -298,13 +298,13 @@ Note: the audit's own text reached the same conclusion on #10 ("Actually this on
 | SEC-128 | Mobile test coverage: 0 screen/UI component tests; 116 ESLint warnings across screens | P2 | Mobile tests | ✅ Done (MOB-019 Completed on main; `kredibble-app/__tests__/screen-integration.test.ts` present, 95/95 per 2026-10-09 log) |
 | SEC-129 | SEC-002 manifest red on main: BE-017 public `GET /reference-data` routes not in `PUBLIC_ROUTES` | P1 | Backend tests | ✅ Done (2026-10-16: allowlist already on `origin/main`; AI 503 test made env-independent, 71/71 with and without local `.env` AI key) |
 | SEC-130 | Gitleaks ignore-list pinned to line numbers; breaks on every `routes/index.js` change | P3 | CI/CD + Repo hygiene | 🔴 Open — filed 2026-10-16 after BE-028's +4-line mount shifted the `verification/companies` policyKey false positives and failed the secret scan |
-| SEC-131 | Every staff member passes every screen check: `requireScreen` / `requirePortalRoles` wave through any admin session, and all staff sign in with one | P1 | Backend authz | 🟡 Fixed on `security/SEC-131-staff-screen-enforcement` (2026-10-17), not yet merged: one role resolver for all four guards and `/auth/admin/me`; role table test 38/38. SEC-132 and SEC-134 still let staff reach Super Admin |
-| SEC-132 | Any staff member can mint a Super Admin: `/admin` data routes (`/admin/staff`, seekers, hirers, verification…) take any admin session and never check the matrix | P1 | Backend authz | 🟡 Fixed on `security/SEC-132-133-135-staff-authz` (2026-10-18), not merged; probed: a Support staffer created a Super Admin staff record (201) for another account |
-| SEC-133 | Older `requirePortalRoles` lists disagree with the BE-001 matrix (Moderator loses the opportunities queue once SEC-131 lands; Admin Support can `PUT /admin/targets/:metric`) | P1 | Backend authz | 🟡 Fixed on `security/SEC-132-133-135-staff-authz` (2026-10-18), not merged; the product owner approved the matrix-only fix on 2026-10-17 |
-| SEC-134 | Team-edit staff can make themselves Super Admin: `PATCH /admin/staff/:id` sets any roles, and `DELETE` drops the record so "admin with no staff record" means root admin | P1 | Backend authz | 🔴 Open — filed 2026-10-17; probed: an Admin Support staffer deleted their own record and got Super Admin access |
-| SEC-135 | Partners and Programs pages read other screens' data (`/admin/programs`, `/admin/staff`, `/admin/partners`), which SEC-131 now refuses for Partnerships and Training Officers | P1 | Admin + backend authz | 🟡 Fixed on `security/SEC-132-133-135-staff-authz` (2026-10-18), not merged; filed 2026-10-17 when merging PR #121 into the SEC-131 branch |
-| SEC-136 | The admin shows every staff member Super Admin's screens: `RoleProvider` maps the session role `admin` (which every staff User has) to `super_admin` and never reads `/auth/admin/me` | P1 | Admin authz UI | 🔴 Open — filed 2026-10-18 while gating SEC-134's staff controls on `accounts.create` |
-| SEC-137 | A Moderator can create, rewrite and delete opportunities: every opportunities write takes `opportunities_queue` edit, not just moderation | P2 | Backend authz | 🔴 Open — filed 2026-10-18; probed: a Moderator got 201/200/200 on create, content edit and delete |
+| SEC-131 | Every staff member passes every screen check: `requireScreen` / `requirePortalRoles` wave through any admin session, and all staff sign in with one | P1 | Backend authz | ✅ Done: merged in PR #123 (2026-10-17) |
+| SEC-132 | Any staff member can mint a Super Admin: `/admin` data routes (`/admin/staff`, seekers, hirers, verification…) take any admin session and never check the matrix | P1 | Backend authz | ✅ Done: merged in PR #126 (2026-10-18) |
+| SEC-133 | Older `requirePortalRoles` lists disagree with the BE-001 matrix (Moderator loses the opportunities queue once SEC-131 lands; Admin Support can `PUT /admin/targets/:metric`) | P1 | Backend authz | ✅ Done: merged in PR #126 (2026-10-18); the product owner approved the matrix-only fix on 2026-10-17 |
+| SEC-134 | Team-edit staff can make themselves Super Admin: `PATCH /admin/staff/:id` sets any roles, and `DELETE` drops the record so "admin with no staff record" means root admin | P1 | Backend authz | ✅ Done: PR #125, its commits landed with PR #126 (2026-10-18) |
+| SEC-135 | Partners and Programs pages read other screens' data (`/admin/programs`, `/admin/staff`, `/admin/partners`), which SEC-131 now refuses for Partnerships and Training Officers | P1 | Admin + backend authz | ✅ Done: merged in PR #126 (2026-10-18) |
+| SEC-136 | The admin shows every staff member Super Admin's screens: `RoleProvider` maps the session role `admin` (which every staff User has) to `super_admin` and never reads `/auth/admin/me` | P1 | Admin authz UI | ✅ Done: merged in PR #127 (2026-10-18) |
+| SEC-137 | A Moderator can create, rewrite and delete opportunities: every opportunities write takes `opportunities_queue` edit, not just moderation | P2 | Backend authz | ✅ Done: merged in PR #128 (2026-10-18) |
 
 ---
 
@@ -862,7 +862,7 @@ curl -s -o /dev/null -w "%{http_code}\n" https://<surviving-api>/api/v1/users   
 ```
 
 **Acceptance criteria:**
-- [ ] No deployed host answers an anonymous `GET /api/users` with 200
+- [x] No deployed host answers an anonymous `GET /api/users` with 200 (2026-10-18: `kredibble-backend.vercel.app` answers 404 on `/api/users` and `/api/health`; status codes only, no data read)
 - [ ] Atlas credentials rotated; the old connection string no longer authenticates
 - [ ] JWT secrets rotated on every environment
 - [ ] All pre-incident passwords reset; seed/test admin accounts removed
@@ -2542,6 +2542,12 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
     - Permission suites 99/99. Full backend: 731 passed, and the three suites that crashed from memory pressure (BE-017, BE-026, admin contract; another session's Playwright run was going) pass on re-run, 38/38. `eslint` clean.
     - Admin `typecheck` clean. Real-API Playwright, run on port 4100 beside the other session: `role-lookups.spec.ts` 2/2 (each role signs in through the form), and the Programs and Partners real-API tests 3/3. `check:encoding` 0 failing.
   - Then merged `feature/BE-030-showcase`, after #124 had merged, to carry its BE-031 Progress Log commit (`9a26c94`, pushed a minute after that merge). The admin upload maps `showcase-photo` to any Showcase edit screen (`showcase`, `showcase.ambassadors`, `showcase.partners`), so Country Leads and Partnerships Officers can upload pictures, which be-031 now tests. Combined suites (SEC-131, SEC-132–135, SEC-134, Showcase, BE-001, BE-029, admin contract, security.p0): 268/268.
+- 2026-10-18 — Findings Summary brought in line with `main` (at `494f3b3`). Each claim was checked in code before closing:
+  - SEC-131 to SEC-137 are marked Done with their PRs (#123, #125 to #128).
+  - Ten reopened rows are closed: SEC-009, 010, 018, 023, 024, 025, 029 and 036, each fixed by its follow-up item. Spot checks: `tokenVersion` is checked in `requireAuth`; the admin keeps no token in `localStorage`; grant allocation is one conditional `$inc`; CI gates every job.
+  - SEC-019 and SEC-033 are marked Partial, with the exact step left: the admin's proxy target is still `/api`, and the CSP still has `unsafe-inline`.
+  - SEC-041: `kredibble-backend.vercel.app` answers 404 on `/api/users` and `/api/health` (status codes only). The secret rotations and password resets remain owner steps.
+  - Still open: SEC-037 (list fields stored as `String`), SEC-130 (gitleaks line pins), and the operations and legal items (SEC-089, 091, 092, 093, 114, 117).
 | 2026-10-16 | SEC-129 | security/SEC-129-reference-data-manifest | Done | Manifest allowlist already present on `origin/main` (merged after 2026-10-15 sync); made AI 503 test env-independent (`env.aiEnabled=false` save/restore in `tests/security.p0.test.js`). `npm test -- tests/security.p0.test.js`: 71/71 with local `.env` AI keys AND with `.env` neutralized (CI-equivalent). Backend `npm run lint` clean. |
 
 ---
