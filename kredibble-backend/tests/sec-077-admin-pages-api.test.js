@@ -188,10 +188,13 @@ describe('SEC-077: admin image upload', () => {
 
 describe('SEC-077: every admin update is audited', () => {
   it('records report decisions and staff role changes, not only admin-only fields', async () => {
+    // The root admin (no staff record) promotes someone else's record. SEC-131:
+    // a Writer promoting their own record is refused (no `team` edit).
     const admin = await createAdmin();
     const cookie = adminCookie(admin);
     const report = await Report.create({ targetType: 'post', reason: 'spam', status: 'open' });
-    const staff = await StaffMember.create({ userId: admin._id, name: 'Ada Admin', email: 'ada@example.com', role: 'Writer', status: 'active' });
+    const writer = await User.create({ name: 'Wale Writer', email: 'wale@example.com', role: 'admin', passwordHash: 'x' });
+    const staff = await StaffMember.create({ userId: writer._id, name: 'Wale Writer', email: 'wale@example.com', role: 'Writer', status: 'active' });
 
     const resolved = await request(app).patch(api(`/admin/reports/${report._id}`)).set('Cookie', cookie).send({ status: 'resolved' });
     const promoted = await request(app).patch(api(`/admin/staff/${staff._id}`)).set('Cookie', cookie).send({ role: 'Desk Lead' });
