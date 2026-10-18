@@ -1,4 +1,5 @@
 import type { ScorecardPerson, CompositePoint } from "./scorecard";
+import type { ShowcaseCategory, ShowcaseEntry, ShowcaseKind } from "./mock-entities";
 
 export type AuthRole = "admin" | "seeker" | "hirer";
 
@@ -352,12 +353,15 @@ const defaultFetchOpts: RequestInit = {
 export class ApiError extends Error {
   status: number;
   retryAfter?: number;
+  /** The whole error response, for the few callers that read more than the message (a 409's duplicate record). */
+  details?: unknown;
 
-  constructor(message: string, status: number, retryAfter?: number) {
+  constructor(message: string, status: number, retryAfter?: number, details?: unknown) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.retryAfter = retryAfter;
+    this.details = details;
   }
 }
 
@@ -429,7 +433,7 @@ async function refreshOrSignOut(): Promise<void> {
 function apiErrorFrom(response: Response, payload: { error?: { message?: string } } | null): ApiError {
   const errorMsg = payload?.error?.message || `Request failed with status ${response.status}`;
   const retryAfter = Number(response.headers.get("Retry-After"));
-  return new ApiError(errorMsg, response.status, Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : undefined);
+  return new ApiError(errorMsg, response.status, Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : undefined, payload ?? undefined);
 }
 
 /**
@@ -534,6 +538,13 @@ export const updateVerificationStatus = async (companyId: string, status: string
 export const getOpportunities = async <T = Record<string, unknown>>(status?: string) => {
   const query = status ? `?status=${status}` : "";
   return request<T[]>(`/admin/opportunities${query}`);
+};
+
+/** One page of the admin opportunities list (use with fetchAll to read them all). */
+export const getOpportunitiesPage = async (params: { status?: string; page: number; limit: number }) => {
+  const query = new URLSearchParams({ page: String(params.page), limit: String(params.limit) });
+  if (params.status) query.set("status", params.status);
+  return requestPage<OpportunityRecord>(`/admin/opportunities?${query.toString()}`);
 };
 
 export const loginAdmin = async (email: string, password: string) => {
@@ -2374,6 +2385,62 @@ export const getAdminNewsApi = async (params?: { source?: "insight_ghana" | "afr
 export const moderateNewsItemApi = async (id: string, data: { hidden: boolean }) =>
   request<NewsItemRecord>(`/admin/news/${id}`, { method: "PATCH", body: JSON.stringify(data) });
 
+// ---- BE-030: Showcase ("Meet our people") ----------------------------------------------------------------------------
 
+/** Every category and entry, hidden ones included (GET /admin/showcase). */
+export interface ShowcaseApiData {
+  categories: ShowcaseCategory[];
+  entries: ShowcaseEntry[];
+}
 
+/** What the entry form sends. The server trims the text; `photoUrl: null` removes the picture. */
+export interface ShowcaseEntryWriteInput {
+  categoryId: string;
+  name: string;
+  title: string;
+  bio: string;
+  country: string;
+  providedBy: string;
+  photoUrl: string | null;
+  visible: boolean;
+  linkedAmbassadorId?: string;
+  linkedPartnerId?: string;
+}
 
+export interface ShowcaseHistoryApiEntry {
+  id: string;
+  at: string;
+  action: string;
+  outcome: "success" | "failure";
+  actorName: string | null;
+  /** `summary` is the readable line; the rest are the facts behind it. */
+  metadata: Record<string, unknown>;
+}
+
+export const getShowcaseApi = async () => request<ShowcaseApiData>("/admin/showcase");
+export const getShowcaseHistoryApi = async () => request<ShowcaseHistoryApiEntry[]>("/admin/showcase/history");
+
+export const createShowcaseEntryApi = async (body: ShowcaseEntryWriteInput) =>
+  request<ShowcaseEntry>("/admin/showcase/entries", { method: "POST", body: JSON.stringify(body) });
+export const updateShowcaseEntryApi = async (id: string, body: Partial<ShowcaseEntryWriteInput>) =>
+  request<ShowcaseEntry>(`/admin/showcase/entries/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+export const setShowcaseEntryVisibleApi = async (id: string, visible: boolean) =>
+  request<ShowcaseEntry>(`/admin/showcase/entries/${id}/visibility`, { method: "POST", body: JSON.stringify({ visible }) });
+export const moveShowcaseEntryApi = async (id: string, direction: "up" | "down") =>
+  request<{ from: number; to: number }>(`/admin/showcase/entries/${id}/move`, { method: "POST", body: JSON.stringify({ direction }) });
+export const deleteShowcaseEntryApi = async (id: string) => request<undefined>(`/admin/showcase/entries/${id}`, { method: "DELETE" });
+
+export const createShowcaseCategoryApi = async (body: { name: string; kind: ShowcaseKind }) =>
+  request<ShowcaseCategory>("/admin/showcase/categories", { method: "POST", body: JSON.stringify(body) });
+export const updateShowcaseCategoryApi = async (id: string, body: { name?: string; kind?: ShowcaseKind; visible?: boolean }) =>
+  request<ShowcaseCategory>(`/admin/showcase/categories/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+export const moveShowcaseCategoryApi = async (id: string, direction: "up" | "down") =>
+  request<{ from: number; to: number }>(`/admin/showcase/categories/${id}/move`, { method: "POST", body: JSON.stringify({ direction }) });
+export const deleteShowcaseCategoryApi = async (id: string) => request<undefined>(`/admin/showcase/categories/${id}`, { method: "DELETE" });
+
+/** Upload a Showcase picture; store the returned https `url` on the entry. */
+export const uploadShowcasePhoto = async (file: File) => {
+  const body = new FormData();
+  body.append("file", file);
+  return request<UploadResult>(`/admin/upload?purpose=showcase-photo`, { method: "POST", body });
+};

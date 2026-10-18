@@ -44,6 +44,12 @@ export const SCREENS = [
   'settings',
   'settings_admin',
   'listings_curate',
+  // BE-030: the Showcase page. 'showcase' opens it and edits every category; the two scoped keys edit one category each;
+  // 'showcase.manage' creates, renames, reorders and deletes categories.
+  'showcase',
+  'showcase.ambassadors',
+  'showcase.partners',
+  'showcase.manage',
 ];
 
 export const EDITABLE_ROLES = ['Moderator', 'Support'];
@@ -78,7 +84,7 @@ const own = (grants) => ({ ...BASE, ...grants });
 export const FIXED_PERMISSIONS = {
   super_admin: everything(),
   desk_lead: { ...everything(), roles_permissions: 'view' },
-  partnerships_officer: own({ partners: 'edit', network: 'view', leaderboard: 'view', monthly_report: 'view' }),
+  partnerships_officer: own({ partners: 'edit', network: 'view', leaderboard: 'view', monthly_report: 'view', showcase: 'view', 'showcase.partners': 'edit' }),
   opportunities_officer: own({
     opportunities_queue: 'edit',
     career_resources: 'edit',
@@ -94,9 +100,10 @@ export const FIXED_PERMISSIONS = {
     career_resources: 'edit',
     monthly_report: 'view',
     social: 'view',
+    showcase: 'edit',
   }),
   social_media_manager: own({ social: 'edit', testimonials: 'view' }),
-  country_lead: own({ network: 'edit', programs: 'view', partners: 'view', database: 'view', leaderboard: 'view' }),
+  country_lead: own({ network: 'edit', programs: 'view', partners: 'view', database: 'view', leaderboard: 'view', showcase: 'view', 'showcase.ambassadors': 'edit' }),
   admin_support: own({ team: 'edit' }),
 };
 

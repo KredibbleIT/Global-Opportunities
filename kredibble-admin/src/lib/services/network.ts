@@ -40,7 +40,7 @@ import {
   type AmbassadorWriteInput,
   type AmplificationLogApiRecord,
 } from "@/lib/api";
-import { fetchAll } from "@/lib/services/api-helpers";
+import { dataUrlToFile, fetchAll } from "@/lib/services/api-helpers";
 import { isMockMode } from "@/lib/services/mock-mode";
 
 const MOCK_DELAY_MS = 300;
@@ -378,14 +378,6 @@ export function logAmplification(ambassadorId: string, channel: SocialPlatform, 
   };
   setMockCollection("amplificationLogs", [log, ...getMockCollection("amplificationLogs")], { always: true });
   return log;
-}
-
-/** A picked photo arrives from FileDrop as a base64 data: URL; the upload route takes a file. */
-function dataUrlToFile(dataUrl: string, baseName: string): File {
-  const [header, base64 = ""] = dataUrl.split(",", 2);
-  const type = /^data:([^;,]+)/.exec(header)?.[1] ?? "image/png";
-  const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
-  return new File([bytes], `${baseName}.${type.split("/")[1] ?? "png"}`, { type });
 }
 
 /**

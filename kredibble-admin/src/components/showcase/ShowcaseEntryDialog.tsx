@@ -11,14 +11,15 @@
  * Errors show after a field is left and on submit, as text with an icon, never by colour alone. The first invalid field takes focus.
  *
  * Props: categories (the ones the person may use), entry? (editing: its values fill the form), defaultCategoryId?, onClose,
- *        onSubmit(form, links) -> { ok: true } to close, or { ok: false, reason, errors? } to stay open with the messages.
- * TODO(backend): the photo is a data: URL here; the server must accept the upload (type and size check) and return a stored URL.
+ *        onSubmit(form, links) -> (a promise of) { ok: true } to close, or { ok: false, reason, errors? } to stay open with the
+ *        messages. Save shows a spinner while the server answers. A newly picked photo is a data: URL here; the service uploads it.
  */
-import { useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useRef, useState, type FormEvent } from "react";
 import { Save } from "lucide-react";
 import type { ShowcaseCategory, ShowcaseEntry } from "@/lib/mock-entities";
 import { BIO_MAX, validateEntry, type EntryErrors, type EntryForm } from "@/lib/showcase";
-import { suggestionsFor } from "@/lib/services/showcase";
+import { loadSuggestions, type Suggestion } from "@/lib/services/showcase";
+import { useAsync } from "@/lib/use-async";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { Field } from "@/components/ui/form/Field";
@@ -37,10 +38,11 @@ interface ShowcaseEntryDialogProps {
   entry?: ShowcaseEntry;
   defaultCategoryId?: string;
   onClose: () => void;
-  onSubmit: (form: EntryForm, links: Links) => Result;
+  onSubmit: (form: EntryForm, links: Links) => Result | Promise<Result>;
 }
 
 const NONE = "none";
+const NO_SUGGESTIONS: Suggestion[] = [];
 
 export function ShowcaseEntryDialog({ categories, entry, defaultCategoryId, onClose, onSubmit }: ShowcaseEntryDialogProps) {
   const [form, setForm] = useState<EntryForm>({
@@ -57,11 +59,16 @@ export function ShowcaseEntryDialog({ categories, entry, defaultCategoryId, onCl
   const [startFrom, setStartFrom] = useState<string>(NONE);
   const [serverErrors, setServerErrors] = useState<EntryErrors>({});
   const [problem, setProblem] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const { show, touch, touchAll } = useTouched();
 
   const category = categories.find((item) => item.id === form.categoryId);
-  const suggestions = useMemo(() => (entry || !category ? [] : suggestionsFor(category.key)), [entry, category]);
+  // Only when adding: ambassadors or partners not featured yet, for the chosen category.
+  const suggestionKey = entry ? undefined : category?.key;
+  const loadOptions = useCallback(() => (suggestionKey ? loadSuggestions(suggestionKey) : Promise.resolve(NO_SUGGESTIONS)), [suggestionKey]);
+  const suggestionsState = useAsync(loadOptions);
+  const suggestions = suggestionsState.data ?? NO_SUGGESTIONS;
   const errors = { ...validateEntry(form, categories), ...serverErrors };
   const set = <K extends keyof EntryForm>(key: K, value: EntryForm[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -85,15 +92,18 @@ export function ShowcaseEntryDialog({ categories, entry, defaultCategoryId, onCl
     setForm((current) => ({ ...current, ...picked.fill, photoUrl: picked.fill.photoUrl ?? current.photoUrl }));
   };
 
-  const submit = (event?: FormEvent) => {
+  const submit = async (event?: FormEvent) => {
     event?.preventDefault();
+    if (saving) return;
     touchAll();
     setProblem(null);
     if (Object.keys(validateEntry(form, categories)).length > 0) {
       focusFirstInvalid(formRef.current);
       return;
     }
-    const result = onSubmit(form, links);
+    setSaving(true);
+    const result = await onSubmit(form, links);
+    setSaving(false);
     if (!result.ok) {
       setServerErrors(result.errors ?? {});
       setProblem(result.reason);
@@ -115,13 +125,13 @@ export function ShowcaseEntryDialog({ categories, entry, defaultCategoryId, onCl
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button icon={Save} onClick={() => submit()} data-testid="showcase-entry-save">
+          <Button icon={Save} onClick={() => void submit()} loading={saving} data-testid="showcase-entry-save">
             {entry ? "Save changes" : "Add entry"}
           </Button>
         </>
       }
     >
-      <form ref={formRef} onSubmit={submit} noValidate className="space-y-4" aria-label={entry ? "Edit entry" : "Add to the showcase"}>
+      <form ref={formRef} onSubmit={(event) => void submit(event)} noValidate className="space-y-4" aria-label={entry ? "Edit entry" : "Add to the showcase"}>
         {problem && (
           <p role="alert" className="caption text-danger" data-testid="showcase-entry-problem">
             <span className="font-semibold">Could not save.</span> {problem}
@@ -139,6 +149,11 @@ export function ShowcaseEntryDialog({ categories, entry, defaultCategoryId, onCl
             ariaLabel="Category"
           />
         </Field>
+        {suggestionsState.error && (
+          <p role="status" className="caption" data-testid="showcase-suggestions-error">
+            The existing {suggestionKey === "partners" ? "partners" : "ambassadors"} could not be loaded ({suggestionsState.error.message}). Type the details in instead.
+          </p>
+        )}
         {suggestions.length > 0 && (
           <Field label="Start from an existing record" optional helper="Fills the form from the ambassador or partner, so nobody is typed in twice.">
             <Select options={suggestionOptions} value={startFrom} onChange={applySuggestion} ariaLabel="Start from an existing record" />

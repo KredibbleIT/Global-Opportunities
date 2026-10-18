@@ -1,8 +1,29 @@
-import { SAMPLE_SHOWCASE, initialsOf, showcaseView, type ShowcaseData } from '../src/constants/mockShowcase';
+import * as SecureStore from 'expo-secure-store';
+import { initialsOf, showcaseView, type ShowcaseData, type ShowcaseEntry } from '../src/constants/mockShowcase';
 import { getShowcase } from '../src/lib/showcase';
 
-// All data here is FAKE.
-const data = (over: Partial<ShowcaseData> = {}): ShowcaseData => ({ ...SAMPLE_SHOWCASE, ...over });
+// All data here is FAKE (no real person).
+const person = (id: string, categoryId: string, order: number, name: string, visible = true): ShowcaseEntry => ({
+  id, categoryId, order, name, title: 'Tester', bio: '', visible,
+});
+
+const FIXTURE: ShowcaseData = {
+  categories: [
+    { id: 'sc-ambassadors', key: 'ambassadors', name: 'Ambassadors', kind: 'person', order: 1, visible: true },
+    { id: 'sc-team', key: 'team', name: 'Team', kind: 'person', order: 2, visible: true },
+    { id: 'sc-partners', key: 'partners', name: 'Partners', kind: 'organisation', order: 3, visible: true },
+    { id: 'sc-stakeholders', key: 'stakeholders', name: 'Stakeholders', kind: 'person', order: 4, visible: true },
+  ],
+  entries: [
+    person('se-1', 'sc-ambassadors', 1, 'Test Ambassador One'),
+    person('se-3', 'sc-ambassadors', 2, 'Test Ambassador Three', false),
+    person('se-4', 'sc-team', 1, 'Test Desk Lead'),
+    person('se-6', 'sc-partners', 1, 'Example Partner Foundation'),
+    person('se-8', 'sc-stakeholders', 1, 'Test Stakeholder One'),
+  ],
+};
+
+const data = (over: Partial<ShowcaseData> = {}): ShowcaseData => ({ ...FIXTURE, ...over });
 
 describe('Meet our people: what the screen shows', () => {
   it('shows visible categories in order, each with its visible entries in order', () => {
@@ -25,11 +46,11 @@ describe('Meet our people: what the screen shows', () => {
     const view = showcaseView(
       data({
         categories: [
-          ...SAMPLE_SHOWCASE.categories,
+          ...FIXTURE.categories,
           { id: 'hidden-cat', key: 'custom', name: 'Hidden category', kind: 'person', order: 9, visible: false },
           { id: 'empty-cat', key: 'custom', name: 'Empty category', kind: 'person', order: 10, visible: true },
         ],
-        entries: [...SAMPLE_SHOWCASE.entries, { id: 'x', categoryId: 'hidden-cat', name: 'Test In Hidden Category', title: '', bio: '', visible: true, order: 1 }],
+        entries: [...FIXTURE.entries, { id: 'x', categoryId: 'hidden-cat', name: 'Test In Hidden Category', title: '', bio: '', visible: true, order: 1 }],
       }),
     );
     const names = view.flatMap((group) => group.entries.map((entry) => entry.name));
@@ -52,19 +73,32 @@ describe('Meet our people: what the screen shows', () => {
 });
 
 describe('getShowcase', () => {
-  const globalWithDev = globalThis as unknown as { __DEV__?: boolean };
-  const original = globalWithDev.__DEV__;
-  afterEach(() => {
-    globalWithDev.__DEV__ = original;
+  const originalFetch = global.fetch;
+
+  beforeEach(async () => {
+    await SecureStore.setItemAsync('kredibble_app_token', 'test-token');
   });
 
-  it('returns the fake sample list in development', async () => {
-    globalWithDev.__DEV__ = true;
-    expect((await getShowcase()).entries.length).toBeGreaterThan(0);
+  afterEach(async () => {
+    global.fetch = originalFetch;
+    await SecureStore.deleteItemAsync('kredibble_app_token');
   });
 
-  it('returns an empty list in a release build, so no invented people are ever shown', async () => {
-    globalWithDev.__DEV__ = false;
-    expect(await getShowcase()).toEqual({ categories: [], entries: [] });
+  it('reads GET /showcase with the signed-in token and returns what the server sent', async () => {
+    let calledUrl = '';
+    let calledHeaders: Record<string, string> = {};
+    global.fetch = jest.fn().mockImplementation((url: string, init: RequestInit) => {
+      calledUrl = String(url);
+      calledHeaders = init.headers as Record<string, string>;
+      return Promise.resolve({ ok: true, status: 200, json: async () => ({ data: FIXTURE }) });
+    });
+    await expect(getShowcase()).resolves.toEqual(FIXTURE);
+    expect(calledUrl.endsWith('/showcase')).toBe(true);
+    expect(calledHeaders.Authorization).toBe('Bearer test-token');
+  });
+
+  it('rejects with the server message, so the screen shows its error and a retry', async () => {
+    global.fetch = jest.fn().mockResolvedValue({ ok: false, status: 503, json: async () => ({ error: { message: 'Showcase is unavailable' } }) });
+    await expect(getShowcase()).rejects.toThrow('Showcase is unavailable');
   });
 });

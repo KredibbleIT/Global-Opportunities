@@ -5009,9 +5009,9 @@ test.describe('Not connected yet', () => {
     await expect(page.getByTestId('not-connected-notice')).toBeVisible();
   });
 
-  test('Network, Leaderboard, Programs and Partners read the API in the real run: no sample-data notice on the lists or the forms', async ({ page }) => {
+  test('Network, Leaderboard, Programs, Partners, Database, Social and Testimonials read the API in the real run: no sample-data notice', async ({ page }) => {
     test.skip(MOCK_RUN, 'the notice only shows outside mock mode');
-    for (const path of ['/network', '/network/new', '/leaderboard', '/programs', '/programs/new', '/partners', '/partners/new']) {
+    for (const path of ['/network', '/network/new', '/leaderboard', '/programs', '/programs/new', '/partners', '/partners/new', '/database', '/database/new', '/social', '/testimonials']) {
       await page.goto(`${BASE_URL}${path}`);
       await expect(page.getByTestId('page-title')).toBeVisible();
       await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
@@ -5020,7 +5020,7 @@ test.describe('Not connected yet', () => {
 
   test('a sample id is "not found" in the real run, never a sample record', async ({ page }) => {
     test.skip(MOCK_RUN, 'real API run only');
-    for (const path of ['/programs/prg-01', '/partners/ptn-01', '/network/amb-02']) {
+    for (const path of ['/programs/prg-01', '/partners/ptn-01', '/network/amb-02', '/database/rec-001']) {
       await page.goto(`${BASE_URL}${path}`);
       await expect(page.getByText(/could not find|not found|no longer exists/i).first()).toBeVisible({ timeout: 15_000 });
       await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
@@ -5130,6 +5130,103 @@ test.describe('Programs and Partners against the real API', () => {
     await open(page, `/programs/${programId}`);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(programName);
     await expect(page.getByTestId('partner-link')).toHaveCount(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Database, Social and Testimonials against the real API (real run only). Names and emails carry a stamp, because the e2e
+// database is shared by the run and can outlive it locally.
+// ---------------------------------------------------------------------------
+test.describe('Database, Social and Testimonials against the real API', () => {
+  test.skip(MOCK_RUN, 'real API run only: see npm run test:e2e');
+  test.describe.configure({ mode: 'serial' });
+  test.use({ viewport: { width: 1440, height: 900 } });
+  const stamp = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+  const DB_ID = /\/([0-9a-f]{24})$/;
+  const open = async (page: import('@playwright/test').Page, path: string) => {
+    await page.goto(`${BASE_URL}${path}`, { timeout: 30_000 });
+    await page.getByTestId('sidebar-toggle').waitFor();
+  };
+
+  test('database: a record is added, a second one with the same email is stopped, and Verify then Undo are saved', async ({ page }) => {
+    const name = `Live Record ${stamp}`;
+    const email = `record.${stamp}@example.org`;
+    await open(page, '/database/new');
+    await expect(page.getByTestId('added-by')).toHaveValue('E2E Admin'); // the signed-in person
+    await page.getByLabel('Full name', { exact: true }).fill(name);
+    await page.getByLabel('Email', { exact: true }).fill(email);
+    await page.getByRole('combobox', { name: 'Country' }).click();
+    await page.getByRole('option', { name: 'Ghana' }).click();
+    await page.getByLabel('Institution', { exact: true }).fill('University of Ghana');
+    await page.getByRole('button', { name: 'Add record' }).click();
+    await expect(page.getByText(`${name} was added to the database.`)).toBeVisible({ timeout: 15_000 });
+    await expect(page).toHaveURL(DB_ID, { timeout: 15_000 });
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(name);
+
+    // The duplicate check knows the server's records as you type.
+    await open(page, '/database/new');
+    await page.getByLabel('Email', { exact: true }).fill(email.toUpperCase());
+    await expect(page.getByTestId('duplicate-email')).toContainText(`Open ${name}`, { timeout: 15_000 });
+
+    await open(page, '/database');
+    await page.getByLabel('Search records').fill(name);
+    const row = page.locator('main tbody tr').filter({ hasText: name });
+    await expect(row).toHaveCount(1, { timeout: 15_000 });
+    await row.getByRole('button', { name: new RegExp(`Verify ${name}`) }).click();
+    await expect(page.getByText(`${name} was verified.`)).toBeVisible({ timeout: 15_000 });
+    await expect(row).toContainText('Verified');
+    await page.getByRole('button', { name: 'Undo' }).click();
+    await expect(page.getByText(`Verification of ${name} was undone.`)).toBeVisible({ timeout: 15_000 });
+    await expect(row.getByRole('button', { name: new RegExp(`Verify ${name}`) })).toBeVisible({ timeout: 15_000 });
+  });
+
+  test('social: a logged post is saved, listed this month and counted in the totals', async ({ page }) => {
+    const title = `Live Post ${stamp}`;
+    await open(page, '/social');
+    const card = page.getByRole('region', { name: 'Log a post' });
+    await card.getByRole('combobox', { name: 'Platform' }).click();
+    await page.getByRole('option', { name: 'LinkedIn' }).click();
+    await card.getByLabel('Post title').fill(title);
+    await card.getByLabel('Post URL').fill(`https://www.linkedin.com/posts/live-${stamp}`);
+    await card.getByLabel('Reach').fill('120');
+    await card.getByLabel('Engagement').fill('7');
+    await card.getByRole('button', { name: 'Log post' }).click();
+    await expect(page.getByText(/A LinkedIn post was logged for/)).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('main tbody tr').filter({ hasText: title })).toHaveCount(1, { timeout: 15_000 });
+    await page.reload();
+    await expect(page.locator('main tbody tr').filter({ hasText: title })).toHaveCount(1, { timeout: 15_000 });
+  });
+
+  test('testimonials: approving saves the move; a refused move shows the server message and changes nothing', async ({ page }) => {
+    const author = `Live Author ${stamp}`;
+    const created = await page.request.post(`${API_URL}/admin/testimonials`, {
+      data: { name: author, email: `author.${stamp}@example.org`, comment: 'The desk found me my first role.', role: 'Graduate, Accra' },
+    });
+    expect(created.ok()).toBe(true);
+    const createdId: string = (await created.json()).data.id;
+    const other = await page.request.post(`${API_URL}/admin/testimonials`, {
+      data: { name: `${author} Two`, email: `author2.${stamp}@example.org`, comment: 'A second story for the refused move.' },
+    });
+    expect(other.ok()).toBe(true);
+    const otherId: string = (await other.json()).data.id;
+
+    await open(page, '/testimonials');
+    const card = page.getByTestId(`testimonial-${createdId}`);
+    await expect(card).toBeVisible({ timeout: 15_000 });
+    await card.getByRole('button', { name: 'Approve' }).click();
+    await expect(page.getByText(`${author}'s testimonial was approved and is now public.`)).toBeVisible({ timeout: 15_000 });
+    await expect(card).toHaveCount(0); // it left the Pending tab
+    await page.getByRole('tab', { name: /Approved/ }).click();
+    await expect(page.getByTestId(`testimonial-${createdId}`)).toBeVisible({ timeout: 15_000 });
+
+    await page.route(`**/admin/testimonials/${otherId}/moderate`, (route) =>
+      route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: { message: 'E2E: another moderator already moved it.' } }) }),
+    );
+    await page.getByRole('tab', { name: /Pending/ }).click();
+    const otherCard = page.getByTestId(`testimonial-${otherId}`);
+    await otherCard.getByRole('button', { name: 'Approve' }).click();
+    await expect(page.getByText('E2E: another moderator already moved it.')).toBeVisible({ timeout: 15_000 });
+    await expect(otherCard).toBeVisible();
   });
 });
 

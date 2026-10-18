@@ -9,8 +9,8 @@
  * - Main: Details (email, phone, country, institution, source, added by and on, verified on).
  * - Side: Links (the referring ambassador and the opportunity: links only for a role that can view those pages, otherwise
  *   plain text).
- * The record is read from the live store, so it changes in the same render as everything else. Outside mock mode a notice says
- * the page shows sample data. The dev ?state=loading|notfound|error switch works.
+ * Real mode reads the record from the API and reloads it after a change. Mock mode reads it from the live store, so it changes
+ * in the same render as everything else, and the dev ?state=loading|notfound|error switch works.
  *
  * Props: id (the record id)
  */
@@ -25,7 +25,6 @@ import { DetailError, DetailNotFound, DetailSkeleton } from "@/components/detail
 import { InfoCard } from "@/components/detail/InfoCard";
 import { Button } from "@/components/ui/Button";
 import { KeyValueList } from "@/components/ui/KeyValueList";
-import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TagPill } from "@/components/ui/TagPill";
 import { useBreadcrumbLabel } from "@/lib/breadcrumb-label";
@@ -33,6 +32,7 @@ import { formatDate } from "@/lib/format";
 import { RECORD_SOURCE_LABELS } from "@/lib/mock-entities";
 import { useMockCollection } from "@/lib/mock-store";
 import { loadRecord, recordLinkAccess, subscribeDatabase, withNames } from "@/lib/services/database";
+import { isMockMode } from "@/lib/services/mock-mode";
 import { useDetailData } from "@/lib/use-detail-data";
 
 export function RecordDetail({ id }: { id: string }) {
@@ -44,9 +44,10 @@ export function RecordDetail({ id }: { id: string }) {
   const records = useMockCollection("databaseRecords");
   const verify = useVerifyRecord();
 
-  // Once loaded, the record comes from the live store, so a verification shows in the render it happens in.
+  // Real mode shows what the server sent (it reloads after a change). Mock mode: once loaded, the record comes from the live
+  // store, so a verification shows in the render it happens in.
   const live = records.find((entry) => entry.id === id);
-  const record = loaded && live ? withNames(live) : undefined;
+  const record = !isMockMode() ? (loaded ?? undefined) : loaded && live ? withNames(live) : undefined;
 
   useBreadcrumbLabel(status === "loading" ? undefined : record ? record.name : "Not found");
 
@@ -56,7 +57,7 @@ export function RecordDetail({ id }: { id: string }) {
 
   const actions =
     canEdit && !record.verified ? (
-      <Button icon={BadgeCheck} onClick={() => verify(record)}>
+      <Button icon={BadgeCheck} onClick={() => void verify(record)}>
         Verify
       </Button>
     ) : undefined;
@@ -67,7 +68,6 @@ export function RecordDetail({ id }: { id: string }) {
 
   return (
     <>
-      <NotConnectedNotice className="mb-4" />
       <DetailPage
         header={
           <DetailHeader

@@ -10,11 +10,12 @@
  * Saving adds a PUBLISHED post to the store (services/social.ts), so the monthly totals, the platform table, the posts list and
  * the Posts published, Social reach and Social engagement KPIs all change in the same render. The form then resets (the date goes
  * back to today) and a toast says what was logged. Leaving with unsaved changes asks first (the shared guard).
- * Errors show after a field is left and on submit; the first invalid field takes focus. The save carries a TODO(backend).
+ * Errors show after a field is left and on submit; the first invalid field takes focus. Saving waits for services/social.ts
+ * savePost (the API in real mode); a failure shows an error toast and keeps what was typed.
  *
  * Props: onLogged?(post): called after a save (the page uses it to follow the month of the post when it is in another month)
  */
-import { useMemo, useRef, useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Field } from "@/components/ui/form/Field";
@@ -27,7 +28,9 @@ import { useToast } from "@/components/ui/Toast";
 import { formatDate } from "@/lib/format";
 import { POST_PLATFORM_LABELS, SOCIAL_POST_PLATFORMS, type PostPlatform, type SocialPost } from "@/lib/mock-entities";
 import { todayIsoDate } from "@/lib/services/listings";
-import { logPost, opportunityOptions, validatePost, type PostFormState } from "@/lib/services/social";
+import { loadPostOpportunityOptions, savePost, validatePost, type LogResult, type PostFormState } from "@/lib/services/social";
+import { isMockMode } from "@/lib/services/mock-mode";
+import { useAsync } from "@/lib/use-async";
 
 const NONE = "none";
 const PLATFORM_OPTIONS: SelectOption<PostPlatform>[] = SOCIAL_POST_PLATFORMS.map((value) => ({ value, label: POST_PLATFORM_LABELS[value] }));
@@ -35,7 +38,8 @@ const PLATFORM_OPTIONS: SelectOption<PostPlatform>[] = SOCIAL_POST_PLATFORMS.map
 const emptyForm = (): PostFormState => ({ platform: "", title: "", url: "", reach: "", engagement: "", listingId: NONE, postedAt: todayIsoDate() });
 
 export function LogPostCard({ onLogged }: { onLogged?: (post: SocialPost) => void }) {
-  const opportunities = useMemo(() => opportunityOptions(), []);
+  const { data: loadedOpportunities } = useAsync(loadPostOpportunityOptions);
+  const opportunities = loadedOpportunities ?? [];
   const [form, setForm] = useState<PostFormState>(emptyForm);
   const [saving, setSaving] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
@@ -59,17 +63,24 @@ export function LogPostCard({ onLogged }: { onLogged?: (post: SocialPost) => voi
       return;
     }
     setSaving(true);
-    // TODO(backend): persist this change (log the post; the API sets who logged it).
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    const result = logPost({
-      platform: form.platform as PostPlatform,
-      title: form.title,
-      url: form.url,
-      reach: Number(form.reach),
-      engagement: Number(form.engagement),
-      listingId: form.listingId === NONE ? undefined : form.listingId,
-      postedAt: form.postedAt,
-    });
+    // Mock mode saves instantly; a short pause shows the saving state as a real save would.
+    if (isMockMode()) await new Promise((resolve) => setTimeout(resolve, 300));
+    let result: LogResult;
+    try {
+      result = await savePost({
+        platform: form.platform as PostPlatform,
+        title: form.title,
+        url: form.url,
+        reach: Number(form.reach),
+        engagement: Number(form.engagement),
+        listingId: form.listingId === NONE ? undefined : form.listingId,
+        postedAt: form.postedAt,
+      });
+    } catch (problem) {
+      setSaving(false);
+      toast.error(problem instanceof Error ? problem.message : "The post could not be logged. Try again.");
+      return;
+    }
     setSaving(false);
     if (!result.ok) {
       toast.error(result.error);
