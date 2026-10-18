@@ -194,7 +194,7 @@ describe('SEC-065: account deletion', () => {
     const { user } = await seedSeeker();
     const session = await login(EMAIL, PASSWORD);
 
-    const res = await deleteMe(session.body.data.token, { password: 'WrongPassw0rd-z', confirmation: CONFIRMATION });
+    const res = await deleteMe(session.body.data.token, { password: 'WrongPassw0rd-z', confirmation: CONFIRMATION }); // gitleaks:allow
 
     expect(res.status).toBe(400);
     expect(await SeekerProfile.countDocuments({ userId: user._id })).toBe(1);
