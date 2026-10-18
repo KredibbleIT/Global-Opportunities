@@ -157,7 +157,11 @@ export async function deleteAccount(user, deps = {}) {
   );
 
   try {
-    await User.updateOne({ _id: user._id }, { $set: { role: 'deleted' }, $inc: { tokenVersion: 1 } });
+    // SEC-138: dropping the push token here means no push reaches the phone from now on.
+    await User.updateOne(
+      { _id: user._id },
+      { $set: { role: 'deleted' }, $inc: { tokenVersion: 1 }, $unset: { pushToken: '', pushPlatform: '' } },
+    );
   } catch (error) {
     // SEC-103: If setting role to deleted fails, clean up the pending tombstone so the scheduler does not later erase an active account
     await UserTombstone.deleteOne({ userId: user._id, status: 'pending' });

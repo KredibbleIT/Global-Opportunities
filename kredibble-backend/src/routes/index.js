@@ -13,7 +13,7 @@ import { requireAuth, optionalAuth, requireEmailVerified } from '../middleware/a
 import { env } from '../config/env.js';
 import { validate } from '../middleware/validate.js';
 import { staffInviteSchema } from '../schemas/admin.js';
-import { pushTokenSchema } from '../schemas/auth.js';
+import { pushTokenSchema, notificationPreferencesSchema } from '../schemas/auth.js';
 import {
   RESOURCE_POLICIES,
   ADMIN,
@@ -488,8 +488,10 @@ const notificationReadScope = (req) => {
     allowedAudiences.push('hirers', 'hirer');
   }
   // A person sees broadcasts for their audience plus anything addressed to them personally.
+  // SEC-138: a scheduled broadcast stays hidden until the scheduler sends it.
   return {
     isActive: { $ne: false },
+    status: { $nin: ['scheduled', 'cancelled'] },
     $or: [
       { audience: { $in: allowedAudiences } },
       ...(req.auth?.sub ? [{ userId: req.auth.sub }] : []),
@@ -1409,8 +1411,25 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
     if (platform) {
       update.pushPlatform = platform;
     }
+    // SEC-138: a phone belongs to whoever signed in on it last. Take its token off
+    // every other account, or their pushes would land on this person's lock screen.
+    await User.updateMany(
+      { _id: { $ne: userId }, pushToken: token },
+      { $unset: { pushToken: '', pushPlatform: '' }, $set: { pushTokenUpdatedAt: new Date() } },
+    );
     await User.findByIdAndUpdate(userId, { $set: update });
     itemResponse(res, { success: true });
+  }));
+
+  // SEC-138: the caller's push switch. Off stops phone pushes; the in-app list is unchanged.
+  router.patch('/users/me/notification-preferences', requireAuth, validate(notificationPreferencesSchema), asyncHandler(async (req, res) => {
+    const user = await User.findByIdAndUpdate(
+      req.auth.sub,
+      { $set: { 'notificationPreferences.push': req.body.push } },
+      { returnDocument: 'after' },
+    ).select('notificationPreferences').lean();
+    if (!user) throw notFound('User');
+    itemResponse(res, { push: user.notificationPreferences?.push !== false });
   }));
 
   // Collection routes with populate option

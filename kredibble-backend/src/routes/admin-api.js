@@ -134,6 +134,7 @@ import { syncWebsiteAudienceFromGa4 } from '../lib/ga4-sync.js';
 import { validate } from '../middleware/validate.js';
 import { postChannelMessage, listChannelMessages, getThread, findPost, setAllowReplies } from '../lib/chat.js';
 import { notifyUser } from '../lib/user-notify.js';
+import { pushInBackground, pushNotification } from '../lib/push.js';
 import { evictFromChannelRoom } from '../socket.js';
 import { toRequestResponse } from './ambassador.js';
 import { moveUserSegment, normalizeSegments, GENERAL_SEGMENT } from '../lib/segments.js';
@@ -4672,6 +4673,10 @@ adminApiRouter.post('/notifications', requireAdminOrStaffAuth, requireScreen('no
     outcome: 'success',
     metadata: { title, audience, isScheduled, scheduledFor: scheduledDate },
   });
+
+  // SEC-138: push to the audience's phones without holding up the response.
+  // A scheduled broadcast is pushed by lib/notification-scheduler.js when it is due.
+  if (!isScheduled) pushInBackground(() => pushNotification(notification));
 
   res.status(201).json({ data: toClientObject(notification) });
 }));
