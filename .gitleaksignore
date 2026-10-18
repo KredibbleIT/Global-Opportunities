@@ -39,6 +39,11 @@ kredibble-backend/src/routes/index.js:generic-api-key:817
 /repo/kredibble-backend/src/routes/index.js:generic-api-key:817
 kredibble-backend/src/routes/index.js:generic-api-key:1491
 /repo/kredibble-backend/src/routes/index.js:generic-api-key:1491
+# SEC-138 (feed filter, push routes) shifted them to 819 and 1510 (SEC-130 tracks the fragility)
+kredibble-backend/src/routes/index.js:generic-api-key:819
+/repo/kredibble-backend/src/routes/index.js:generic-api-key:819
+kredibble-backend/src/routes/index.js:generic-api-key:1510
+/repo/kredibble-backend/src/routes/index.js:generic-api-key:1510
 PLAN-2a-admin-data-api.md:generic-api-key:583
 /repo/PLAN-2a-admin-data-api.md:generic-api-key:583
 
