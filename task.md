@@ -303,6 +303,7 @@ Note: the audit's own text reached the same conclusion on #10 ("Actually this on
 | SEC-133 | Older `requirePortalRoles` lists disagree with the BE-001 matrix (Moderator loses the opportunities queue once SEC-131 lands; Admin Support can `PUT /admin/targets/:metric`) | P1 | Backend authz | 🟡 Fixed on `security/SEC-132-133-135-staff-authz` (2026-10-18), not merged; the product owner approved the matrix-only fix on 2026-10-17 |
 | SEC-134 | Team-edit staff can make themselves Super Admin: `PATCH /admin/staff/:id` sets any roles, and `DELETE` drops the record so "admin with no staff record" means root admin | P1 | Backend authz | 🔴 Open — filed 2026-10-17; probed: an Admin Support staffer deleted their own record and got Super Admin access |
 | SEC-135 | Partners and Programs pages read other screens' data (`/admin/programs`, `/admin/staff`, `/admin/partners`), which SEC-131 now refuses for Partnerships and Training Officers | P1 | Admin + backend authz | 🟡 Fixed on `security/SEC-132-133-135-staff-authz` (2026-10-18), not merged; filed 2026-10-17 when merging PR #121 into the SEC-131 branch |
+| SEC-137 | A Moderator can create, rewrite and delete opportunities: every opportunities write takes `opportunities_queue` edit, not just moderation | P2 | Backend authz | 🔴 Open — filed 2026-10-18; probed: a Moderator got 201/200/200 on create, content edit and delete |
 
 ---
 
@@ -1614,6 +1615,15 @@ Found while planning the move to the company infrastructure platform (`Company_I
 **Acceptance criteria:**
 - [x] With admin sessions, a Partnerships Officer opens a partner's detail page and picks an owner, and a Training Officer links a program to a partner (real API; a Playwright test signs in as each role). `kredibble-admin/tests/role-lookups.spec.ts` makes both accounts through BE-028 and signs each in through the login form: 2/2. The officer sees the linked program and saves a new owner; the trainer creates a program linked to the partner.
 - [x] The SEC-131 role table still gives those roles 403 on `GET /admin/programs`, `/admin/staff` and `/admin/partners` respectively (also asserted in `tests/sec-132-135-staff-authz.test.js`, next to 200s on the new routes).
+
+### SEC-137 — A Moderator can create, rewrite and delete opportunities, not just moderate them
+**Priority:** P2
+**Evidence (probed 2026-10-18 on `main` at `2c6df7d`):** since SEC-133 the matrix alone decides the opportunities routes (`kredibble-backend/src/routes/admin-api.js`), and every write there takes `opportunities_queue` edit. The Moderator's default "moderate" toggle grants that, so a Moderator with an admin session got 201 on `POST /admin/opportunities` (a new listing), 200 on a `PATCH` that rewrote its title, and 200 on `DELETE`. Approving and rejecting (a `PATCH` of `moderationStatus`/`vetted`) is the job; creating and editing curated listings belongs to `listings_curate`. The admin UI already gates the New listing and Edit pages on `listings_curate` edit (`kredibble-admin/src/app/(dashboard)/opportunities/new/page.tsx`, `[id]/edit/page.tsx`); the API didn't.
+**Risk:** a Moderator (or a compromised Moderator account) can publish listings of their own and delete real ones. That's more than the role was given, though staff-only.
+**Fix (agreed with the product owner 2026-10-17):** `opportunities_queue` edit keeps moderation: a `PATCH` that changes only `moderationStatus` and `vetted`, plus `unpublish` and the WordPress retry. Creating, any other `PATCH` field, and `DELETE` need `listings_curate` edit (Opportunities Officer, Desk Lead, Super Admin, who also hold the queue).
+**Acceptance criteria:**
+- [ ] A Moderator gets 403 on create, a content `PATCH` and `DELETE`, and 200 on approve, reject and unpublish
+- [ ] An Opportunities Officer keeps all of them; the SEC-131 role table covers `listings_curate`
 
 # Execution Order
 
