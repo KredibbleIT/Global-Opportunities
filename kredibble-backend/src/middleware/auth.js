@@ -201,6 +201,11 @@ export const requireAdminOrStaffAuth = async (req, res, next) => {
       const payload = jwt.verify(token, env.adminJwtSecret);
       if (payload.aud === 'kredibble-admin' && payload.role === 'admin') {
         const user = await User.findById(payload.sub).select('tokenVersion role').lean();
+        // SEC-134: a revoked admin session (removed staffer, "sign out everywhere")
+        // is refused here as requireAdminAuth refuses it, not left to the role check.
+        if (user && user.role !== 'deleted' && payload.tv !== undefined && payload.tv !== user.tokenVersion) {
+          return next(new ApiError(401, 'Token revoked due to security event'));
+        }
         if (user && user.role !== 'deleted') {
           req.auth = payload;
           return next();

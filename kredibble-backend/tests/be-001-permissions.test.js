@@ -15,9 +15,11 @@ import {
 const api = (path) => `/api/v1${path}`;
 
 describe('BE-001: Permissions Engine Unit Logic', () => {
-  it('defines 12 valid role IDs and 28 screens', () => {
+  it('defines 12 valid role IDs and 32 screens', () => {
     expect(ROLE_IDS).toHaveLength(12);
-    expect(SCREENS).toHaveLength(28);
+    // 28 + the four BE-030 Showcase screens, the same list as the admin's config/permissions.ts.
+    expect(SCREENS).toHaveLength(32);
+    expect(SCREENS).toEqual(expect.arrayContaining(['showcase', 'showcase.ambassadors', 'showcase.partners', 'showcase.manage']));
     expect(ROLE_IDS).toContain('super_admin');
     expect(ROLE_IDS).toContain('desk_lead');
     expect(ROLE_IDS).toContain('moderator');

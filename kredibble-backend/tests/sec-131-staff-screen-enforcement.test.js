@@ -20,10 +20,8 @@ const ROOT_ADMIN = 'root admin (no staff record)';
 
 // One GET and one write per screen that has a requireScreen route. Writes send
 // an empty body (or an unknown id) so an allowed caller stops at validation or
-// a 404 and nothing is written. `portalRoles` lists the roles of a
-// requirePortalRoles guard chained after requireScreen on that route.
-const OPPORTUNITY_ROLES = ['opportunities_officer', 'desk_lead'];
-const SOCIAL_ROLES = ['communications_officer', 'social_media_manager', 'desk_lead'];
+// a 404 and nothing is written. Since SEC-133 the BE-001 matrix alone decides:
+// no route chains an older role list any more.
 const SCREEN_ROUTES = [
   { screens: ['overview'], level: 'view', method: 'get', path: '/admin/targets' },
   { screens: ['insights', 'overview', 'monthly_report'], level: 'view', method: 'get', path: '/admin/website-audience' },
@@ -32,17 +30,17 @@ const SCREEN_ROUTES = [
   { screens: ['monthly_report'], level: 'view', method: 'post', path: '/admin/monthly-reports' },
   { screens: ['my_scorecard'], level: 'view', method: 'get', path: '/admin/scorecards/me' },
   { screens: ['team_scorecard'], level: 'view', method: 'get', path: '/admin/scorecards/team' },
-  { screens: ['opportunities_queue'], level: 'view', method: 'get', path: '/admin/opportunities', portalRoles: OPPORTUNITY_ROLES },
-  { screens: ['opportunities_queue'], level: 'edit', method: 'post', path: '/admin/opportunities', portalRoles: OPPORTUNITY_ROLES },
+  { screens: ['opportunities_queue'], level: 'view', method: 'get', path: '/admin/opportunities' },
+  { screens: ['opportunities_queue'], level: 'edit', method: 'post', path: '/admin/opportunities' },
   { screens: ['programs'], level: 'view', method: 'get', path: '/admin/programs' },
   { screens: ['programs'], level: 'edit', method: 'patch', path: () => `/admin/programs/${randomId()}` },
   { screens: ['partners'], level: 'view', method: 'get', path: '/admin/partners' },
   { screens: ['partners'], level: 'edit', method: 'post', path: '/admin/partners' },
   { screens: ['network'], level: 'view', method: 'get', path: '/admin/network/summary' },
   { screens: ['network'], level: 'edit', method: 'post', path: () => `/admin/ambassadors/${randomId()}/amplifications` },
-  { screens: ['leaderboard'], level: 'view', method: 'get', path: '/admin/leaderboard' },
-  { screens: ['social'], level: 'view', method: 'get', path: '/admin/social-posts', portalRoles: SOCIAL_ROLES },
-  { screens: ['social'], level: 'edit', method: 'post', path: '/admin/social-posts', portalRoles: SOCIAL_ROLES },
+  { screens: ['leaderboard', 'network'], level: 'view', method: 'get', path: '/admin/leaderboard' },
+  { screens: ['social'], level: 'view', method: 'get', path: '/admin/social-posts' },
+  { screens: ['social'], level: 'edit', method: 'post', path: '/admin/social-posts' },
   { screens: ['database'], level: 'view', method: 'get', path: '/admin/beneficiaries' },
   { screens: ['database'], level: 'edit', method: 'post', path: '/admin/beneficiaries' },
   { screens: ['settings_admin'], level: 'view', method: 'get', path: '/admin/targets/history' },
@@ -51,40 +49,26 @@ const SCREEN_ROUTES = [
   { screens: ['settings'], level: 'edit', method: 'put', path: '/admin/settings/account' },
   { screens: ['roles_permissions'], level: 'view', method: 'get', path: '/admin/roles-permissions' },
   { screens: ['roles_permissions'], level: 'edit', method: 'put', path: '/admin/roles-permissions' },
-  { screens: ['testimonials'], level: 'view', method: 'get', path: '/admin/testimonials', portalRoles: SOCIAL_ROLES },
-  { screens: ['testimonials'], level: 'edit', method: 'post', path: '/admin/testimonials', portalRoles: ['communications_officer', 'desk_lead'] },
+  { screens: ['testimonials'], level: 'view', method: 'get', path: '/admin/testimonials' },
+  { screens: ['testimonials'], level: 'edit', method: 'post', path: '/admin/testimonials' },
   { screens: ['team'], level: 'view', method: 'get', path: '/admin/staff' },
-  { screens: ['team'], level: 'edit', method: 'post', path: '/admin/staff/invite' },
+  { screens: ['team'], level: 'edit', method: 'patch', path: () => `/admin/staff/${randomId()}` }, // invites are Super Admin only (SEC-132)
   { screens: ['notifications'], level: 'view', method: 'get', path: '/admin/notifications' },
   { screens: ['notifications'], level: 'edit', method: 'post', path: '/admin/notifications' },
   { screens: ['reference_data'], level: 'view', method: 'get', path: '/admin/reference-data' },
   { screens: ['reference_data'], level: 'edit', method: 'put', path: '/admin/reference-data/countries/probe' },
   { screens: ['channels'], level: 'view', method: 'get', path: '/admin/community/channels' },
   { screens: ['channels'], level: 'edit', method: 'post', path: '/admin/community/channels' },
-];
-
-// Routes guarded only by an older requirePortalRoles list (no requireScreen).
-// Super Admin passes every list; the matrix gives it every screen.
-const ALL_PORTAL_ROLES = [
-  'partnerships_officer', 'opportunities_officer', 'training_officer', 'database_officer',
-  'communications_officer', 'social_media_manager', 'country_lead', 'admin_support', 'desk_lead',
-];
-const PORTAL_ROLE_ROUTES = [
-  { method: 'get', path: '/admin/dashboard', portalRoles: ALL_PORTAL_ROLES },
-  { method: 'get', path: '/admin/reports/monthly', portalRoles: ALL_PORTAL_ROLES },
-  { method: 'get', path: '/admin/reports/team', portalRoles: ['desk_lead'] },
-  { method: 'put', path: '/admin/targets/probe_metric', portalRoles: ['desk_lead', 'admin_support'] },
+  // SEC-133: these four had only an older role list; now each has its screen.
+  { screens: ['overview'], level: 'view', method: 'get', path: '/admin/dashboard' },
+  { screens: ['monthly_report'], level: 'view', method: 'get', path: '/admin/reports/monthly' },
+  { screens: ['team_scorecard'], level: 'view', method: 'get', path: '/admin/reports/team' },
+  { screens: ['settings_admin'], level: 'edit', method: 'put', path: '/admin/targets/probe_metric' },
 ];
 
 const GUARD_MESSAGES = /insufficient permissions for screen|do not have staff access|do not have access to this admin function/;
 
-const expectedFor = (roles, route) => {
-  const screenOk = !route.screens || route.screens.some((screen) => roleCan(roles, screen, route.level));
-  const portalOk = !route.portalRoles
-    || roles.includes('super_admin')
-    || roles.some((role) => route.portalRoles.includes(role));
-  return screenOk && portalOk;
-};
+const expectedFor = (roles, route) => route.screens.some((screen) => roleCan(roles, screen, route.level));
 
 const pathOf = (route) => (typeof route.path === 'function' ? route.path() : route.path);
 
@@ -154,21 +138,21 @@ describe('SEC-131: every role against every screen, through real routes', () => 
   ])('%s', (realm, credentialsFor) => {
     it.each(ROLE_IDS)('%s gets exactly its matrix screens', async (role) => {
       const user = await createStaffUser({ roles: [role] });
-      const wrong = await mismatches([...SCREEN_ROUTES, ...PORTAL_ROLE_ROUTES], [role], credentialsFor(user));
+      const wrong = await mismatches(SCREEN_ROUTES, [role], credentialsFor(user));
       expect(wrong).toEqual([]);
     });
 
     it('a two-role staffer gets the union of both rows', async () => {
       const roles = ['partnerships_officer', 'training_officer'];
       const user = await createStaffUser({ roles });
-      const wrong = await mismatches([...SCREEN_ROUTES, ...PORTAL_ROLE_ROUTES], roles, credentialsFor(user));
+      const wrong = await mismatches(SCREEN_ROUTES, roles, credentialsFor(user));
       expect(wrong).toEqual([]);
     });
   });
 
   it(`${ROOT_ADMIN} keeps full access`, async () => {
     const rootAdmin = await createStaffUser({});
-    const wrong = await mismatches([...SCREEN_ROUTES, ...PORTAL_ROLE_ROUTES], ['super_admin'], adminSession(rootAdmin));
+    const wrong = await mismatches(SCREEN_ROUTES, ['super_admin'], adminSession(rootAdmin));
     expect(wrong).toEqual([]);
   });
 });
@@ -192,8 +176,9 @@ describe('SEC-131: the 2026-10-17 probe', () => {
 describe('SEC-131: suspended and invited staff get nothing', () => {
   const guardedRoutes = [
     { label: 'requireScreen', method: 'get', path: '/admin/partners' },
-    { label: 'requireScreen + requirePortalRoles', method: 'get', path: '/admin/opportunities' },
-    { label: 'requirePortalRoles', method: 'get', path: '/admin/dashboard' },
+    { label: 'requireScreen (opportunities queue)', method: 'get', path: '/admin/opportunities' },
+    { label: 'requireScreen (dashboard)', method: 'get', path: '/admin/dashboard' },
+    { label: 'requireAdminScreen', method: 'get', path: '/admin/seekers' },
     { label: 'requireStaffRoles', method: 'get', path: '/admin/ambassadors/history' },
     { label: 'requireSuperAdmin', method: 'get', path: '/admin/audit-log?scope=accounts' },
   ];

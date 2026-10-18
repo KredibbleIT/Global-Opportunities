@@ -21,10 +21,11 @@ import type { Program, ProgramFormat, ProgramStatus, ProgramType } from "@/lib/m
 import {
   ApiError,
   createProgramApi,
-  getPartners,
   getProgramById,
+  getProgramPartnerOptionsApi,
   getPrograms,
   updateProgramApi,
+  type LinkedProgramApiRecord,
   type ProgramApiRecord,
   type ProgramWriteInput,
 } from "@/lib/api";
@@ -128,12 +129,19 @@ export function programPartnerOptions(): { id: string; name: string }[] {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** The partner choices for the form. Real mode: every partner from /admin/partners. */
+/**
+ * The partner choices for the form. Real mode: /admin/programs/partner-options, which the Programs edit grant covers (SEC-135:
+ * a Training Officer has no Partners screen, so the full partner list is not theirs to read).
+ */
 export async function loadProgramPartnerOptions(): Promise<{ id: string; name: string }[]> {
   if (isMockMode()) return programPartnerOptions();
-  const partners = await fetchAll((page, limit) => getPartners({ page, limit }));
-  return partners.map((partner) => ({ id: partner.id, name: partner.name || partner.organizationName })).sort((a, b) => a.name.localeCompare(b.name));
+  const partners = await getProgramPartnerOptionsApi();
+  return [...partners].sort((a, b) => a.name.localeCompare(b.name));
 }
+
+/** A program linked to a partner, as the partner's page receives it (SEC-135), with the counts it doesn't show left at zero. */
+export const toLinkedProgram = (record: LinkedProgramApiRecord): ProgramRow =>
+  toProgramRow({ ...record, name: record.title, type: record.programType, participantCount: 0, participants: 0, participantTarget: 0, target: 0 });
 
 /** The fields a person fills in on the form. The id is decided by the service. */
 export type ProgramFields = Omit<Program, "id" | "deliveredAt">;

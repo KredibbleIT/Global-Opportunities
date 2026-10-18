@@ -123,9 +123,10 @@ describe('SEC-134: removing a staff member never makes them the root admin', () 
     expect(res.body.data.removed).toBe(true);
     expect((await StaffMember.findById(removed.staff._id).lean()).status).toBe('deactivated');
 
-    // Their old admin session: no roles, so every screen check refuses and /me signs them out.
-    expect((await send('put', '/admin/roles-permissions', removed.cookie, { toggles: TOGGLES })).status).toBe(403);
-    expect((await request(app).get(api('/admin/partners')).set('Cookie', removed.cookie)).status).toBe(403);
+    // Their old admin session was revoked, so the staff routes refuse it outright (401, since
+    // requireAdminOrStaffAuth checks the token version too) and /me signs them out.
+    expect((await send('put', '/admin/roles-permissions', removed.cookie, { toggles: TOGGLES })).status).toBe(401);
+    expect((await request(app).get(api('/admin/partners')).set('Cookie', removed.cookie)).status).toBe(401);
     expect((await request(app).get(api('/auth/admin/me')).set('Cookie', removed.cookie)).status).toBe(401);
   });
 

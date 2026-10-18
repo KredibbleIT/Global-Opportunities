@@ -3,6 +3,7 @@ import multer from 'multer';
 import { fileTypeFromBuffer } from 'file-type';
 import { uploadBufferToCloudinary } from '../lib/cloudinary.js';
 import { requireAuth } from '../middleware/auth.js';
+import { requireAdminScreen } from '../middleware/portal-auth.js';
 import { uploadLimiter as uploadRateLimiter } from '../lib/rate-limiters.js';
 import { ApiError, asyncHandler } from '../utils/http.js';
 
@@ -44,6 +45,23 @@ const UPLOAD_PURPOSE = {
 };
 
 const UPLOAD_PURPOSE_VALUES = Object.values(UPLOAD_PURPOSE);
+
+/**
+ * SEC-132: the admin upload route's purposes and the screen whose edit right
+ * each one needs (an admin session alone is not enough). An unknown purpose
+ * falls back to the first, as the upload router itself does.
+ */
+export const ADMIN_UPLOAD_SCREENS = Object.freeze({
+  'article-banner': 'career_resources',
+  'ambassador-photo': 'network',
+  // BE-031: Showcase pictures, for the editors of any category (the Showcase
+  // routes then check the category itself).
+  'showcase-photo': ['showcase', 'showcase.ambassadors', 'showcase.partners'],
+});
+
+export const requireAdminUploadScreen = requireAdminScreen(
+  (req) => ADMIN_UPLOAD_SCREENS[req.query?.purpose] ?? ADMIN_UPLOAD_SCREENS['article-banner'],
+);
 
 // SEC-013 + SEC-024: Per-user upload rate limit (20/hour), shared via the
 // Redis-backed factory in production.

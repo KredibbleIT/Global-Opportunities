@@ -1,9 +1,12 @@
 /**
  * Social service: the posts the desk logs by hand (there is no live platform API), the monthly totals worked out from them, and
- * the list of a month's posts. One function per need; pages never touch the store or the seed. Everything lives in the shared
- * in-memory mock store, so the totals on /social, the "Posts published", "Social reach" and "Social engagement" KPIs
- * (lib/kpi.ts counts published posts by the month of postedAt) always agree. Writes use `{ always: true }`.
- * TODO(backend): every write below must be persisted by the API.
+ * the list of a month's posts. One function per need; pages never touch the store, the seed or the API directly. Two modes:
+ * - Real mode (the default): the month's posts (every page of /admin/social-posts) and its totals
+ *   (/admin/social-posts/monthly-totals, the same rules on the server) come from the API, and a failure is an error, never a
+ *   silent switch to the sample data. savePost waits for the API; after it, notifySocialChanged() reloads open pages.
+ * - Mock mode: everything lives in the shared in-memory mock store, so the totals on /social, the "Posts published", "Social
+ *   reach" and "Social engagement" KPIs (lib/kpi.ts counts published posts by the month of postedAt) always agree. Mock
+ *   writes never call the API.
  *
  * Rules kept here, not in the page:
  * - TOTALS always come from dated posts: a published post counts in the month of its date. So a post dated in an earlier month
@@ -20,11 +23,14 @@ import { POST_PLATFORM_LABELS, SOCIAL_POST_PLATFORMS, type MonthKey, type PostPl
 import { currentStaffMember, todayIsoDate } from "@/lib/services/listings";
 import { isMockMode } from "./mock-mode";
 import {
+  getOpportunitiesPage,
   getSocialPostsApi,
   getSocialMonthlyTotalsApi,
   createSocialPostApi,
   type PlatformRowApiRecord,
+  type SocialPostApiRecord,
 } from "@/lib/api";
+import { fetchAll } from "./api-helpers";
 
 const MOCK_DELAY_MS = 300;
 // The first load of a page takes a moment (a skeleton shows). Every later read is instant, so a change is on screen at once.
@@ -39,8 +45,21 @@ const afterDelay = <T>(value: T) => {
   );
 };
 
-/** Re-run a loader whenever the posts (or anything else in the store) change. */
-export const subscribeSocial = subscribeMockStore;
+// Real mode: saves do not go through the store, so they tell the open pages through these listeners instead.
+const liveListeners = new Set<() => void>();
+
+/** Tells every open Social page that the data changed (real mode: after a post is logged). */
+export const notifySocialChanged = (): void => liveListeners.forEach((listener) => listener());
+
+/** Re-run a loader whenever the posts change: a store change (mock mode) or a saved post (real mode). */
+export function subscribeSocial(listener: () => void): () => void {
+  const unsubscribeStore = subscribeMockStore(listener);
+  liveListeners.add(listener);
+  return () => {
+    unsubscribeStore();
+    liveListeners.delete(listener);
+  };
+}
 
 const monthOf = (iso: string): MonthKey => iso.slice(0, 7);
 
@@ -147,30 +166,25 @@ export function socialMonth(month: MonthKey, data = storeData()): SocialMonth {
   };
 }
 
+/** The totals of one month. Real mode: counted by the server; an API failure is an error the page shows. */
 export async function loadMonthSocialTotals(month: MonthKey): Promise<SocialMonth> {
   if (!isMockMode()) {
-    try {
-      const res = await getSocialMonthlyTotalsApi(month);
-      if (res && typeof res.posts === 'number') {
-        return {
-          month: res.month as MonthKey,
-          posts: res.posts,
-          reach: res.reach,
-          engagement: res.engagement,
-          targets: res.targets,
-          platforms: (res.platforms || []).map((p: PlatformRowApiRecord) => ({
-            platform: p.platform as PostPlatform,
-            label: p.label,
-            posts: p.posts,
-            reach: p.reach,
-            engagement: p.engagement,
-          })),
-          leading: (res.leading as PostPlatform) || null,
-        };
-      }
-    } catch {
-      // Fallback to local calculation
-    }
+    const res = await getSocialMonthlyTotalsApi(month);
+    return {
+      month: res.month as MonthKey,
+      posts: res.posts,
+      reach: res.reach,
+      engagement: res.engagement,
+      targets: res.targets,
+      platforms: (res.platforms || []).map((p: PlatformRowApiRecord) => ({
+        platform: p.platform as PostPlatform,
+        label: p.label,
+        posts: p.posts,
+        reach: p.reach,
+        engagement: p.engagement,
+      })),
+      leading: (res.leading as PostPlatform) || null,
+    };
   }
   return socialMonth(month);
 }
@@ -191,34 +205,41 @@ export const toPostRows = (posts: readonly SocialPost[], month: MonthKey): PostR
     .sort((a, b) => b.postedAt.localeCompare(a.postedAt) || b.id.localeCompare(a.id))
     .map(withTitle);
 
+/** An API post as the page's PostRow ("YYYY-MM-DD" date). */
+const toPostRow = (record: SocialPostApiRecord): PostRow => ({
+  id: record.id,
+  platform: record.platform as PostPlatform,
+  title: record.title,
+  url: record.url,
+  listingId: record.listingId || undefined,
+  listingTitle: record.listingTitle || undefined,
+  text: record.text || record.title,
+  status: record.status,
+  postedAt: String(record.postedAt).slice(0, 10),
+  reach: record.reach,
+  engagement: record.engagement,
+  authorId: record.authorId || record.createdBy || "",
+});
+
+/** The month's published posts, newest first. Real mode: every page from the API; a failure is an error the page shows. */
 export async function loadMonthPosts(month: MonthKey): Promise<PostRow[]> {
   if (!isMockMode()) {
-    try {
-      const res = await getSocialPostsApi({ month });
-      if (res.data && Array.isArray(res.data)) {
-        return res.data.map((record) => ({
-          id: record.id,
-          platform: record.platform as PostPlatform,
-          title: record.title,
-          url: record.url,
-          listingId: record.listingId,
-          listingTitle: record.listingTitle,
-          text: record.text || record.title,
-          status: record.status,
-          postedAt: record.postedAt,
-          reach: record.reach,
-          engagement: record.engagement,
-          authorId: record.authorId || record.createdBy || "",
-        }));
-      }
-    } catch {
-      // Fallback to local mock collection on API error
-    }
+    const records = await fetchAll((page, limit) => getSocialPostsApi({ month, page, limit }));
+    return publishedIn(records.map(toPostRow), month).sort((a, b) => b.postedAt.localeCompare(a.postedAt) || b.id.localeCompare(a.id));
   }
   return afterDelay(toPostRows(getMockCollection("socialPosts"), month));
 }
 
-/** Opportunities a post can promote: the published ones. */
+/** The opportunity choices for the form. Real mode: the published opportunities from the API. */
+export async function loadPostOpportunityOptions(): Promise<{ id: string; title: string; organisation: string }[]> {
+  if (isMockMode()) return opportunityOptions();
+  const records = await fetchAll((page, limit) => getOpportunitiesPage({ status: "published", page, limit }));
+  return records
+    .map((record) => ({ id: record.id, title: record.title, organisation: record.organisation || record.company || "" }))
+    .sort((a, b) => a.title.localeCompare(b.title));
+}
+
+/** Mock store: opportunities a post can promote, the published ones. */
 export const opportunityOptions = (): { id: string; title: string; organisation: string }[] =>
   getMockCollection("listings")
     .filter((listing) => listing.status === "published")
@@ -243,7 +264,7 @@ export interface PostFields {
 
 export type LogResult = { ok: true; post: SocialPost } | { ok: false; error: string };
 
-/** Logs a published post. A date in the future is refused (nothing is written). */
+/** Mock store: logs a published post. A date in the future is refused (nothing is written). */
 export function logPost(fields: PostFields): LogResult {
   if (fields.postedAt > todayIsoDate()) return { ok: false, error: "The date posted cannot be in the future." };
   const existing = getMockCollection("socialPosts");
@@ -261,21 +282,26 @@ export function logPost(fields: PostFields): LogResult {
     authorId: currentStaffMember()?.id ?? existing[0]?.authorId ?? "",
   };
   setMockCollection("socialPosts", [post, ...existing], { always: true });
-
-  if (!isMockMode()) {
-    createSocialPostApi({
-      platform: fields.platform,
-      title: fields.title.trim(),
-      url: fields.url.trim(),
-      reach: Math.max(0, Math.round(fields.reach)),
-      engagement: Math.max(0, Math.round(fields.engagement)),
-      postedAt: fields.postedAt,
-      listingId: fields.listingId || undefined,
-      status: "published",
-    }).catch(() => {
-      // Background persistence catch
-    });
-  }
-
   return { ok: true, post };
+}
+
+/**
+ * Logs a published post. A date in the future is refused before anything is sent. Real mode: waits for the API (which
+ * records who logged it) and rejects with its message, so the form can show it and keep what was typed.
+ */
+export async function savePost(fields: PostFields): Promise<LogResult> {
+  if (isMockMode()) return logPost(fields);
+  if (fields.postedAt > todayIsoDate()) return { ok: false, error: "The date posted cannot be in the future." };
+  const saved = await createSocialPostApi({
+    platform: fields.platform,
+    title: fields.title.trim(),
+    url: fields.url.trim(),
+    reach: Math.max(0, Math.round(fields.reach)),
+    engagement: Math.max(0, Math.round(fields.engagement)),
+    postedAt: fields.postedAt,
+    listingId: fields.listingId || undefined,
+    status: "published",
+  });
+  notifySocialChanged();
+  return { ok: true, post: toPostRow(saved) };
 }
