@@ -134,6 +134,7 @@ import { syncWebsiteAudienceFromGa4 } from '../lib/ga4-sync.js';
 import { validate } from '../middleware/validate.js';
 import { postChannelMessage, listChannelMessages, getThread, findPost, setAllowReplies } from '../lib/chat.js';
 import { notifyUser } from '../lib/user-notify.js';
+import { pushInBackground, pushNotification } from '../lib/push.js';
 import { evictFromChannelRoom } from '../socket.js';
 import { toRequestResponse } from './ambassador.js';
 import { moveUserSegment, normalizeSegments, GENERAL_SEGMENT } from '../lib/segments.js';
@@ -3176,6 +3177,24 @@ adminApiRouter.post('/settings/integrations/:kind/test', requireAdminOrStaffAuth
 }));
 
 // BE-016: My Account & Profile management
+
+// The admin's email alerts. The mobile app's push switch (SEC-138) lives in the
+// same sub-document but isn't part of the admin's contract.
+const ADMIN_EMAIL_PREFERENCE_DEFAULTS = Object.freeze({ digest: true, verifications: true, reports: true, testimonials: false });
+
+/**
+ * Picks the admin's email-alert switches out of a user's notification preferences,
+ * filling in defaults for any that were never saved.
+ *
+ * @param {Record<string, boolean> | undefined} stored
+ * @returns {{ digest: boolean, verifications: boolean, reports: boolean, testimonials: boolean }}
+ */
+const adminEmailPreferences = (stored) => {
+  const source = stored?.toObject?.() || stored || {};
+  return Object.fromEntries(Object.entries(ADMIN_EMAIL_PREFERENCE_DEFAULTS)
+    .map(([key, fallback]) => [key, typeof source[key] === 'boolean' ? source[key] : fallback]));
+};
+
 const handleGetAccountProfile = asyncHandler(async (req, res) => {
   const user = await User.findById(req.auth.sub).select('name email role notificationPreferences').lean();
   if (!user || user.role === 'deleted') {
@@ -3190,12 +3209,7 @@ const handleGetAccountProfile = asyncHandler(async (req, res) => {
     email: user.email,
     role: user.role,
     roles: staff?.roles || (staff?.role ? [staff.role] : [user.role]),
-    notificationPreferences: user.notificationPreferences || {
-      digest: true,
-      verifications: true,
-      reports: true,
-      testimonials: false,
-    },
+    notificationPreferences: adminEmailPreferences(user.notificationPreferences),
   };
   itemResponse(res, profile);
 });
@@ -3243,7 +3257,7 @@ const handleUpdateAccountProfile = asyncHandler(async (req, res) => {
     email: user.email,
     role: user.role,
     roles: staff?.roles || (staff?.role ? [staff.role] : [user.role]),
-    notificationPreferences: user.notificationPreferences,
+    notificationPreferences: adminEmailPreferences(user.notificationPreferences),
   };
   itemResponse(res, profile);
 });
@@ -4686,6 +4700,10 @@ adminApiRouter.post('/notifications', requireAdminOrStaffAuth, requireScreen('no
     outcome: 'success',
     metadata: { title, audience, isScheduled, scheduledFor: scheduledDate },
   });
+
+  // SEC-138: push to the audience's phones without holding up the response.
+  // A scheduled broadcast is pushed by lib/notification-scheduler.js when it is due.
+  if (!isScheduled) pushInBackground(() => pushNotification(notification));
 
   res.status(201).json({ data: toClientObject(notification) });
 }));

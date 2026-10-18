@@ -17,9 +17,14 @@ import { ToastProvider } from '../components/ui/ToastProvider';
 import { Colors } from '../constants/design';
 import { installTypography } from '../lib/typography';
 import { initMobileErrorTracking, Sentry } from '../lib/sentry';
-import { setEmailVerificationHandler } from '../lib/api';
+import { setEmailVerificationHandler, setSessionSavedHandler } from '../lib/api';
 import { OfflineBanner } from '../lib/network';
-import { registerForPushNotificationsAsync } from '../lib/notifications';
+import {
+  registerForPushNotificationsAsync,
+  subscribeToIncomingNotifications,
+  subscribeToNotificationTaps,
+} from '../lib/notifications';
+import { syncNotifications } from '../lib/notificationSync';
 import "../global.css";
 
 initMobileErrorTracking();
@@ -56,11 +61,23 @@ function RootLayout() {
     setEmailVerificationHandler(() => {
       router.push('/(auth)/verify-email' as any);
     });
+    // SEC-138: register on launch (a returning user) and after every sign-in or sign-up.
     registerForPushNotificationsAsync().catch(() => {
       // Non-blocking in dev/simulators
     });
+    setSessionSavedHandler(() => registerForPushNotificationsAsync());
+    // Tapping a push opens the list; a push that arrives while the app is open refreshes it.
+    const stopTaps = subscribeToNotificationTaps(() => {
+      router.push('/notifications' as any);
+    });
+    const stopIncoming = subscribeToIncomingNotifications(() => {
+      syncNotifications();
+    });
     return () => {
       setEmailVerificationHandler(null);
+      setSessionSavedHandler(null);
+      stopTaps();
+      stopIncoming();
     };
   }, [router]);
 

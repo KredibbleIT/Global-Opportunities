@@ -60,7 +60,8 @@ Verified authorization state per endpoint enforced by live route manifest testin
 | `GET /api/v1/health` | Public | — | Public liveness & database status check |
 | `GET /api/v1/dashboard/summary` | ✅ Admin | admin | Platform totals & pending moderation queues (SEC-003, SEC-046) |
 | `CRUD /api/v1/users` | ✅ Admin | admin | Admin-only access; non-admin requests receive 403 (SEC-054) |
-| `POST /api/v1/users/me/push-token` | ✅ Bearer | all | Push notification APNs/FCM token registration |
+| `POST /api/v1/users/me/push-token` | ✅ Bearer | all | Expo push token registration; the token moves off any other account (SEC-138) |
+| `PATCH /api/v1/users/me/notification-preferences` | ✅ Bearer | all | Caller's phone-push switch `{ push: boolean }` (SEC-138) |
 | `POST /api/v1/ambassador-requests` | ✅ Bearer | seeker, hirer | Apply to become an ambassador with server snapshot (BE-024) |
 | `GET /api/v1/ambassador-requests/me` | ✅ Bearer | all | Caller active ambassador application status |
 | `CRUD /api/v1/seekers` | ✅ Bearer | seeker, hirer, admin | Scoped by role policy and ownerField ownership (SEC-002) |

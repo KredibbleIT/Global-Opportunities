@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import mongoose from 'mongoose';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 
@@ -537,29 +538,51 @@ authRouter.post(
 authRouter.post(
   '/logout',
   asyncHandler(async (req, res) => {
-    const { refreshToken } = req.body || {};
+    const { refreshToken, pushToken } = req.body || {};
+    let signedOutUserId = null;
     if (typeof refreshToken === 'string' && refreshToken.trim()) {
       const tokenHash = hashRefreshTokenUtil(refreshToken.trim());
-      await RefreshToken.findOneAndUpdate(
+      const revoked = await RefreshToken.findOneAndUpdate(
         { tokenHash, revokedAt: null },
         { $set: { revokedAt: new Date() } }
       );
+      signedOutUserId = revoked?.userId ?? null;
     }
 
     const header = req.get('authorization');
     const token = header?.startsWith('Bearer ') ? header.slice(7) : null;
+    let accessPayload = null;
     if (token) {
       try {
-        const payload = jwt.verify(token, env.jwtSecret);
+        accessPayload = jwt.verify(token, env.jwtSecret);
+      } catch {
+        // An expired access token is normal at logout; the refresh token identifies the user.
+      }
+    }
+    signedOutUserId ??= accessPayload?.sub ?? null;
+
+    // SEC-138: stop pushing to the phone being signed out. The app sends its own
+    // token so another phone on the same account keeps it; older apps send none,
+    // and then the account's token is cleared (that phone re-registers on its next launch).
+    if (signedOutUserId && mongoose.isValidObjectId(signedOutUserId)) {
+      const tokenFilter = typeof pushToken === 'string' && pushToken.trim() ? { pushToken: pushToken.trim() } : {};
+      await User.updateOne(
+        { _id: signedOutUserId, ...tokenFilter },
+        { $unset: { pushToken: '', pushPlatform: '' }, $set: { pushTokenUpdatedAt: new Date() } },
+      );
+    }
+
+    if (accessPayload) {
+      try {
         await auditReq(req, {
           action: AUDIT_ACTIONS.LOGOUT,
           resourceType: AUDIT_RESOURCE_TYPES.USER,
-          resourceId: payload.sub,
+          resourceId: accessPayload.sub,
           outcome: 'success',
           metadata: { isUserLogout: true },
         });
       } catch {
-        // Ignore token errors during logout
+        // Logout still succeeds when the audit write fails.
       }
     }
 
