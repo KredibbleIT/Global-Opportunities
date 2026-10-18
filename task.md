@@ -291,7 +291,7 @@ Note: the audit's own text reached the same conclusion on #10 ("Actually this on
 | SEC-121 | Email verification flow missing in mobile app (blocks high-trust actions with 403) | P0 | Mobile auth | ✅ Done |
 | SEC-122 | Community feed photo attachment and prompt dialogs crash or no-op on native mobile | P1 | Mobile community | ✅ Done |
 | SEC-123 | Event booking payment flow simulated: collects card numbers without payment gateway | P1 | Mobile events | ✅ Done |
-| SEC-124 | App Store & Google Play compliance gaps: policy links, push notifications, offline netinfo | P1 | Mobile store | ✅ Done |
+| SEC-124 | App Store & Google Play compliance gaps: policy links, push notifications, offline netinfo | P1 | Mobile store | ✅ Done — push covered permission and token storage only; delivery is SEC-138 |
 | SEC-125 | AI Assistant in mobile app is canned setTimeout demo disconnected from backend | P2 | Mobile assistant | ✅ Done |
 | SEC-126 | Mock data fallbacks in notifications, saved items, and hardcoded Wave job descriptions | P2 | Mobile app | ✅ Done |
 | SEC-127 | Hirer postings and managed channels rely on mock in-memory authStore data | P2 | Mobile hirer | ✅ Done |
@@ -2627,6 +2627,7 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
   - Install `expo-notifications`, configure push notification request permissions, and register APNs/FCM tokens to the backend on login.
   - Install `@react-native-community/netinfo`, create `useNetworkStatus` hook, and display an offline banner with graceful request caching/retry.
 - **Verify:** Tapping Privacy Policy opens legal document; simulated offline mode shows offline banner and prevents crashing.
+- **Correction (2026-10-18):** the token was registered only when the app launched, not on login, and the backend never sent a push. Both are fixed under SEC-138.
 
 #### MOB-016 — AI Assistant live backend integration (SEC-125)
 - **Problem:** `assistant/index.tsx:129-173` uses a 1.2-second `setTimeout` with hardcoded responses and static Wave jobs.
