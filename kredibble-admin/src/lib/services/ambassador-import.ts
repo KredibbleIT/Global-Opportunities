@@ -180,7 +180,7 @@ const exportSummary = (rows: number, scope: string) => `Exported ${plural(rows)}
 const asNumber = (value: unknown) => (typeof value === "number" ? value : 0);
 
 /** A server audit row's metadata as plain label/value pairs (lists joined, filters spread out). */
-function flatDetails(metadata: Record<string, unknown>): AuditEntry["details"] {
+export function flatDetails(metadata: Record<string, unknown>): AuditEntry["details"] {
   const details: AuditEntry["details"] = {};
   for (const [key, value] of Object.entries(metadata)) {
     if (value === null || value === undefined) continue;

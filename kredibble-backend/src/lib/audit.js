@@ -80,6 +80,17 @@ export const AUDIT_ACTIONS = {
   ACCOUNT_ACTIVATE: 'account.activate',
   AMBASSADORS_IMPORT: 'ambassadors.import',
   AMBASSADORS_EXPORT: 'ambassadors.export',
+  // BE-030: the Showcase (the names the admin's History dialog already uses).
+  SHOWCASE_ADD: 'showcase.add',
+  SHOWCASE_EDIT: 'showcase.edit',
+  SHOWCASE_SHOW: 'showcase.show',
+  SHOWCASE_HIDE: 'showcase.hide',
+  SHOWCASE_MOVE: 'showcase.move',
+  SHOWCASE_DELETE: 'showcase.delete',
+  SHOWCASE_CATEGORY_ADD: 'showcase.category_add',
+  SHOWCASE_CATEGORY_EDIT: 'showcase.category_edit',
+  SHOWCASE_CATEGORY_MOVE: 'showcase.category_move',
+  SHOWCASE_CATEGORY_DELETE: 'showcase.category_delete',
 };
 
 export const AUDIT_RESOURCE_TYPES = {
@@ -112,6 +123,8 @@ export const AUDIT_RESOURCE_TYPES = {
   AMBASSADOR_REQUEST: 'ambassador_request',
   CHANNEL_MESSAGE: 'channel_message',
   ASSISTANT: 'assistant',
+  SHOWCASE_ENTRY: 'showcase_entry',
+  SHOWCASE_CATEGORY: 'showcase_category',
 };
 
 /**

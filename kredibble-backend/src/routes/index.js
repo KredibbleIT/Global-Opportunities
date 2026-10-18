@@ -4,7 +4,7 @@ import { authRouter } from './auth.js';
 import { uploadRouter, createUploadRouter, IMAGE_MIME_TYPES } from './upload.js';
 import { assistantRouter } from './assistant.js';
 import { newsRouter } from './news.js';
-import { adminApiRouter, getAttentionCounts } from './admin-api.js';
+import { adminApiRouter, getAttentionCounts, showcaseAppRouter } from './admin-api.js';
 import { accountsRouter } from './accounts.js';
 import { ambassadorRouter } from './ambassador.js';
 import { syncRouter } from './sync.js';
@@ -757,7 +757,7 @@ const mountAdminDataRoutes = (router) => {
   // Article banners: images only, stored outside any user's folder.
   router.use('/admin/upload', createUploadRouter({
     authenticate: requireAdminAuth,
-    purposes: ['article-banner', 'ambassador-photo'],
+    purposes: ['article-banner', 'ambassador-photo', 'showcase-photo'],
     folderFor: (req, purpose) => `kredibble/admin/${purpose}`,
     allowedMimeTypes: IMAGE_MIME_TYPES,
   }));
@@ -1832,6 +1832,9 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
     const attendees = await EventAttendee.find({ eventId: req.params.eventId }).sort({ createdAt: -1 });
     listResponse(res, attendees.map(toClientObject));
   }));
+
+  // BE-030: the app's "Meet our people" page (any signed-in user).
+  router.use('/showcase', showcaseAppRouter);
 
   return router;
 };
