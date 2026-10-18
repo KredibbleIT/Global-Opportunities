@@ -305,6 +305,8 @@ Note: the audit's own text reached the same conclusion on #10 ("Actually this on
 | SEC-135 | Partners and Programs pages read other screens' data (`/admin/programs`, `/admin/staff`, `/admin/partners`), which SEC-131 now refuses for Partnerships and Training Officers | P1 | Admin + backend authz | ✅ Done: merged in PR #126 (2026-10-18) |
 | SEC-136 | The admin shows every staff member Super Admin's screens: `RoleProvider` maps the session role `admin` (which every staff User has) to `super_admin` and never reads `/auth/admin/me` | P1 | Admin authz UI | ✅ Done: merged in PR #127 (2026-10-18) |
 | SEC-137 | A Moderator can create, rewrite and delete opportunities: every opportunities write takes `opportunities_queue` edit, not just moderation | P2 | Backend authz | ✅ Done: merged in PR #128 (2026-10-18) |
+| SEC-139 | The production VPS accepted SSH passwords on a port open to the internet: `bootstrap.sh`'s `99-god-hardening.conf` lost to the image's `50-cloud-init.conf` (sshd keeps the first value), and the script never checked the result | P1 | Deployment / Host | ✅ Live box fixed by hand 2026-10-18; `bootstrap.sh` fix on `security/SEC-139-140-vps-ssh-origin` |
+| SEC-140 | The VPS origin IP behind Cloudflare is published in the public repo (DNS export, commit `bf1d0d5`), and 80/443 accept connections from anywhere, so traffic can skip Cloudflare | P2 | Deployment / Edge | 🟡 IP removed from the tree (still in history); Cloudflare-only firewall on 80/443 is an owner step in hPanel |
 
 ---
 
@@ -1639,6 +1641,26 @@ Found while planning the move to the company infrastructure platform (`Company_I
 - [x] An Opportunities Officer keeps all of them; the SEC-131 role table covers `listings_curate` (new rows: queue-moderation `PATCH` and unpublish, curate `POST`, content `PATCH` and `DELETE`, every role in both realms). SEC-131 + SEC-137 files: 41/41. With `main`'s routes put back, 4 fail
 - Verified 2026-10-18: backend 55 suites, 817 tests, all green. In the full run, 5 suites lost their in-memory MongoDB under memory pressure (`ECONNREFUSED`, 3 GB free); they passed 22/22 when rerun. `tests/sec-132-135-staff-authz.test.js` (SEC-133) now shows the Moderator moderating with a `PATCH` (404 on an unknown id: past the guard) and refused a create (403); it used to expect a create to get past the guard. Also fixed: `PUT /admin/roles-permissions` didn't await its BE-018 audit write, so `be-001-permissions.test.js` raced it and failed intermittently under load (2 of 4 paired runs); it now awaits, as every other audited route in the file does. Lint clean
 
+### SEC-139 — The production VPS accepted SSH passwords
+**Priority:** P1
+**Evidence (probed 2026-10-18):** from outside, `ssh -o PreferredAuthentications=none` against the VPS listed `publickey,password`, on port 22 open to the internet. On the server, `sshd -T` showed `passwordauthentication yes`. sshd keeps the first value it reads for each setting, and it reads `sshd_config.d/*.conf` in name order before the rest of `sshd_config`. `platform/vps/bootstrap.sh` wrote `PasswordAuthentication no` to `99-god-hardening.conf`, which sorts after the image's `50-cloud-init.conf` (`PasswordAuthentication yes`), so it never took effect. `sshd_config` line 144 also had an active `PermitRootLogin yes`; the drop-in overrode it, but only while that file existed. The script ran `systemctl reload ssh || systemctl restart ssh || true` and never checked the result.
+**Risk:** password guessing against root and every account on a host whose IP is public (SEC-140). Fail2ban slows guessing but doesn't stop it.
+**Live fix (owner, 2026-10-18):** renamed the file to `00-god-hardening.conf`; set `sshd_config` to `PermitRootLogin prohibit-password` and `50-cloud-init.conf` to `PasswordAuthentication no`; added `/etc/cloud/cloud.cfg.d/99-disable-ssh-pwauth.cfg` (`ssh_pwauth: false`). `sshd -T` now shows `passwordauthentication no` and `permitrootlogin prohibit-password`, and the outside probe lists `publickey` only.
+**Repo fix (`security/SEC-139-140-vps-ssh-origin`):** `bootstrap.sh` writes `00-god-hardening.conf` and removes the old `99-` file. It also switches any `yes` for `PasswordAuthentication`, `KbdInteractiveAuthentication` or `PermitRootLogin` in `sshd_config` and the other drop-ins to the safe value, and writes the cloud-init setting. It reloads ssh only if it's running, without `|| true`. It then reads `sshd -T` and exits non-zero, naming the setting and the `grep` to find it, unless passwords and keyboard-interactive are off and root is key-only. `docs/infrastructure/VPS.md` section 8 has the verify-and-repair steps for a live server.
+**Acceptance criteria:**
+- [x] Step 3 run against a copy of the server's files (the image's `50-cloud-init.conf`, `60-cloudimg-settings.conf`, `sshd_config` with `PermitRootLogin yes`, the old `99-` file) and a stand-in `sshd -T` that keeps the first value: before, `passwordauthentication yes`; after, every `yes` is switched off, the `99-` file is gone, and the check passes. A second run changes nothing. A drop-in named `00-aaa.conf` with `PermitRootLogin forced-commands-only` makes it exit 1 with the setting named
+- [ ] Re-run `bootstrap.sh` on a fresh VPS: it finishes and `sshd -T` matches (owner, next rebuild)
+
+### SEC-140 — The VPS origin IP is public, and 80/443 accept anyone
+**Priority:** P2
+**Evidence (probed 2026-10-18):** `docs/infrastructure/globalopportunitydesk.com.txt`, a Cloudflare zone export committed on 2026-10-11 (`bf1d0d5`) to this public repo, lists the address behind the proxied `api.`, `staging-api.` and `dev-api.` records. Connecting to that address directly: 22, 80 and 443 accept connections; 4000, 6379, 27017 and 2019 don't. HTTPS fails the handshake, because Caddy asks for Cloudflare's origin-pull client certificate (Authenticated Origin Pulls hold), and :80 only answers a 308 redirect. `bootstrap.sh` allows 80/443 in UFW, but Docker-published ports bypass UFW anyway.
+**Risk:** anyone can skip Cloudflare's DDoS protection and WAF by opening connections straight to Caddy. No data is reachable without the client certificate.
+**Fix:** the address is replaced with `<VPS_IP>` in the export, with a header note never to commit origin addresses. It stays in git history; a history rewrite of a public repo doesn't make it private again, so the firewall is the real fix. `docs/infrastructure/VPS.md` section 7 says how to limit 80/443 to Cloudflare's ranges in the Hostinger panel firewall (recommended) or the `DOCKER-USER` chain. `bootstrap.sh`'s comments no longer imply UFW limits those ports, and its closing checklist includes the panel firewall.
+**Acceptance criteria:**
+- [x] `git grep` finds the address nowhere in the tree
+- [ ] Hostinger panel firewall allows 80/443 only from Cloudflare's ranges; a direct `curl --resolve` to the origin times out while `https://api.globalopportunitydesk.com/api/v1/health` still returns 200 (owner step)
+- [ ] Optional: move to a new IP once the firewall is in place
+
 # Execution Order
 
 Phases run in sequence per `AGENTS.md`. Within a phase, respect this dependency chain:
@@ -2548,6 +2570,10 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
   - SEC-019 and SEC-033 are marked Partial, with the exact step left: the admin's proxy target is still `/api`, and the CSP still has `unsafe-inline`.
   - SEC-041: `kredibble-backend.vercel.app` answers 404 on `/api/users` and `/api/health` (status codes only). The secret rotations and password resets remain owner steps.
   - Still open: SEC-037 (list fields stored as `String`), SEC-130 (gitleaks line pins), and the operations and legal items (SEC-089, 091, 092, 093, 114, 117).
+- 2026-10-18 — SEC-139 and SEC-140 filed and fixed on `security/SEC-139-140-vps-ssh-origin`, after a Plan 4f readiness check probed the VPS from outside:
+  - SEC-139: the VPS accepted SSH passwords because `bootstrap.sh`'s `99-` drop-in lost to the image's `50-cloud-init.conf`. The owner fixed the live box (outside probe now: `publickey` only). `bootstrap.sh` now writes `00-god-hardening.conf`, switches off the image's `yes` values, stops cloud-init re-enabling passwords, and fails unless `sshd -T` shows key-only login. Step 3 was tested against a copy of the server's files with a stand-in `sshd` (pass, idempotent, and a failing case).
+  - SEC-140: the origin IP in the zone export is replaced with `<VPS_IP>` (still in history). `VPS.md` sections 7 and 8 cover the Cloudflare-only firewall (Hostinger panel; UFW can't limit Docker ports) and SSH verify-and-repair. Open: the panel firewall (owner).
+  - Same check, not fixed here: the production OTA went to the VPS on 2026-10-15 outside Plan 4f, and Render/VPS secret and database parity is unverified. A required reviewer was added to the `Production` environment on 2026-10-18.
 | 2026-10-16 | SEC-129 | security/SEC-129-reference-data-manifest | Done | Manifest allowlist already present on `origin/main` (merged after 2026-10-15 sync); made AI 503 test env-independent (`env.aiEnabled=false` save/restore in `tests/security.p0.test.js`). `npm test -- tests/security.p0.test.js`: 71/71 with local `.env` AI keys AND with `.env` neutralized (CI-equivalent). Backend `npm run lint` clean. |
 
 ---
