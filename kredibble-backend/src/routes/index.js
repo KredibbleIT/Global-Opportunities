@@ -816,7 +816,7 @@ const mountAdminDataRoutes = (router) => {
     decorate: decorateHirers,
   });
   adminCollection('/verification/companies', {
-    Model: CompanyVerification, resourceName: 'Company verification', policyKey: 'verification/companies', screen: 'verification',
+    Model: CompanyVerification, resourceName: 'Company verification', policyKey: 'verification/companies', screen: 'verification', // gitleaks:allow
     searchFields: ['name', 'industry', 'companyEmail'], filterFields: ['overallStatus'],
   });
   adminCollection('/verification/documents', {
@@ -1507,7 +1507,7 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
   router.use('/verification/companies', collectionRoutes({
     Model: CompanyVerification,
     resourceName: 'Company verification',
-    policyKey: 'verification/companies',
+    policyKey: 'verification/companies', // gitleaks:allow
     searchFields: ['name', 'industry'],
     ownerField: 'hirerId',
     enablePopulate,

@@ -1,56 +1,14 @@
-# Test fixtures and false positives (SEC-116)
+# False positives in docs (SEC-116)
+#
+# Code false positives are marked inline with a `// gitleaks:allow` comment on
+# the flagged line, so they survive the file growing. Entries here pin a line
+# number and break when the line moves: use them only where a comment can't go.
+#
+# Paths match CI's scan, which mounts the checkout at /repo (ci.yml, "Scan for
+# committed secrets"). Run the same container locally to reproduce it.
 
-# Test dummy password for wrong password unit tests
-kredibble-backend/tests/sec-083-084.test.js:generic-api-key:126
-/repo/kredibble-backend/tests/sec-083-084.test.js:generic-api-key:126
-kredibble-backend/tests/sec-065.test.js:generic-api-key:197
-/repo/kredibble-backend/tests/sec-065.test.js:generic-api-key:197
-PLAN-1-account-security.md:generic-api-key:545
+# PLAN docs quote the wrong-password test fixtures and the
+# 'verification/companies' policy key
 /repo/PLAN-1-account-security.md:generic-api-key:545
-PLAN-1-account-security.md:generic-api-key:827
 /repo/PLAN-1-account-security.md:generic-api-key:827
-
-# Policy key name 'verification/companies' falsely flagged as generic-api-key
-# (line numbers shift as routes/index.js grows; keep every known location)
-kredibble-backend/src/routes/index.js:generic-api-key:767
-/repo/kredibble-backend/src/routes/index.js:generic-api-key:767
-kredibble-backend/src/routes/index.js:generic-api-key:799
-/repo/kredibble-backend/src/routes/index.js:generic-api-key:799
-kredibble-backend/src/routes/index.js:generic-api-key:815
-/repo/kredibble-backend/src/routes/index.js:generic-api-key:815
-kredibble-backend/src/routes/index.js:generic-api-key:800
-/repo/kredibble-backend/src/routes/index.js:generic-api-key:800
-kredibble-backend/src/routes/index.js:generic-api-key:816
-/repo/kredibble-backend/src/routes/index.js:generic-api-key:816
-kredibble-backend/src/routes/index.js:generic-api-key:1298
-/repo/kredibble-backend/src/routes/index.js:generic-api-key:1298
-kredibble-backend/src/routes/index.js:generic-api-key:1301
-/repo/kredibble-backend/src/routes/index.js:generic-api-key:1301
-kredibble-backend/src/routes/index.js:generic-api-key:1448
-/repo/kredibble-backend/src/routes/index.js:generic-api-key:1448
-kredibble-backend/src/routes/index.js:generic-api-key:1483
-/repo/kredibble-backend/src/routes/index.js:generic-api-key:1483
-kredibble-backend/src/routes/index.js:generic-api-key:1452
-/repo/kredibble-backend/src/routes/index.js:generic-api-key:1452
-kredibble-backend/src/routes/index.js:generic-api-key:1487
-/repo/kredibble-backend/src/routes/index.js:generic-api-key:1487
-# BE-028 mount shifted the two policyKey hits again (+4 lines)
-kredibble-backend/src/routes/index.js:generic-api-key:817
-/repo/kredibble-backend/src/routes/index.js:generic-api-key:817
-kredibble-backend/src/routes/index.js:generic-api-key:1491
-/repo/kredibble-backend/src/routes/index.js:generic-api-key:1491
-# SEC-138 (feed filter, push routes) shifted them to 819 and 1510 (SEC-130 tracks the fragility)
-kredibble-backend/src/routes/index.js:generic-api-key:819
-/repo/kredibble-backend/src/routes/index.js:generic-api-key:819
-kredibble-backend/src/routes/index.js:generic-api-key:1510
-/repo/kredibble-backend/src/routes/index.js:generic-api-key:1510
-PLAN-2a-admin-data-api.md:generic-api-key:583
 /repo/PLAN-2a-admin-data-api.md:generic-api-key:583
-
-# Local IDE configuration key
-.idea/planningMode.xml:generic-api-key:6
-/repo/.idea/planningMode.xml:generic-api-key:6
-
-# Public age test recipient key fixture
-deploy/bin/god-backup.test.mjs:generic-api-key:6
-/repo/deploy/bin/god-backup.test.mjs:generic-api-key:6

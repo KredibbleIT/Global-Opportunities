@@ -123,7 +123,7 @@ describe('SEC-084: change password', () => {
     await createUser({ email: 'change@example.com' });
     const session = await login('change@example.com', PASSWORD);
 
-    const res = await changePassword(session.body.data.token, { currentPassword: 'WrongPassw0rd-z', newPassword: NEW_PASSWORD });
+    const res = await changePassword(session.body.data.token, { currentPassword: 'WrongPassw0rd-z', newPassword: NEW_PASSWORD }); // gitleaks:allow
 
     expect(res.status).toBe(400);
     expect((await me(session.body.data.token)).status).toBe(200);
