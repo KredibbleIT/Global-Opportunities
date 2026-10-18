@@ -1,9 +1,14 @@
 /**
  * Database service: the beneficiary records kept by the desk (/database). One function per need; pages never touch the
- * store or the seed. Everything lives in the shared in-memory mock store, so the list, the detail page, the form, the
- * pace gauge, the sidebar pill and the "Beneficiaries verified" KPI (lib/kpi.ts counts verified records by the month of
- * verifiedAt) always agree. Writes use `{ always: true }` (records have no backend yet, so they are kept in memory in every
- * mode). TODO(backend): every write below must be persisted by the API.
+ * store, the seed or the API directly. Two modes (services/mock-mode.ts):
+ * - Real mode (the default): the records (every page of /admin/beneficiaries, with the ambassador, opportunity and "added
+ *   by" names the server fills in), one record, and the pace gauge (/admin/beneficiaries/pace, the same rules on the server)
+ *   come from the API; a failure is an error, never a silent switch to the sample data. saveRecord, verifyRecordSaved and
+ *   undoVerifySaved wait for the API; the server refuses a duplicate (409) and the form shows which record it duplicates.
+ *   After a change, notifyDatabaseChanged() reloads open pages.
+ * - Mock mode: everything lives in the shared in-memory mock store, so the list, the detail page, the form, the pace gauge,
+ *   the sidebar pill and the "Beneficiaries verified" KPI (lib/kpi.ts counts verified records by the month of verifiedAt)
+ *   always agree. Mock writes never call the API.
  *
  * Rules kept here, not in the pages:
  * - PACE: the value, the target, the pro-rated pace and the status come from kpiValue / kpiTarget / kpiStatus (the same
@@ -23,12 +28,19 @@ import { currentStaffMember, todayIsoDate } from "@/lib/services/listings";
 import type { AccessLevel, Screen } from "@/config/permissions";
 import { isMockMode } from "./mock-mode";
 import {
+  ApiError,
+  getAdminUser,
+  getAmbassadors,
   getBeneficiaries,
+  getBeneficiariesPaceApi,
   getBeneficiaryById,
+  getOpportunitiesPage,
   createBeneficiaryApi,
   verifyBeneficiaryApi,
   undoVerifyBeneficiaryApi,
+  type BeneficiaryApiRecord,
 } from "@/lib/api";
+import { fetchAll } from "./api-helpers";
 
 const MOCK_DELAY_MS = 300;
 // The first load of a page takes a moment (a skeleton shows). Every later read is instant, so a change is on screen at once.
@@ -43,8 +55,21 @@ const afterDelay = <T>(value: T) => {
   );
 };
 
-/** Re-run a loader whenever the records (or anything else in the store) change. */
-export const subscribeDatabase = subscribeMockStore;
+// Real mode: changes do not go through the store, so they tell the open pages through these listeners instead.
+const liveListeners = new Set<() => void>();
+
+/** Tells every open Database page that the data changed (real mode: after an add, a verify or an undo). */
+export const notifyDatabaseChanged = (): void => liveListeners.forEach((listener) => listener());
+
+/** Re-run a loader whenever the records change: a store change (mock mode) or a saved change (real mode). */
+export function subscribeDatabase(listener: () => void): () => void {
+  const unsubscribeStore = subscribeMockStore(listener);
+  liveListeners.add(listener);
+  return () => {
+    unsubscribeStore();
+    liveListeners.delete(listener);
+  };
+}
 
 // ---- pure rules (tested on their own) -------------------------------------------------------------------------------
 
@@ -223,83 +248,96 @@ export const withNames = (record: DatabaseRecord): RecordRow => ({
 export const toRecordRows = (records: readonly DatabaseRecord[]): RecordRow[] =>
   [...records].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id)).map(withNames);
 
-/** Newest first. */
+/** An API record as the pages' RecordRow, with the names the server filled in. */
+export const toRecordRow = (b: BeneficiaryApiRecord): RecordRow => ({
+  id: b.id,
+  name: b.name || b.fullName || "",
+  email: b.email,
+  phone: b.phone || undefined,
+  country: b.country,
+  institution: b.institution,
+  source: (b.source as RecordSource) || "organic",
+  verified: Boolean(b.verified),
+  createdAt: b.createdAt,
+  addedById: b.addedById || b.addedBy || undefined,
+  verifiedAt: b.verifiedAt || undefined,
+  ambassadorId: b.ambassadorId || undefined,
+  listingId: b.listingId || b.opportunityId || undefined,
+  ambassadorName: b.ambassadorName || undefined,
+  listingTitle: b.listingTitle || undefined,
+  addedByName: b.addedByName || undefined,
+});
+
+/** Every record, newest first. Real mode: every page from the API; a failure is an error the page shows. */
 export async function loadRecordRows(): Promise<RecordRow[]> {
   if (!isMockMode()) {
-    try {
-      const res = await getBeneficiaries({ limit: 100 });
-      if (res && res.data) {
-        const records: DatabaseRecord[] = res.data.map((b) => ({
-          id: b.id,
-          name: b.name || b.fullName || "",
-          email: b.email,
-          phone: b.phone,
-          country: b.country,
-          institution: b.institution,
-          source: (b.source as RecordSource) || "organic",
-          verified: Boolean(b.verified),
-          createdAt: b.createdAt,
-          addedById: b.addedById || b.addedBy,
-          verifiedAt: b.verifiedAt,
-          ambassadorId: b.ambassadorId,
-          listingId: b.listingId || b.opportunityId,
-        }));
-        setMockCollection("databaseRecords", records, { always: true });
-        return records.map(withNames);
-      }
-    } catch {
-      // Fallback to store on error
-    }
+    const records = await fetchAll((page, limit) => getBeneficiaries({ page, limit }));
+    return records.map(toRecordRow).sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
   }
   return afterDelay(toRecordRows(getMockCollection("databaseRecords")));
 }
 
+/** One record, or undefined. Real mode: a bad id (400) or no such record (404) is undefined; other failures are errors. */
 export async function loadRecord(id: string): Promise<RecordRow | undefined> {
   if (!isMockMode()) {
     try {
-      const b = await getBeneficiaryById(id);
-      if (b) {
-        const record: DatabaseRecord = {
-          id: b.id,
-          name: b.name || b.fullName || "",
-          email: b.email,
-          phone: b.phone,
-          country: b.country,
-          institution: b.institution,
-          source: (b.source as RecordSource) || "organic",
-          verified: Boolean(b.verified),
-          createdAt: b.createdAt,
-          addedById: b.addedById || b.addedBy,
-          verifiedAt: b.verifiedAt,
-          ambassadorId: b.ambassadorId,
-          listingId: b.listingId || b.opportunityId,
-        };
-        return withNames(record);
-      }
-    } catch {
-      // Fallback to store on error
+      return toRecordRow(await getBeneficiaryById(id));
+    } catch (error) {
+      if (error instanceof ApiError && (error.status === 400 || error.status === 404)) return undefined;
+      throw error;
     }
   }
   const record = getMockCollection("databaseRecords").find((entry) => entry.id === id);
   return afterDelay(record ? withNames(record) : undefined);
 }
 
-/** Ambassadors a record can be linked to. */
+/** Real mode only: this month's verification pace, worked out by the server with the same rules as recordsPace(). */
+export async function loadRecordsPace(): Promise<RecordsPace> {
+  return getBeneficiariesPaceApi(currentMonth());
+}
+
+/** The ambassador choices for the form. Real mode: active, dormant and onboarding ambassadors from the API. */
+export async function loadAmbassadorOptions(): Promise<{ id: string; name: string; campus: string }[]> {
+  if (isMockMode()) return ambassadorOptions();
+  const records = await fetchAll((page, limit) => getAmbassadors({ page, limit }));
+  return records
+    .filter((a) => a.status === "active" || a.status === "dormant" || a.status === "onboarding")
+    .map((a) => ({ id: a.id, name: a.name || a.fullName || "", campus: a.campus ?? "" }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** The opportunity choices for the form. Real mode: the published opportunities from the API. */
+export async function loadRecordOpportunityOptions(): Promise<{ id: string; title: string; organisation: string }[]> {
+  if (isMockMode()) return opportunityOptions();
+  const records = await fetchAll((page, limit) => getOpportunitiesPage({ status: "published", page, limit }));
+  return records
+    .map((record) => ({ id: record.id, title: record.title, organisation: record.organisation || record.company || "" }))
+    .sort((a, b) => a.title.localeCompare(b.title));
+}
+
+/** Mock store: ambassadors a record can be linked to. */
 export const ambassadorOptions = (): { id: string; name: string; campus: string }[] =>
   getMockCollection("ambassadors")
     .filter((a) => a.status === "active" || a.status === "dormant" || a.status === "onboarding")
     .map((a) => ({ id: a.id, name: a.name, campus: a.campus }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
-/** Opportunities a record can be linked to (published ones). */
+/** Mock store: opportunities a record can be linked to (published ones). */
 export const opportunityOptions = (): { id: string; title: string; organisation: string }[] =>
   getMockCollection("listings")
     .filter((l) => l.status === "published")
     .map((l) => ({ id: l.id, title: l.title, organisation: l.organisation }))
     .sort((a, b) => a.title.localeCompare(b.title));
 
-/** The person adding a record: the signed-in staff member (the dev user in mock mode), or undefined when none is marked. */
+/**
+ * The person adding a record: the signed-in admin (real mode; the server records it from the session), or the mock desk
+ * member (mock mode); undefined when none is known.
+ */
 export const currentRecorder = (): { id: string; name: string } | undefined => {
+  if (!isMockMode()) {
+    const me = getAdminUser();
+    return me ? { id: me.id, name: me.name } : undefined;
+  }
   const person = currentStaffMember();
   return person ? { id: person.id, name: person.name } : undefined;
 };
@@ -323,7 +361,7 @@ export interface RecordFields {
 
 export type CreateResult = { ok: true; record: DatabaseRecord } | { ok: false; duplicate: Duplicate };
 
-/** Adds a record, unless it duplicates one (email first, then phone): then nothing is written and the duplicate is returned. */
+/** Mock store: adds a record, unless it duplicates one (email first, then phone): then nothing is written and the duplicate is returned. */
 export function createRecord(fields: RecordFields): CreateResult {
   const existing = getMockCollection("databaseRecords");
   const duplicate = findDuplicate(fields, existing);
@@ -339,31 +377,50 @@ export function createRecord(fields: RecordFields): CreateResult {
     ambassadorId: fields.source === "ambassador" ? fields.ambassadorId : undefined,
     id: `rec-new-${Date.now()}-${existing.length}`,
     createdAt: today,
-    addedById: currentRecorder()?.id,
+    // The mock store's own desk member (in real mode the server records who added it from the session).
+    addedById: currentStaffMember()?.id,
     verifiedAt: fields.verified ? today : undefined,
   };
   write([record, ...existing]);
-
-  if (!isMockMode()) {
-    createBeneficiaryApi({
-      name: record.name,
-      fullName: record.name,
-      email: record.email,
-      phone: record.phone,
-      country: record.country,
-      institution: record.institution,
-      source: record.source,
-      verified: record.verified,
-      verifiedAt: record.verifiedAt,
-      createdAt: record.createdAt,
-      ambassadorId: record.ambassadorId,
-      listingId: record.listingId,
-    }).catch((err) => {
-      console.error("Failed to persist beneficiary via API:", err);
-    });
-  }
-
   return { ok: true, record };
+}
+
+/** The duplicate the server reported in a 409, or null when the error is something else. */
+const duplicateFrom = (error: unknown): Duplicate | null => {
+  if (!(error instanceof ApiError) || error.status !== 409) return null;
+  const details = error.details as { field?: string; duplicate?: BeneficiaryApiRecord } | undefined;
+  if (!details?.duplicate || (details.field !== "email" && details.field !== "phone")) return null;
+  return { field: details.field, record: toRecordRow(details.duplicate) };
+};
+
+/**
+ * Adds a record. A duplicate (email first, then phone) is not an error: it resolves with the duplicate, and nothing is
+ * written. Real mode: the server decides (who added it and when come from the session) and other failures reject with its
+ * message.
+ */
+export async function saveRecord(fields: RecordFields): Promise<CreateResult> {
+  if (isMockMode()) return createRecord(fields);
+  try {
+    const saved = await createBeneficiaryApi({
+      name: fields.name.trim(),
+      fullName: fields.name.trim(),
+      email: fields.email.trim(),
+      phone: fields.phone?.trim() || undefined,
+      country: fields.country,
+      institution: fields.institution.trim(),
+      source: fields.source,
+      verified: fields.verified,
+      // A linked ambassador only makes sense for a referral.
+      ambassadorId: fields.source === "ambassador" ? fields.ambassadorId : undefined,
+      listingId: fields.listingId,
+    });
+    notifyDatabaseChanged();
+    return { ok: true, record: toRecordRow(saved) };
+  } catch (error) {
+    const duplicate = duplicateFrom(error);
+    if (duplicate) return { ok: false, duplicate };
+    throw error;
+  }
 }
 
 /** What a record looked like before it was verified (kept by the Undo). */
@@ -373,29 +430,38 @@ export interface VerifyUndo {
   verifiedAt?: string;
 }
 
-/** Marks a record verified today. It counts in this month at once, everywhere. Returns what to give to undoVerify, or undefined. */
+/** Mock store: marks a record verified today. It counts in this month at once, everywhere. Returns what to give to undoVerify, or undefined. */
 export function verifyRecord(id: string): VerifyUndo | undefined {
   const records = getMockCollection("databaseRecords");
   const current = records.find((record) => record.id === id);
   if (!current || current.verified) return undefined;
   write(records.map((record) => (record.id === id ? { ...record, verified: true, verifiedAt: todayIsoDate() } : record)));
-
-  if (!isMockMode()) {
-    verifyBeneficiaryApi(id).catch((err) => {
-      console.error("Failed to verify beneficiary via API:", err);
-    });
-  }
-
   return { id, verified: current.verified, verifiedAt: current.verifiedAt };
 }
 
-/** Puts a record back exactly as it was before verifyRecord. */
+/** Mock store: puts a record back exactly as it was before verifyRecord. */
 export function undoVerify(undo: VerifyUndo): void {
   write(getMockCollection("databaseRecords").map((record) => (record.id === undo.id ? { ...record, verified: undo.verified, verifiedAt: undo.verifiedAt } : record)));
+}
 
-  if (!isMockMode()) {
-    undoVerifyBeneficiaryApi(undo.id, { verified: undo.verified, verifiedAt: undo.verifiedAt }).catch((err) => {
-      console.error("Failed to undo verify beneficiary via API:", err);
-    });
+/**
+ * Verifies a record that is not verified yet. Resolves with what to give to undoVerifySaved, or undefined when it already
+ * is. Real mode: waits for the API (a record can only be verified from unverified, so the undo is "unverified, no date").
+ */
+export async function verifyRecordSaved(record: Pick<DatabaseRecord, "id" | "verified">): Promise<VerifyUndo | undefined> {
+  if (isMockMode()) return verifyRecord(record.id);
+  if (record.verified) return undefined;
+  await verifyBeneficiaryApi(record.id);
+  notifyDatabaseChanged();
+  return { id: record.id, verified: false, verifiedAt: undefined };
+}
+
+/** Puts a record back as it was before verifyRecordSaved. Real mode: waits for the API. */
+export async function undoVerifySaved(undo: VerifyUndo): Promise<void> {
+  if (isMockMode()) {
+    undoVerify(undo);
+    return;
   }
+  await undoVerifyBeneficiaryApi(undo.id, { verified: undo.verified, verifiedAt: undo.verifiedAt });
+  notifyDatabaseChanged();
 }

@@ -239,6 +239,18 @@ describe('SEC-135: Partners and Programs lookups under their own grants', () => 
     expect((await as(officer).get('/admin/partners')).status).toBe(403);
   });
 
+  it('every role\'s Overview lists upcoming programs, with only the card\'s fields', async () => {
+    const officer = await createStaffUser({ roles: ['partnerships_officer'] });
+    await Program.create({ title: 'Test Upcoming Bootcamp', programType: 'bootcamp', status: 'planned', startAt: new Date('2031-01-05T09:00:00Z'), notes: 'Internal note', facilitators: ['Test Facilitator'] });
+    const res = await as(officer).get('/admin/programs/upcoming');
+    expect(res.status).toBe(200);
+    expect(res.body.data[0]).toEqual({
+      id: expect.any(String), title: 'Test Upcoming Bootcamp', programType: 'bootcamp', status: 'planned',
+      startAt: '2031-01-05T09:00:00.000Z', participantCount: 0, participantTarget: 0, partnerName: null,
+    });
+    expect((await as(officer).get('/admin/programs')).status).toBe(403); // still no Programs screen
+  });
+
   it('the lookups follow their pages\' edit grants', async () => {
     const support = await createStaffUser({ roles: ['support'] });
     const lead = await createStaffUser({ roles: ['country_lead'] }); // Partners and Programs view only

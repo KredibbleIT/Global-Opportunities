@@ -5,7 +5,8 @@
  * A name (required, at most 40 characters, unique) and a kind: People (round photos) or Organisations (logos). The kind of a built-in
  * category cannot change, so it is shown but not editable. Creating categories needs the showcase.manage permission (the caller checks).
  *
- * Props: category? (editing), onClose, onSubmit(name, kind) -> { ok: true } to close, or { ok: false, reason, errors? } to stay open.
+ * Props: category? (editing), onClose, onSubmit(name, kind) -> (a promise of) { ok: true } to close, or { ok: false, reason, errors? }
+ *        to stay open. Save shows a spinner while the server answers.
  */
 import { useRef, useState, type FormEvent } from "react";
 import { Save } from "lucide-react";
@@ -24,7 +25,7 @@ interface ShowcaseCategoryDialogProps {
   category?: ShowcaseCategory;
   existing: readonly ShowcaseCategory[];
   onClose: () => void;
-  onSubmit: (name: string, kind: ShowcaseKind) => Result;
+  onSubmit: (name: string, kind: ShowcaseKind) => Result | Promise<Result>;
 }
 
 export function ShowcaseCategoryDialog({ category, existing, onClose, onSubmit }: ShowcaseCategoryDialogProps) {
@@ -32,20 +33,24 @@ export function ShowcaseCategoryDialog({ category, existing, onClose, onSubmit }
   const [kind, setKind] = useState<ShowcaseKind>(category?.kind ?? "person");
   const [serverErrors, setServerErrors] = useState<CategoryErrors>({});
   const [problem, setProblem] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const { show, touch, touchAll } = useTouched();
   const errors = { ...validateCategory(name, kind, existing, category?.id), ...serverErrors };
   const builtIn = !!category && category.key !== "custom";
 
-  const submit = (event?: FormEvent) => {
+  const submit = async (event?: FormEvent) => {
     event?.preventDefault();
+    if (saving) return;
     touchAll();
     setProblem(null);
     if (Object.keys(validateCategory(name, kind, existing, category?.id)).length > 0) {
       focusFirstInvalid(formRef.current);
       return;
     }
-    const result = onSubmit(name, kind);
+    setSaving(true);
+    const result = await onSubmit(name, kind);
+    setSaving(false);
     if (!result.ok) {
       setServerErrors(result.errors ?? {});
       setProblem(result.reason);
@@ -65,13 +70,13 @@ export function ShowcaseCategoryDialog({ category, existing, onClose, onSubmit }
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button icon={Save} onClick={() => submit()} data-testid="showcase-category-save">
+          <Button icon={Save} onClick={() => void submit()} loading={saving} data-testid="showcase-category-save">
             {category ? "Save" : "Add category"}
           </Button>
         </>
       }
     >
-      <form ref={formRef} onSubmit={submit} noValidate className="space-y-4" aria-label={category ? "Rename category" : "Add a category"}>
+      <form ref={formRef} onSubmit={(event) => void submit(event)} noValidate className="space-y-4" aria-label={category ? "Rename category" : "Add a category"}>
         {problem && (
           <p role="alert" className="caption text-danger" data-testid="showcase-category-problem">
             <span className="font-semibold">Could not save.</span> {problem}

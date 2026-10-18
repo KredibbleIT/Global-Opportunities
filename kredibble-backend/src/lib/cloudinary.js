@@ -90,6 +90,20 @@ export const uploadToCloudinary = async (fileContent, folder) => {
 };
 
 /**
+ * BE-031: delete one stored image by its public id (a replaced or removed
+ * Showcase picture). A no-op in tests, which never reach Cloudinary.
+ * @param {string} publicId
+ * @returns {Promise<object>} Cloudinary's answer ({ result: 'ok' | 'not found' })
+ */
+export const deleteImage = async (publicId) => {
+  if (isTest) return { result: 'skipped' };
+  if (![process.env.CLOUDINARY_CLOUD_NAME, process.env.CLOUDINARY_API_KEY, process.env.CLOUDINARY_API_SECRET].every(Boolean)) {
+    throw new Error('Cloudinary is not configured');
+  }
+  return cloudinary.uploader.destroy(publicId, { resource_type: 'image', invalidate: true });
+};
+
+/**
  * SEC-065: delete every file a user uploaded. The upload route builds
  * `kredibble/<userId>/<purpose>` and the upload helpers prefix `kredibble/`
  * again, so files live under `kredibble/kredibble/<userId>/`. Clear both forms.

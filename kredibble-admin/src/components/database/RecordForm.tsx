@@ -12,7 +12,8 @@
  * "A record with this email already exists" with a link to that record, and saving is blocked. Email is compared trimmed and
  * without case; phone without spaces, dashes or the leading + or 0 (see findDuplicate in services/database.ts). Email is checked first.
  * Validation: errors show after a field is left and on submit; the first invalid field takes focus. Leaving with unsaved changes
- * asks first. The save carries a TODO(backend).
+ * asks first. Saving waits for services/database.ts saveRecord (the API in real mode, which checks duplicates again); a
+ * failure shows an error toast and keeps what was typed.
  */
 import Link from "next/link";
 import { useMemo, useRef, useState, type FormEvent } from "react";
@@ -26,13 +27,14 @@ import { StickyActionBar } from "@/components/ui/form/StickyActionBar";
 import { Switch } from "@/components/ui/form/Switch";
 import { focusFirstInvalid, useTouched } from "@/components/ui/form/use-touched";
 import { useUnsavedGuard } from "@/components/ui/form/use-unsaved-guard";
-import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 import { useToast } from "@/components/ui/Toast";
 import { formatDate } from "@/lib/format";
 import { RECORD_SOURCES, RECORD_SOURCE_LABELS, type RecordSource } from "@/lib/mock-entities";
 import { useMockCollection } from "@/lib/mock-store";
 import { todayIsoDate } from "@/lib/services/listings";
-import { DUPLICATE_MESSAGES, ambassadorOptions, createRecord, currentRecorder, findDuplicate, opportunityOptions, type Duplicate } from "@/lib/services/database";
+import { DUPLICATE_MESSAGES, currentRecorder, findDuplicate, loadAmbassadorOptions, loadRecordOpportunityOptions, loadRecordRows, saveRecord, type Duplicate } from "@/lib/services/database";
+import { isMockMode } from "@/lib/services/mock-mode";
+import { useAsync } from "@/lib/use-async";
 
 const LIST_HREF = "/database";
 const NONE = "none";
@@ -83,10 +85,16 @@ function DuplicateError({ duplicate }: { duplicate: Duplicate }) {
 }
 
 export function RecordForm() {
-  const ambassadors = useMemo(() => ambassadorOptions(), []);
-  const opportunities = useMemo(() => opportunityOptions(), []);
+  const { data: loadedAmbassadors } = useAsync(loadAmbassadorOptions);
+  const { data: loadedOpportunities } = useAsync(loadRecordOpportunityOptions);
+  const ambassadors = loadedAmbassadors ?? [];
+  const opportunities = loadedOpportunities ?? [];
   const recorder = useMemo(() => currentRecorder(), []);
-  const records = useMockCollection("databaseRecords");
+  // The duplicate check runs as you type against every record: the live store (mock mode) or the records loaded once from
+  // the server (real mode; the server checks again on save, so a record added meanwhile is still caught).
+  const storeRecords = useMockCollection("databaseRecords");
+  const { data: serverRecords } = useAsync(loadRecordRows);
+  const records = isMockMode() ? storeRecords : (serverRecords ?? []);
   const [form, setForm] = useState<RecordFormState>(EMPTY);
   const [saving, setSaving] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
@@ -113,19 +121,26 @@ export function RecordForm() {
       return;
     }
     setSaving(true);
-    // TODO(backend): persist this change (create the record; the API sets who added it and when).
-    await new Promise((resolve) => setTimeout(resolve, 600));
-    const result = createRecord({
-      name: form.name,
-      email: form.email,
-      phone: form.phone,
-      country: form.country,
-      institution: form.institution,
-      source: form.source,
-      verified: form.verified,
-      ambassadorId: form.source === "ambassador" ? form.ambassadorId : undefined,
-      listingId: form.listingId === NONE ? undefined : form.listingId,
-    });
+    // Mock mode saves instantly; a short pause shows the saving state as a real save would.
+    if (isMockMode()) await new Promise((resolve) => setTimeout(resolve, 600));
+    let result: Awaited<ReturnType<typeof saveRecord>>;
+    try {
+      result = await saveRecord({
+        name: form.name,
+        email: form.email,
+        phone: form.phone,
+        country: form.country,
+        institution: form.institution,
+        source: form.source,
+        verified: form.verified,
+        ambassadorId: form.source === "ambassador" ? form.ambassadorId : undefined,
+        listingId: form.listingId === NONE ? undefined : form.listingId,
+      });
+    } catch (problem) {
+      setSaving(false);
+      toast.error(problem instanceof Error ? problem.message : "The record could not be saved. Try again.");
+      return;
+    }
     if (!result.ok) {
       // Someone else added the same person while this form was open: nothing was written.
       setSaving(false);
@@ -146,7 +161,6 @@ export function RecordForm() {
           Add record
         </h1>
         <p className="page-subtitle mt-1 mb-6">Add a beneficiary to the desk&apos;s database. Someone already in it cannot be added twice.</p>
-        <NotConnectedNotice className="mb-4" />
 
         <div className="space-y-4">
           <Card>

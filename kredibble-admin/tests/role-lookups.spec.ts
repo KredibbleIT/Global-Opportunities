@@ -67,7 +67,13 @@ test.describe('Partners and Programs for their own roles (real API, SEC-135)', (
 
   test('a Partnerships Officer sees a partner\'s linked programs and picks its owner', async ({ page, browser }) => {
     // Set up as the root admin: a partner with one linked program.
-    const partner = await page.request.post(`${API_URL}/admin/partners`, { data: { organizationName: partnerName, partnerType: 'foundation', country: 'Ghana' } });
+    // Everything the partner form requires, so the officer's edit can be saved as it is.
+    const partner = await page.request.post(`${API_URL}/admin/partners`, {
+      data: {
+        organizationName: partnerName, partnerType: 'foundation', country: 'Ghana', provides: 'Scholarship funding',
+        contactName: 'Ama Boateng', contactEmail: `partner.${stamp}@example.org`,
+      },
+    });
     expect(partner.status()).toBe(201);
     partnerId = (await partner.json()).data.id;
     const program = await page.request.post(`${API_URL}/admin/programs`, {

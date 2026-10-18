@@ -13,10 +13,11 @@
  * - Verify (edit access on database: Database Officer, Desk Lead, Super Admin): a 40px icon button (the word on phones) that
  *   sits above the row link, so it never opens the record. It verifies at once and a toast offers Undo for 5 seconds. A role that
  *   can only view sees no Verify button and no "Add record".
- * Rows come from the live store, so a verification shows in the same render everywhere. Outside mock mode a notice says the page
- * shows sample data (records have no backend yet). The dev ?state= loading|empty|error switch works here.
+ * Real mode: the rows and the pace card come from the API (services/database.ts) and reload after every change. Mock mode:
+ * rows come from the live store, so a verification shows in the same render everywhere, and the dev ?state=
+ * loading|empty|error switch works.
  */
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Database as DatabaseIcon, Plus } from "lucide-react";
 import { useRoles } from "@/components/access/RoleProvider";
 import { LinkedCell } from "@/components/database/LinkedCell";
@@ -30,13 +31,14 @@ import { TableToolbar } from "@/components/list/TableToolbar";
 import type { Column } from "@/components/list/types";
 import { Avatar } from "@/components/ui/Avatar";
 import { Select, type SelectOption } from "@/components/ui/form/Select";
-import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TruncatedText } from "@/components/ui/TruncatedText";
 import { formatDate } from "@/lib/format";
 import { RECORD_SOURCES, RECORD_SOURCE_LABELS, type RecordSource } from "@/lib/mock-entities";
 import { useMockCollection, useMockStoreVersion } from "@/lib/mock-store";
-import { loadRecordRows, recordLinkAccess, recordsPace, sourceBreakdown, subscribeDatabase, toRecordRows, type RecordRow } from "@/lib/services/database";
+import { loadRecordRows, loadRecordsPace, recordLinkAccess, recordsPace, sourceBreakdown, subscribeDatabase, toRecordRows, type RecordRow, type RecordsPace } from "@/lib/services/database";
+import { isMockMode } from "@/lib/services/mock-mode";
+import { useAsync } from "@/lib/use-async";
 import { useListData } from "@/lib/use-list-data";
 
 const ALL = "all";
@@ -54,10 +56,15 @@ export default function DatabasePage() {
 
   const canEdit = can("database", "edit");
   const access = recordLinkAccess(can);
-  // The list works on the live store, once the first load is done (a forced ?state=empty keeps the list empty).
-  const all = useMemo(() => (loaded === null ? null : loaded.length === 0 ? [] : toRecordRows(records)), [loaded, records]);
+  // Real mode shows what the server sent, and its pace (asked again each time the list loads). Mock mode works on the live
+  // store, once the first load is done (a forced ?state=empty keeps the list empty).
+  const live = !isMockMode();
+  const all = useMemo(() => (live ? loaded : loaded === null ? null : loaded.length === 0 ? [] : toRecordRows(records)), [live, loaded, records]);
+  const loadPace = useCallback((): Promise<RecordsPace | null> => (live && loaded !== null ? loadRecordsPace() : Promise.resolve(null)), [live, loaded]);
+  const { data: livePace } = useAsync(loadPace);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const pace = useMemo(() => (all === null ? null : recordsPace()), [all, storeVersion]);
+  const mockPace = useMemo(() => (live || all === null ? null : recordsPace()), [live, all, storeVersion]);
+  const pace = live ? livePace : mockPace;
   const sources = useMemo(() => (all === null ? null : sourceBreakdown(all)), [all]);
 
   const columns: Column<RecordRow>[] = [
@@ -136,7 +143,6 @@ export default function DatabasePage() {
       action={canEdit ? { label: "Add record", href: "/database/new", icon: Plus } : undefined}
       toolbar={
         <div className="space-y-4">
-          <NotConnectedNotice />
           <RecordsPaceCard pace={pace} sources={sources} error={error ? "Could not load the records." : null} onRetry={retry} />
           <TableToolbar
             search={{ value: search, onChange: setSearch, placeholder: "Search by name, email or institution", label: "Search records" }}
