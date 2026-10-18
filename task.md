@@ -176,8 +176,8 @@ Note: the audit's own text reached the same conclusion on #10 ("Actually this on
 | SEC-006 | Hard-coded JWT fallback secrets shipped in source | P0 | Backend config | ✅ Done |
 | SEC-007 | Mass assignment — `req.body` spread into models | P0 | Backend routes | ✅ Done |
 | SEC-008 | Password policy allows 6 chars, no complexity | P1 | Backend auth | ✅ Done |
-| SEC-009 | 7-day JWT with role baked in, no refresh/rotation | P1 | Backend auth | ⚠️ Reopened — `tokenVersion` check is dead code → SEC-052 |
-| SEC-010 | Admin JWT stored in `localStorage` (XSS-readable) | P1 | Admin app | ⚠️ Reopened — cookie never reaches the API → SEC-074, SEC-075 |
+| SEC-009 | 7-day JWT with role baked in, no refresh/rotation | P1 | Backend auth | ✅ Done (closed 2026-10-18): fixed by SEC-052. `requireAuth` and both admin guards check `tokenVersion` on every request, refresh tokens rotate, and "sign out everywhere" revokes them |
+| SEC-010 | Admin JWT stored in `localStorage` (XSS-readable) | P1 | Admin app | ✅ Done (closed 2026-10-18): fixed by SEC-074 and SEC-075. Admin sessions are httpOnly cookies sent through the same-origin `/api` proxy; `localStorage` holds only the profile, never a token |
 | SEC-011 | No pagination or result limits on any list endpoint | P1 | Backend routes | ✅ Done |
 | SEC-012 | User-controlled `$regex` — regex injection / ReDoS | P1 | Backend routes | ✅ Done |
 | SEC-013 | Upload accepts any MIME type; `folder` param unvalidated | P1 | Backend upload | ✅ Done |
@@ -185,30 +185,30 @@ Note: the audit's own text reached the same conclusion on #10 ("Actually this on
 | SEC-015 | `apiRouter` mounted twice (`/` and `/api`), limiter double-counts | P1 | Backend app | ✅ Done |
 | SEC-016 | Clients fall back to plaintext HTTP, no HTTPS enforcement | P1 | App + Admin | ✅ Done |
 | SEC-017 | No audit log for admin/mutating actions | P1 | Backend | ✅ Done |
-| SEC-018 | Test suite empty — no auth or authorization tests exist | P1 | Backend | ⚠️ Reopened — 10/102 failing, CI not gating → SEC-070, SEC-071 |
-| SEC-019 | No API versioning — breaking changes ship silently | P2 | Backend | ⚠️ Partial — clients still call `/api`; live Vercel has no `/api/v1` → SEC-069 |
+| SEC-018 | Test suite empty — no auth or authorization tests exist | P1 | Backend | ✅ Done (closed 2026-10-18): fixed by SEC-070 and SEC-071. Every CI job gates with no masks, and the backend suite is green on `main` (CI on PR #128, 2026-10-18) |
+| SEC-019 | No API versioning — breaking changes ship silently | P2 | Backend | ⚠️ Partial: the mobile app calls `/api/v1`, but the admin's production proxy target is still the unversioned `…/api` alias (deprecated, sunset 2027-10-01). Remaining: set `API_PROXY_TARGET=https://kredibble-api.onrender.com/api/v1` in Vercel and update `kredibble-admin/.env.example` and `AGENTS.md` |
 | SEC-020 | `kredibble-app/.env` is tracked and committed | P2 | Repo hygiene | ✅ Done |
 | SEC-021 | Dev server starts and serves with no database | P2 | Backend | ✅ Done |
 | SEC-022 | CORS allows any `*.vercel.app` / `*.onrender.com` tenant | P2 | Backend app | ✅ Done |
-| SEC-023 | PII exposed through generic collection reads | P2 | Backend routes | ⚠️ Reopened — bypassed via `emailNormalized`, populate, search → SEC-054, SEC-055 |
-| SEC-024 | No rate limit on upload, search, or registration | P2 | Backend | ⚠️ Reopened — key generator bug, no limit applies → SEC-049 |
-| SEC-025 | No account lockout or progressive backoff on login | P2 | Backend auth | ⚠️ Reopened — lock never saved → SEC-050 |
+| SEC-023 | PII exposed through generic collection reads | P2 | Backend routes | ✅ Done (closed 2026-10-18): fixed by SEC-054 and SEC-055 (PII projection on reads, populate and search; tests green) |
+| SEC-024 | No rate limit on upload, search, or registration | P2 | Backend | ✅ Done (closed 2026-10-18): fixed by SEC-049 (rate-limit key generator; `tests/sec-049-050.test.js` green) |
+| SEC-025 | No account lockout or progressive backoff on login | P2 | Backend auth | ✅ Done (closed 2026-10-18): fixed by SEC-050 (lockout persisted; `tests/sec-049-050.test.js` green) |
 | SEC-026 | Client-supplied `userId` trusted for profile/saved/notification ops | P2 | Backend routes | ✅ Done |
 | SEC-027 | `passwordHash` reachable through generic update paths | P2 | Backend routes | ✅ Done |
 | SEC-028 | No email normalization — case-variant duplicate accounts | P2 | Backend auth | ✅ Done |
-| SEC-029 | No GDPR/CCPA data export or deletion endpoint | P2 | Backend | ⚠️ Reopened — tombstone not persisted, media kept, token still valid → SEC-065, SEC-052 |
+| SEC-029 | No GDPR/CCPA data export or deletion endpoint | P2 | Backend | ✅ Done (closed 2026-10-18): fixed by SEC-065 and SEC-052 (tombstone persisted, media deleted, tokens revoked; `tests/sec-065.test.js` green) |
 | SEC-030 | `console.log` in production paths violates logger guardrail | P3 | Backend | ✅ Done |
 | SEC-031 | Search fields have no indexes | P3 | Backend models | ✅ Done |
 | SEC-032 | N+1 reads in populated relation queries | P3 | Backend routes | ✅ Done |
-| SEC-033 | Next.js admin has no CSP / security headers | P3 | Admin app | ⚠️ Reopened — CSP blocks the API; unsafe-inline/eval → SEC-073, SEC-079 |
+| SEC-033 | Next.js admin has no CSP / security headers | P3 | Admin app | ⚠️ Partial: the CSP now allows the API (SEC-073) and drops `unsafe-eval` in production (SEC-079). `script-src` still allows `'unsafe-inline'`; removing it needs a nonce-based CSP in `next.config.ts` / middleware |
 | SEC-034 | Mobile TypeScript not in strict mode | P3 | App | ✅ Done |
 | SEC-035 | Root `package.json` carries unused `cuid` + `uuid` | P3 | Repo hygiene | ✅ Done |
-| SEC-036 | Grant allocation and applicant counters are non-atomic | P3 | Backend | ⚠️ Reopened — no allocation code exists on `main` → SEC-060 |
+| SEC-036 | Grant allocation and applicant counters are non-atomic | P3 | Backend | ✅ Done (closed 2026-10-18): fixed by SEC-060. Grant allocation is one conditional `$inc` (`allocated + amount <= fundingPool`) in `routes/index.js`, covered by tests |
 | SEC-037 | List fields stored as `String` instead of typed arrays | P3 | Backend models | ⚠️ Reopened — fields are still `String` with `'[]'` default; parse helpers still in use |
 | SEC-038 | `join_user` lets any client join any user's room | P3 | Backend realtime | ✅ Done (verified 2026-10-02) |
 | SEC-039 | No request correlation ID or structured logger | P3 | Backend | ✅ Done |
 | SEC-040 | Admin panel has no independent admin token audience | P3 | Backend auth | ✅ Done |
-| **SEC-041** | **Live Vercel backend serves users + password hashes to anonymous callers** | **P0** | **Deployment / incident** | 🔴 Open — act today |
+| **SEC-041** | **Live Vercel backend serves users + password hashes to anonymous callers** | **P0** | **Deployment / incident** | 🟡 Leaking host gone: `kredibble-backend.vercel.app` answers 404 on `/api/health` and `/api/users` (checked 2026-10-18). Still to confirm (owner steps): Atlas and JWT secrets rotated, pre-incident passwords reset, seed/test admins removed |
 | SEC-042 | Apply / grant-apply / verification-doc upload return 500 (audit logger) | P0 | Backend routes | ✅ Done |
 | SEC-043 | Community channel post routes missing from mounted router (404) | P0 | Backend routes | ✅ Done |
 | SEC-044 | Notifications always empty for non-admin users | P1 | Backend routes | ✅ Done (scoped by audience & active status) |
@@ -298,13 +298,14 @@ Note: the audit's own text reached the same conclusion on #10 ("Actually this on
 | SEC-128 | Mobile test coverage: 0 screen/UI component tests; 116 ESLint warnings across screens | P2 | Mobile tests | ✅ Done (MOB-019 Completed on main; `kredibble-app/__tests__/screen-integration.test.ts` present, 95/95 per 2026-10-09 log) |
 | SEC-129 | SEC-002 manifest red on main: BE-017 public `GET /reference-data` routes not in `PUBLIC_ROUTES` | P1 | Backend tests | ✅ Done (2026-10-16: allowlist already on `origin/main`; AI 503 test made env-independent, 71/71 with and without local `.env` AI key) |
 | SEC-130 | Gitleaks ignore-list pinned to line numbers; breaks on every `routes/index.js` change | P3 | CI/CD + Repo hygiene | 🔴 Open — filed 2026-10-16 after BE-028's +4-line mount shifted the `verification/companies` policyKey false positives and failed the secret scan |
-| SEC-131 | Every staff member passes every screen check: `requireScreen` / `requirePortalRoles` wave through any admin session, and all staff sign in with one | P1 | Backend authz | 🟡 Fixed on `security/SEC-131-staff-screen-enforcement` (2026-10-17), not yet merged: one role resolver for all four guards and `/auth/admin/me`; role table test 38/38. SEC-132 and SEC-134 still let staff reach Super Admin |
-| SEC-132 | Any staff member can mint a Super Admin: `/admin` data routes (`/admin/staff`, seekers, hirers, verification…) take any admin session and never check the matrix | P1 | Backend authz | 🟡 Fixed on `security/SEC-132-133-135-staff-authz` (2026-10-18), not merged; probed: a Support staffer created a Super Admin staff record (201) for another account |
-| SEC-133 | Older `requirePortalRoles` lists disagree with the BE-001 matrix (Moderator loses the opportunities queue once SEC-131 lands; Admin Support can `PUT /admin/targets/:metric`) | P1 | Backend authz | 🟡 Fixed on `security/SEC-132-133-135-staff-authz` (2026-10-18), not merged; the product owner approved the matrix-only fix on 2026-10-17 |
-| SEC-134 | Team-edit staff can make themselves Super Admin: `PATCH /admin/staff/:id` sets any roles, and `DELETE` drops the record so "admin with no staff record" means root admin | P1 | Backend authz | 🔴 Open — filed 2026-10-17; probed: an Admin Support staffer deleted their own record and got Super Admin access |
-| SEC-135 | Partners and Programs pages read other screens' data (`/admin/programs`, `/admin/staff`, `/admin/partners`), which SEC-131 now refuses for Partnerships and Training Officers | P1 | Admin + backend authz | 🟡 Fixed on `security/SEC-132-133-135-staff-authz` (2026-10-18), not merged; filed 2026-10-17 when merging PR #121 into the SEC-131 branch |
-| SEC-136 | The admin shows every staff member Super Admin's screens: `RoleProvider` maps the session role `admin` (which every staff User has) to `super_admin` and never reads `/auth/admin/me` | P1 | Admin authz UI | 🔴 Open — filed 2026-10-18 while gating SEC-134's staff controls on `accounts.create` |
-| SEC-138 | Push notifications are never delivered: the API stores each phone's Expo push token and nothing ever sends to it; scheduled broadcasts never go out, yet show in the in-app feed before their time | P1 | Backend + Mobile notifications | 🔴 Open — filed 2026-10-18; MOB-015 / SEC-124 were ticked for push notifications |
+| SEC-131 | Every staff member passes every screen check: `requireScreen` / `requirePortalRoles` wave through any admin session, and all staff sign in with one | P1 | Backend authz | ✅ Done: merged in PR #123 (2026-10-17) |
+| SEC-132 | Any staff member can mint a Super Admin: `/admin` data routes (`/admin/staff`, seekers, hirers, verification…) take any admin session and never check the matrix | P1 | Backend authz | ✅ Done: merged in PR #126 (2026-10-18) |
+| SEC-133 | Older `requirePortalRoles` lists disagree with the BE-001 matrix (Moderator loses the opportunities queue once SEC-131 lands; Admin Support can `PUT /admin/targets/:metric`) | P1 | Backend authz | ✅ Done: merged in PR #126 (2026-10-18); the product owner approved the matrix-only fix on 2026-10-17 |
+| SEC-134 | Team-edit staff can make themselves Super Admin: `PATCH /admin/staff/:id` sets any roles, and `DELETE` drops the record so "admin with no staff record" means root admin | P1 | Backend authz | ✅ Done: PR #125, its commits landed with PR #126 (2026-10-18) |
+| SEC-135 | Partners and Programs pages read other screens' data (`/admin/programs`, `/admin/staff`, `/admin/partners`), which SEC-131 now refuses for Partnerships and Training Officers | P1 | Admin + backend authz | ✅ Done: merged in PR #126 (2026-10-18) |
+| SEC-136 | The admin shows every staff member Super Admin's screens: `RoleProvider` maps the session role `admin` (which every staff User has) to `super_admin` and never reads `/auth/admin/me` | P1 | Admin authz UI | ✅ Done: merged in PR #127 (2026-10-18) |
+| SEC-137 | A Moderator can create, rewrite and delete opportunities: every opportunities write takes `opportunities_queue` edit, not just moderation | P2 | Backend authz | ✅ Done: merged in PR #128 (2026-10-18) |
+| SEC-138 | Push notifications are never delivered: the API stores each phone's Expo push token and nothing ever sends to it; scheduled broadcasts never go out, yet show in the in-app feed before their time | P1 | Backend + Mobile notifications | 🟡 Fixed on `security/SEC-138-push-delivery` (2026-10-18), not merged: Expo sender with receipts, scheduled-broadcast job, one phone per account, server push switch. Android needs FCM credentials and iOS a new build before real phones get pushes |
 
 ---
 
@@ -862,7 +863,7 @@ curl -s -o /dev/null -w "%{http_code}\n" https://<surviving-api>/api/v1/users   
 ```
 
 **Acceptance criteria:**
-- [ ] No deployed host answers an anonymous `GET /api/users` with 200
+- [x] No deployed host answers an anonymous `GET /api/users` with 200 (2026-10-18: `kredibble-backend.vercel.app` answers 404 on `/api/users` and `/api/health`; status codes only, no data read)
 - [ ] Atlas credentials rotated; the old connection string no longer authenticates
 - [ ] JWT secrets rotated on every environment
 - [ ] All pre-incident passwords reset; seed/test admin accounts removed
@@ -1628,6 +1629,17 @@ Found while planning the move to the company infrastructure platform (`Company_I
 - [x] Real API: a staffer suspended mid-session is sent to the login page on the next load (same spec, a Database Officer)
 - [x] The root admin (the e2e admin, no staff record) keeps every page; admin real and mock Playwright suites pass. Real API: 431 passed. The 2 known layout timing flakes failed, and so did `role-lookups.spec.ts`, whose partner (created through the API) lacks two fields the edit form requires; that's client validation, reported to the SEC-135 branch. Mock: 1060 passed, 32 skipped, in two shards. 14 failures from memory pressure (1.5 GB free, `ERR_INSUFFICIENT_RESOURCES`, page-load timeouts while another session ran Jest) all passed on a `--last-failed` rerun (11/11, 3/3). `typecheck` and `lint` clean
 
+### SEC-137 — A Moderator can create, rewrite and delete opportunities, not just moderate them
+**Priority:** P2
+**Evidence (probed 2026-10-18 on `main` at `2c6df7d`):** since SEC-133 the matrix alone decides the opportunities routes (`kredibble-backend/src/routes/admin-api.js`), and every write there takes `opportunities_queue` edit. The Moderator's default "moderate" toggle grants that, so a Moderator with an admin session got 201 on `POST /admin/opportunities` (a new listing), 200 on a `PATCH` that rewrote its title, and 200 on `DELETE`. Approving and rejecting (a `PATCH` of `moderationStatus`/`vetted`) is the job; creating and editing curated listings belongs to `listings_curate`. The admin UI already gates the New listing and Edit pages on `listings_curate` edit (`kredibble-admin/src/app/(dashboard)/opportunities/new/page.tsx`, `[id]/edit/page.tsx`); the API didn't.
+**Risk:** a Moderator (or a compromised Moderator account) can publish listings of their own and delete real ones. That's more than the role was given, though staff-only.
+**Fix (agreed with the product owner 2026-10-17):** `opportunities_queue` edit keeps moderation: a `PATCH` that changes only `moderationStatus` and `vetted`, plus `unpublish` and the WordPress retry. Creating, any other `PATCH` field, and `DELETE` need `listings_curate` edit (Opportunities Officer, Desk Lead, Super Admin, who also hold the queue).
+**Done 2026-10-18 on `security/SEC-137-moderator-queue-scope`:** in `kredibble-backend/src/routes/admin-api.js`, `POST /admin/opportunities` and `DELETE /admin/opportunities/:id` take `listings_curate` edit. `PATCH /admin/opportunities/:id` goes through `requireOpportunityPatchScreen`: `opportunities_queue` edit when the body changes only `moderationStatus` and `vetted`, and `listings_curate` edit otherwise, an empty body included. Unpublish and the WordPress retry stay with the queue. The admin needs no change: New listing and Edit already require `listings_curate`, and the queue's approve and reject send only those two fields.
+**Acceptance criteria:**
+- [x] A Moderator gets 403 on create, a content `PATCH` and `DELETE`, and 200 on approve, reject and unpublish (`tests/sec-137-moderator-queue-scope.test.js`; also 403 when moderation fields come with a content field, and on an empty `PATCH`)
+- [x] An Opportunities Officer keeps all of them; the SEC-131 role table covers `listings_curate` (new rows: queue-moderation `PATCH` and unpublish, curate `POST`, content `PATCH` and `DELETE`, every role in both realms). SEC-131 + SEC-137 files: 41/41. With `main`'s routes put back, 4 fail
+- Verified 2026-10-18: backend 55 suites, 817 tests, all green. In the full run, 5 suites lost their in-memory MongoDB under memory pressure (`ECONNREFUSED`, 3 GB free); they passed 22/22 when rerun. `tests/sec-132-135-staff-authz.test.js` (SEC-133) now shows the Moderator moderating with a `PATCH` (404 on an unknown id: past the guard) and refused a create (403); it used to expect a create to get past the guard. Also fixed: `PUT /admin/roles-permissions` didn't await its BE-018 audit write, so `be-001-permissions.test.js` raced it and failed intermittently under load (2 of 4 paired runs); it now awaits, as every other audited route in the file does. Lint clean
+
 ### SEC-138 — Push notifications are never delivered
 **Priority:** P1
 **Evidence (2026-10-18, code read on `main` @ `c14b457`):**
@@ -1646,12 +1658,13 @@ Found while planning the move to the company infrastructure platform (`Company_I
 - Registering a token removes it from every other account. Logout and account deletion clear it.
 - A new `notificationPreferences.push` (default on) is set through `PATCH /users/me/notification-preferences`. Pushes skip people who turned it off, and the in-app feed still shows everything.
 - The app registers after login, signup and every launch with a session. Tapping a push opens Notifications. The Home tab listens for the socket event and re-syncs. The Push switch saves to the server. `expo-notifications` is added to the `app.json` plugins.
+**Done 2026-10-18 on `security/SEC-138-push-delivery`:** as above, plus `PUSH_ENABLED` / `EXPO_ACCESS_TOKEN` in `.env.example`, logout finding the user by refresh token when the access token has expired, and hirers getting a Push switch too. The admin's My Account keeps its four email alerts (`push` isn't part of BE-016's contract). Not done here: Android needs FCM v1 credentials in EAS and a `google-services.json`, and iOS needs a new store build for the push entitlement, before real phones receive anything.
 **Acceptance criteria:**
-- [ ] Jest (mocked Expo API): batching above 100 messages, ticket and receipt `DeviceNotRegistered` clear the token, a network failure or a 5xx doesn't throw, and nothing is sent while push is disabled
-- [ ] `notifyUser` pushes to that user only; a broadcast pushes only to its audience's roles; people with push turned off get nothing
-- [ ] A due scheduled broadcast is sent once, even with two jobs running at the same time; a future one waits and stays out of the feed until it is sent
-- [ ] Registering a token removes it from another account; logout clears it
-- [ ] App Jest: the token registers after login, a tap opens Notifications, and the socket event re-syncs; `lint`, `typecheck` and tests pass in both apps
+- [x] Jest (mocked Expo API): batching above 100 messages, ticket and receipt `DeviceNotRegistered` clear the token, a network failure or a 5xx doesn't throw, and nothing is sent while push is disabled (`tests/sec-138-push-delivery.test.js`, 23 tests)
+- [x] `notifyUser` pushes to that user only; a broadcast pushes only to its audience's roles (no staff, deleted or muted accounts); people with push turned off get nothing
+- [x] A due scheduled broadcast is sent once, even with two jobs running at the same time; a future one waits and stays out of the feed until it is sent. With the feed filter removed, that test fails
+- [x] Registering a token removes it from another account; logout clears it (also with an expired access token), a logout from another phone leaves it, and account deletion clears it
+- [x] App Jest: the token registers after login, a tap opens Notifications (the launch tap once), and the socket event re-syncs (`__tests__/push-notifications.test.ts`); backend 55 suites / 837 tests and lint clean; app 111 tests, `lint` and `typecheck` clean
 
 # Execution Order
 
@@ -2556,6 +2569,17 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
     - Permission suites 99/99. Full backend: 731 passed, and the three suites that crashed from memory pressure (BE-017, BE-026, admin contract; another session's Playwright run was going) pass on re-run, 38/38. `eslint` clean.
     - Admin `typecheck` clean. Real-API Playwright, run on port 4100 beside the other session: `role-lookups.spec.ts` 2/2 (each role signs in through the form), and the Programs and Partners real-API tests 3/3. `check:encoding` 0 failing.
   - Then merged `feature/BE-030-showcase`, after #124 had merged, to carry its BE-031 Progress Log commit (`9a26c94`, pushed a minute after that merge). The admin upload maps `showcase-photo` to any Showcase edit screen (`showcase`, `showcase.ambassadors`, `showcase.partners`), so Country Leads and Partnerships Officers can upload pictures, which be-031 now tests. Combined suites (SEC-131, SEC-132–135, SEC-134, Showcase, BE-001, BE-029, admin contract, security.p0): 268/268.
+- 2026-10-18 — Findings Summary brought in line with `main` (at `494f3b3`). Each claim was checked in code before closing:
+  - SEC-131 to SEC-137 are marked Done with their PRs (#123, #125 to #128).
+  - Ten reopened rows are closed: SEC-009, 010, 018, 023, 024, 025, 029 and 036, each fixed by its follow-up item. Spot checks: `tokenVersion` is checked in `requireAuth`; the admin keeps no token in `localStorage`; grant allocation is one conditional `$inc`; CI gates every job.
+  - SEC-019 and SEC-033 are marked Partial, with the exact step left: the admin's proxy target is still `/api`, and the CSP still has `unsafe-inline`.
+  - SEC-041: `kredibble-backend.vercel.app` answers 404 on `/api/users` and `/api/health` (status codes only). The secret rotations and password resets remain owner steps.
+  - Still open: SEC-037 (list fields stored as `String`), SEC-130 (gitleaks line pins), and the operations and legal items (SEC-089, 091, 092, 093, 114, 117).
+- 2026-10-18 — SEC-138 filed (commit `14f4d58`, before any fix) and fixed on `security/SEC-138-push-delivery`. Phones never received a push: the API stored Expo tokens and nothing sent to them. MOB-015 / SEC-124 were ticked anyway, so both cards are corrected.
+  - Backend: `lib/push.js` (Expo batches, tickets then receipts, dead-token clean-up, never throws), background pushes from `notifyUser` and immediate broadcasts, `lib/notification-scheduler.js` (atomic claim per due broadcast, run each minute from `server.js`, receipts every 15 minutes). The feed hides `scheduled` and `cancelled`. A token moves to the latest account on its phone; logout and deletion clear it. `PATCH /users/me/notification-preferences` sets `notificationPreferences.push`. The admin's My Account still answers only its four email alerts.
+  - App: registration after every saved session (session-saved hook), Android channel before the prompt, tap opens Notifications, socket and foreground pushes re-sync, server-backed Push switch for seekers and hirers, `expo-notifications` plugin.
+  - `.gitleaksignore`: the two `verification/companies` policyKey hits moved to 819 and 1510 (SEC-130).
+  - Verified: backend 55 suites / 837 tests in two shards (`--maxWorkers=2`; an orphaned run from a killed session had been starving memory) and lint clean; app 14 suites / 111 tests, `lint` and `typecheck` clean; `check:encoding` 0 failing. Not verified on a real phone: Android needs FCM v1 credentials in EAS plus `google-services.json`, and iOS needs a new store build.
 | 2026-10-16 | SEC-129 | security/SEC-129-reference-data-manifest | Done | Manifest allowlist already present on `origin/main` (merged after 2026-10-15 sync); made AI 503 test env-independent (`env.aiEnabled=false` save/restore in `tests/security.p0.test.js`). `npm test -- tests/security.p0.test.js`: 71/71 with local `.env` AI keys AND with `.env` neutralized (CI-equivalent). Backend `npm run lint` clean. |
 
 ---
