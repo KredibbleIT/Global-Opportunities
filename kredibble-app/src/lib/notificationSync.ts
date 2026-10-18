@@ -1,6 +1,8 @@
+import type { Socket } from 'socket.io-client';
 import { notificationStore, NotificationItem, NotificationType } from '../constants/mockNotifications';
 import { authStore } from '../constants/authStore';
 import { getNotifications } from './api';
+import { socketService } from './socket';
 
 const KNOWN_TYPES: NotificationType[] = [
   'applicant', 'message', 'channel', 'verification', 'system', 'opportunity', 'application', 'event', 'ambassador',
@@ -47,4 +49,34 @@ export async function syncNotifications(): Promise<void> {
   } catch (err) {
     console.warn('Failed to load notifications from API', err);
   }
+}
+
+/**
+ * SEC-138: re-syncs whenever the API announces a notification for this person over the
+ * socket (`notification` on their personal room), so the bell updates without a refresh.
+ * Returns a function that stops listening.
+ */
+export function subscribeToLiveNotifications(): () => void {
+  let cancelled = false;
+  let attached: Socket | null = null;
+  const onNotification = () => {
+    syncNotifications();
+  };
+
+  socketService
+    .connect()
+    .then(() => {
+      if (cancelled || !socketService.socket) return;
+      attached = socketService.socket;
+      attached.on('notification', onNotification);
+    })
+    .catch(err => {
+      // Realtime is an enhancement; the list still loads on open.
+      console.warn('Live notifications unavailable:', err);
+    });
+
+  return () => {
+    cancelled = true;
+    attached?.off('notification', onNotification);
+  };
 }

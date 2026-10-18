@@ -6,7 +6,7 @@ import Svg, { Defs, RadialGradient, Stop, Ellipse } from 'react-native-svg';
 import { useRouter } from 'expo-router';
 import { authStore } from '../../constants/authStore';
 import { notificationStore } from '../../constants/mockNotifications';
-import { syncNotifications } from '../../lib/notificationSync';
+import { subscribeToLiveNotifications, syncNotifications } from '../../lib/notificationSync';
 import { Colors } from '../../constants/design';
 import { getOpportunities, getApplicants } from '../../lib/api';
 
@@ -160,6 +160,8 @@ export default function HomeScreen() {
 
     fetchData();
     syncNotifications();
+    // SEC-138: the API announces each new notification over the socket; refresh the bell then.
+    const stopLiveNotifications = subscribeToLiveNotifications();
 
     // State is initialised from authStore; the subscription keeps it in sync.
     const unsubscribe = authStore.subscribe(() => {
@@ -173,6 +175,7 @@ export default function HomeScreen() {
     return () => {
       unsubscribe();
       unsubscribeNotifications();
+      stopLiveNotifications();
     };
   }, []);
 
