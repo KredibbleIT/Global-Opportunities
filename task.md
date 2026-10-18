@@ -304,6 +304,7 @@ Note: the audit's own text reached the same conclusion on #10 ("Actually this on
 | SEC-134 | Team-edit staff can make themselves Super Admin: `PATCH /admin/staff/:id` sets any roles, and `DELETE` drops the record so "admin with no staff record" means root admin | P1 | Backend authz | 🔴 Open — filed 2026-10-17; probed: an Admin Support staffer deleted their own record and got Super Admin access |
 | SEC-135 | Partners and Programs pages read other screens' data (`/admin/programs`, `/admin/staff`, `/admin/partners`), which SEC-131 now refuses for Partnerships and Training Officers | P1 | Admin + backend authz | 🟡 Fixed on `security/SEC-132-133-135-staff-authz` (2026-10-18), not merged; filed 2026-10-17 when merging PR #121 into the SEC-131 branch |
 | SEC-136 | The admin shows every staff member Super Admin's screens: `RoleProvider` maps the session role `admin` (which every staff User has) to `super_admin` and never reads `/auth/admin/me` | P1 | Admin authz UI | 🔴 Open — filed 2026-10-18 while gating SEC-134's staff controls on `accounts.create` |
+| SEC-138 | Push notifications are never delivered: the API stores each phone's Expo push token and nothing ever sends to it; scheduled broadcasts never go out, yet show in the in-app feed before their time | P1 | Backend + Mobile notifications | 🔴 Open — filed 2026-10-18; MOB-015 / SEC-124 were ticked for push notifications |
 
 ---
 
@@ -1626,6 +1627,31 @@ Found while planning the move to the company infrastructure platform (`Company_I
 - [x] Real API: a Partnerships Officer created through BE-028 and signed in through the form gets Partners and not Team or Seekers; after a Super Admin changes their role, the next load shows the new role's pages (Playwright, `tests/session-roles.spec.ts`; the saved user carries `roles: ['partnerships_officer']`)
 - [x] Real API: a staffer suspended mid-session is sent to the login page on the next load (same spec, a Database Officer)
 - [x] The root admin (the e2e admin, no staff record) keeps every page; admin real and mock Playwright suites pass. Real API: 431 passed. The 2 known layout timing flakes failed, and so did `role-lookups.spec.ts`, whose partner (created through the API) lacks two fields the edit form requires; that's client validation, reported to the SEC-135 branch. Mock: 1060 passed, 32 skipped, in two shards. 14 failures from memory pressure (1.5 GB free, `ERR_INSUFFICIENT_RESOURCES`, page-load timeouts while another session ran Jest) all passed on a `--last-failed` rerun (11/11, 3/3). `typecheck` and `lint` clean
+
+### SEC-138 — Push notifications are never delivered
+**Priority:** P1
+**Evidence (2026-10-18, code read on `main` @ `c14b457`):**
+- The app asks for permission and posts an Expo push token to `POST /users/me/push-token`, which saves it on `User.pushToken` (MOB-015). No backend code reads `pushToken` or calls the Expo push service, so no phone ever receives a push.
+- `notifyUser` (ambassador decisions, "Added to a group") emits a socket `notification` event to `user_<id>`, but the app never listens for it, so the bell only changes on the next refresh.
+- `POST /admin/notifications` with a future `scheduledFor` saves `status: 'scheduled'`, and no job ever sends it. `notificationReadScope` doesn't filter on `status`, so a scheduled broadcast appears in everyone's in-app feed straight away, before its time.
+- The app registers the token only when the root layout mounts. A first-time user isn't signed in at that point, so their token doesn't reach the server until a later cold start. The MOB-015 card says it registers "on login".
+- The token stays on the account after logout. If a second account signs in on the same phone, the token ends up on both accounts. Once pushes are sent, the first person's notifications would show on the lock screen of a phone they've signed out of.
+- The "Push notifications" switch on Manage notifications only writes a local store; the server has no push preference.
+**Risk:** ambassador decisions and staff announcements reach people only when they happen to open the app. Scheduled announcements leak early. Turning on delivery without the logout and shared-phone fixes would send one person's notifications to someone else's phone, so all of this ships together.
+**Fix:**
+- New `src/lib/push.js` sends through the Expo push API in batches of 100. It keeps each ticket and checks receipts about 15 minutes later. Tokens that come back `DeviceNotRegistered` (from a ticket or a receipt) are removed. It never throws to its caller, and it is off in tests unless a test turns it on.
+- `notifyUser` and immediate broadcasts push in the background, so the request doesn't wait on Expo.
+- A job (every minute, on every instance) claims due scheduled broadcasts one at a time with an atomic update, marks each sent, then pushes it. Two instances never send the same broadcast twice.
+- The in-app feed hides `scheduled` and `cancelled` broadcasts.
+- Registering a token removes it from every other account. Logout and account deletion clear it.
+- A new `notificationPreferences.push` (default on) is set through `PATCH /users/me/notification-preferences`. Pushes skip people who turned it off, and the in-app feed still shows everything.
+- The app registers after login, signup and every launch with a session. Tapping a push opens Notifications. The Home tab listens for the socket event and re-syncs. The Push switch saves to the server. `expo-notifications` is added to the `app.json` plugins.
+**Acceptance criteria:**
+- [ ] Jest (mocked Expo API): batching above 100 messages, ticket and receipt `DeviceNotRegistered` clear the token, a network failure or a 5xx doesn't throw, and nothing is sent while push is disabled
+- [ ] `notifyUser` pushes to that user only; a broadcast pushes only to its audience's roles; people with push turned off get nothing
+- [ ] A due scheduled broadcast is sent once, even with two jobs running at the same time; a future one waits and stays out of the feed until it is sent
+- [ ] Registering a token removes it from another account; logout clears it
+- [ ] App Jest: the token registers after login, a tap opens Notifications, and the socket event re-syncs; `lint`, `typecheck` and tests pass in both apps
 
 # Execution Order
 
