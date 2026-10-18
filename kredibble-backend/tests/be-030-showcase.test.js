@@ -179,7 +179,7 @@ describe('BE-030 entries', () => {
     await bad({ photoUrl: 'data:image/png;base64,AAAA' }, /https link/);
     await bad({ photoUrl: 'javascript:alert(1)' }, /https link/);
     await bad({ photoUrl: 'http://example.com/a.png' }, /https link/);
-    expect((await addEntry(admin, 'team', { name: 'Test With Photo', photoUrl: 'https://res.cloudinary.com/demo/image/upload/a.png' })).status).toBe(201);
+    expect((await addEntry(admin, 'team', { name: 'Test With Photo', photoUrl: 'https://res.cloudinary.com/test/image/upload/kredibble/admin/showcase-photo/a.png' })).status).toBe(201);
     expect((await as(admin).post('/entries', { categoryId: new mongoose.Types.ObjectId().toString(), name: 'Test', title: 'Tester' })).status).toBe(400);
   });
 
@@ -323,7 +323,7 @@ describe('BE-030 audit', () => {
     const added = await addEntry(admin, 'team', { name: 'Test History' });
     const id = added.body.data.id;
     await addEntry(admin, 'team', { name: 'Test Other' });
-    await as(admin).patch(`/entries/${id}`, { title: 'New role', photoUrl: 'https://res.cloudinary.com/demo/image/upload/b.png' });
+    await as(admin).patch(`/entries/${id}`, { title: 'New role', photoUrl: 'https://res.cloudinary.com/test/image/upload/kredibble/admin/showcase-photo/b.png' });
     await as(admin).post(`/entries/${id}/visibility`, { visible: false });
     await as(admin).post(`/entries/${id}/visibility`, { visible: true });
     await as(admin).post(`/entries/${id}/move`, { direction: 'down' });

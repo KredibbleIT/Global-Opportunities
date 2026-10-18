@@ -6,6 +6,7 @@ import { ApiError, asyncHandler, itemResponse, notFound } from '../utils/http.js
 import { Ambassador, Partner, ShowcaseCategory, ShowcaseEntry } from '../models/AdminPortal.js';
 import { auditReq, AUDIT_ACTIONS, AUDIT_RESOURCE_TYPES, AuditLog } from '../lib/audit.js';
 import { getEffectiveToggles } from '../lib/permissions.js';
+import { releasePicture } from '../lib/showcase-photos.js';
 import {
   canEditCategory,
   ensureBuiltInCategories,
@@ -55,6 +56,9 @@ const SHOWCASE_AUDIT_ACTIONS = Object.entries(AUDIT_ACTIONS)
   .map(([, action]) => action);
 
 const visibleWord = (visible) => (visible ? 'Visible' : 'Hidden');
+
+/** BE-031: a picture stays while any entry still shows it. */
+const pictureInUse = async (url) => Boolean(await ShowcaseEntry.exists({ photoUrl: url }));
 
 /** Reads the caller's Showcase access once per request; no access at all is a 403. */
 const loadShowcaseAccess = async (req, res, next) => {
@@ -228,6 +232,8 @@ showcaseAdminRouter.patch('/entries/:id', validate(updateShowcaseEntrySchema), a
   entry.updatedBy = req.auth.sub;
   await entry.save();
   if (moved) await renumberGroup(ShowcaseEntry, { categoryId: from._id });
+  // BE-031: a replaced or removed upload is deleted from storage.
+  if (photo === 'changed' || photo === 'removed') await releasePicture(before.photoUrl, pictureInUse);
 
   await auditEntry(req, AUDIT_ACTIONS.SHOWCASE_EDIT, entry._id, {
     summary: `Edited ${entry.name}`,
@@ -281,6 +287,7 @@ showcaseAdminRouter.delete('/entries/:id', validate(showcaseIdSchema), asyncHand
   assertCanEdit(req, category);
   await ShowcaseEntry.deleteOne({ _id: entry._id });
   await renumberGroup(ShowcaseEntry, { categoryId: entry.categoryId });
+  await releasePicture(entry.photoUrl, pictureInUse);
   await auditEntry(req, AUDIT_ACTIONS.SHOWCASE_DELETE, entry._id, {
     summary: `Deleted ${entry.name} from ${category.name}`,
     entry: entry.name,

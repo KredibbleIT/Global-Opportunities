@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { SHOWCASE_KINDS, SHOWCASE_LIMITS } from '../models/AdminPortal.js';
 import { normaliseText } from '../lib/showcase.js';
+import { isAcceptablePicture } from '../lib/showcase-photos.js';
 
 // BE-030: the Showcase admin routes. Names and titles are trimmed with runs of
 // spaces collapsed before the limits apply, and the messages match the admin
@@ -24,9 +25,11 @@ const entryBio = z.string().max(RAW_MAX).transform((value) => value.trim())
 const entryCountry = optionalText(SHOWCASE_LIMITS.country, `Keep the country to ${SHOWCASE_LIMITS.country} characters or fewer.`);
 const entryProvidedBy = optionalText(SHOWCASE_LIMITS.providedBy, `Keep this to ${SHOWCASE_LIMITS.providedBy} characters or fewer.`);
 // The site's Content-Security-Policy allows https images only, so a stored
-// picture is an https link (an upload's URL); `null` removes the picture.
+// picture is an https link; BE-031: and only one of OUR Cloudinary pictures (a
+// Showcase upload or an ambassador's stored picture). `null` removes it.
 const entryPhotoUrl = z.string().trim().max(SHOWCASE_LIMITS.photoUrl)
   .regex(/^https:\/\/[^\s"'<>]+$/i, 'The picture must be an https link.')
+  .refine(isAcceptablePicture, 'Upload the picture with the Showcase form; links to other sites are not accepted.')
   .nullable();
 
 const categoryName = requiredText(
