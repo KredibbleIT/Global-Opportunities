@@ -5,7 +5,9 @@
  *  - "rules" tests need no browser: they call the pure functions in src/lib/showcase.ts (validation, ordering, category deletion
  *    rules, who may edit which category, what the app shows);
  *  - "UI" tests drive the page in MOCK MODE (npm run test:e2e:mock): add with a photo upload, edit, hide and show, order, delete,
- *    categories (including a custom "Developers"), the preview, the audit history and the permission gate for each role.
+ *    categories (including a custom "Developers"), the preview, the audit history and the permission gate for each role;
+ *  - "real API" tests (npm run test:e2e, BE-030) save entries and categories on the server, read them back after a reload, check
+ *    the server-written History, and show that a refused change leaves everything as it was.
  *
  * ALL DATA IS FAKE (names such as "Test Ambassador One", a one-pixel picture made in the test). No real person is in this file.
  */
@@ -17,6 +19,7 @@ import {
 import type { ShowcaseCategory, ShowcaseEntry } from '../src/lib/mock-entities';
 
 const BASE_URL = defaultBaseUrl();
+const API_URL = process.env.E2E_API_URL || 'http://localhost:4000/api';
 
 /** A real one-pixel PNG, so the upload is an actual image file. */
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
@@ -494,5 +497,133 @@ test.describe('Showcase: access (mock mode)', () => {
     expect((await dialog.boundingBox())!.width).toBeLessThanOrEqual(434);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(problems).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Against the real API (npm run test:e2e, BE-030). The e2e database is shared by the run and can outlive it locally, so every
+// name carries a stamp and the checks look only at this run's rows.
+// ---------------------------------------------------------------------------------------------------------------------
+test.describe('Showcase against the real API', () => {
+  test.skip(MOCK_RUN, 'real API run only: see npm run test:e2e');
+  test.describe.configure({ mode: 'serial' });
+  test.use({ viewport: { width: 1440, height: 900 } });
+  const stamp = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+  const first = `Live Person A ${stamp}`;
+  const second = `Live Person B ${stamp}`;
+  const toast = (page: Page, text: string) => page.getByTestId('toast').filter({ hasText: text }).first();
+
+  const open = async (page: Page) => {
+    await page.goto(`${BASE_URL}/showcase`, { timeout: 30_000 });
+    await expect(page.getByTestId('page-title')).toHaveText('Showcase');
+    await expect(page.getByTestId('showcase-add')).toBeVisible({ timeout: 15_000 }); // the categories came back from the server
+  };
+  const onlyThisRun = async (page: Page) => {
+    await page.getByLabel('Search the showcase').fill(stamp);
+  };
+
+  test('entries are saved on the server: add, reorder, edit, hide and delete, each in the History with who did it', async ({ page }) => {
+    await open(page);
+    await addEntry(page, { category: 'Team', name: first, title: 'Designer', providedBy: 'Sent by email' });
+    await expect(toast(page, `${first} was added and is on the app.`)).toBeVisible({ timeout: 15_000 });
+    await addEntry(page, { category: 'Team', name: second, title: 'Developer', visible: false });
+    await expect(toast(page, `${second} was added (hidden).`)).toBeVisible({ timeout: 15_000 });
+
+    // A fresh page reads both back from the server, last added last.
+    await open(page);
+    await onlyThisRun(page);
+    await expect(rows(page)).toHaveCount(2, { timeout: 15_000 });
+    await expect(rows(page).nth(0)).toContainText(first);
+    await expect(rows(page).nth(0)).toContainText('Visible');
+    await expect(rows(page).nth(1)).toContainText(second);
+    await expect(rows(page).nth(1)).toContainText('Hidden');
+
+    await page.getByRole('button', { name: `Move ${second} up` }).click();
+    await expect(rows(page).nth(0)).toContainText(second, { timeout: 15_000 });
+
+    let menu = await openMenu(page, `Entry actions for ${first}`);
+    await menu.getByRole('menuitem', { name: 'Edit' }).click();
+    const dialog = page.getByTestId('showcase-entry-dialog');
+    await dialog.getByLabel('Role or what they do').fill('Lead Designer');
+    await dialog.getByTestId('showcase-entry-save').click();
+    await expect(toast(page, `${first} was updated.`)).toBeVisible({ timeout: 15_000 });
+    await expect(rowOf(page, first)).toContainText('Lead Designer');
+
+    menu = await openMenu(page, `Entry actions for ${first}`);
+    await menu.getByRole('menuitem', { name: 'Hide from the app' }).click();
+    await expect(toast(page, `${first} is hidden from the app.`)).toBeVisible({ timeout: 15_000 });
+    await expect(rowOf(page, first)).toContainText('Hidden');
+
+    menu = await openMenu(page, `Entry actions for ${second}`);
+    await menu.getByRole('menuitem', { name: 'Delete' }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Delete entry' }).click();
+    await expect(toast(page, `${second} was deleted.`)).toBeVisible({ timeout: 15_000 });
+    await expect(rowOf(page, second)).toHaveCount(0);
+
+    await page.getByTestId('showcase-history-open').click();
+    const history = page.getByTestId('history-dialog').getByTestId('history-entry');
+    await expect(history.first()).toContainText(`Deleted ${second} from Team`, { timeout: 15_000 });
+    await expect(history.first()).toContainText('E2E Admin'); // who: the signed-in person, as the server recorded it
+    for (const line of [`Hid ${first}`, `Edited ${first}`, `Moved ${second} up`, `Added ${second} to Team (hidden)`, `Added ${first} to Team (visible)`]) {
+      await expect(history.filter({ hasText: line })).toHaveCount(1);
+    }
+  });
+
+  test('a change the server refuses shows its message, and nothing changes', async ({ page }) => {
+    await open(page);
+    await onlyThisRun(page);
+    await expect(rowOf(page, first)).toContainText('Hidden', { timeout: 15_000 });
+    const visibility = '**/admin/showcase/entries/*/visibility';
+    await page.route(visibility, (route) =>
+      route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ error: { message: 'E2E: refused by the server.' } }) }),
+    );
+    const menu = await openMenu(page, `Entry actions for ${first}`);
+    await menu.getByRole('menuitem', { name: 'Show on the app' }).click();
+    await expect(toast(page, 'E2E: refused by the server.')).toBeVisible({ timeout: 15_000 });
+    await page.unroute(visibility);
+    await open(page);
+    await onlyThisRun(page);
+    await expect(rowOf(page, first)).toContainText('Hidden', { timeout: 15_000 });
+  });
+
+  test('a category is added, renamed, hidden and deleted on the server; a taken name is refused', async ({ page }) => {
+    const name = `Live Devs ${stamp}`;
+    const renamed = `Live Mentors ${stamp}`;
+    await open(page);
+    await page.getByRole('tab', { name: 'Categories' }).click();
+    await page.getByTestId('showcase-add-category').click();
+    let dialog = page.getByTestId('showcase-category-dialog');
+    await dialog.getByRole('textbox', { name: 'Name' }).fill(name);
+    await dialog.getByTestId('showcase-category-save').click();
+    await expect(dialog).toBeHidden({ timeout: 15_000 });
+    await expect(rowOf(page, name)).toContainText('Visible', { timeout: 15_000 });
+
+    // The server's own uniqueness check: a name the form cannot know is taken yet (made by "someone else", straight on the API).
+    const other = `Live Taken ${stamp}`;
+    const made = await page.request.post(`${API_URL}/admin/showcase/categories`, { data: { name: other, kind: 'person' } });
+    expect(made.status()).toBe(201);
+    await page.getByTestId('showcase-add-category').click();
+    dialog = page.getByTestId('showcase-category-dialog');
+    await dialog.getByRole('textbox', { name: 'Name' }).fill(other.toUpperCase());
+    await dialog.getByTestId('showcase-category-save').click();
+    await expect(dialog.getByTestId('showcase-category-problem')).toContainText('A category with this name already exists.', { timeout: 15_000 });
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
+
+    let menu = await openMenu(page, `Category actions for ${name}`);
+    await menu.getByRole('menuitem', { name: 'Rename' }).click();
+    await page.getByTestId('showcase-category-dialog').getByRole('textbox', { name: 'Name' }).fill(renamed);
+    await page.getByTestId('showcase-category-save').click();
+    await expect(rowOf(page, renamed)).toHaveCount(1, { timeout: 15_000 });
+
+    menu = await openMenu(page, `Category actions for ${renamed}`);
+    await menu.getByRole('menuitem', { name: 'Hide from the app' }).click();
+    await expect(rowOf(page, renamed)).toContainText('Hidden', { timeout: 15_000 });
+
+    for (const remove of [renamed, other]) {
+      menu = await openMenu(page, `Category actions for ${remove}`);
+      await menu.getByRole('menuitem', { name: 'Delete' }).click();
+      await page.getByRole('alertdialog').getByRole('button', { name: 'Delete category' }).click();
+      await expect(rowOf(page, remove)).toHaveCount(0, { timeout: 15_000 });
+    }
   });
 });

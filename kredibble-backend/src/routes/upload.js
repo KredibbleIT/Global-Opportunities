@@ -54,6 +54,9 @@ const UPLOAD_PURPOSE_VALUES = Object.values(UPLOAD_PURPOSE);
 export const ADMIN_UPLOAD_SCREENS = Object.freeze({
   'article-banner': 'career_resources',
   'ambassador-photo': 'network',
+  // BE-031: Showcase pictures, for the editors of any category (the Showcase
+  // routes then check the category itself).
+  'showcase-photo': ['showcase', 'showcase.ambassadors', 'showcase.partners'],
 });
 
 export const requireAdminUploadScreen = requireAdminScreen(

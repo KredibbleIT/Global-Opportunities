@@ -28,3 +28,11 @@ export const orMissing = <T>(error: unknown): T | undefined => {
   if (error instanceof ApiError && error.status === 404) return undefined;
   throw error;
 };
+
+/** A picked photo arrives from FileDrop as a base64 data: URL; the upload route takes a file. */
+export function dataUrlToFile(dataUrl: string, baseName: string): File {
+  const [header, base64 = ""] = dataUrl.split(",", 2);
+  const type = /^data:([^;,]+)/.exec(header)?.[1] ?? "image/png";
+  const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+  return new File([bytes], `${baseName}.${type.split("/")[1] ?? "png"}`, { type });
+}

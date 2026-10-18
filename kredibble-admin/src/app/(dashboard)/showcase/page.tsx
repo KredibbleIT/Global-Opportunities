@@ -14,7 +14,8 @@
  *   Partnerships Officer edits Partners only (see lib/showcase.ts canEditCategory). Anyone else cannot open the page. Controls are not
  *   rendered without permission and every handler checks again.
  * - Every change writes an audit entry, shown in "History".
- * Data: services/showcase.ts (in-memory mock store). TODO(backend): persist this change (see task.md).
+ * Data: services/showcase.ts. Real mode reads and changes it through the API (BE-030), which checks the role per category and
+ * writes the History; mock mode uses the in-memory store.
  */
 import { useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Eye, EyeOff, History, Pencil, Plus, Smartphone, Star, Trash2 } from "lucide-react";
@@ -30,7 +31,6 @@ import { useShowcaseManager } from "@/components/showcase/use-showcase-manager";
 import { Button } from "@/components/ui/Button";
 import { IconButton } from "@/components/ui/IconButton";
 import { Kebab } from "@/components/ui/Kebab";
-import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 import { Tabs, tabId, tabPanelId } from "@/components/ui/Tabs";
 
 type PageTab = "entries" | "categories";
@@ -152,7 +152,6 @@ export default function ShowcasePage() {
           </div>
           {action}
         </header>
-        <NotConnectedNotice />
         {manager.canManageCategories && (
           <Tabs
             ariaLabel="Showcase sections"
