@@ -176,8 +176,11 @@ describe('SEC-133: the matrix alone decides', () => {
   it('a moderator with an admin session lists and moderates the opportunities queue', async () => {
     const moderator = await createStaffUser({ roles: ['moderator'] });
     expect((await as(moderator).get('/admin/opportunities')).status).toBe(200);
-    const write = await as(moderator).post('/admin/opportunities', {});
-    expect([400, 422]).toContain(write.status); // past the guard, stopped by validation
+    // Moderating is a PATCH of moderationStatus/vetted: past the guard, stopped by the unknown id.
+    const moderated = await as(moderator).patch(`/admin/opportunities/${new mongoose.Types.ObjectId()}`, { moderationStatus: 'rejected' });
+    expect(moderated.status).toBe(404);
+    // SEC-137: creating a listing is listings_curate's, which a Moderator does not hold.
+    expect((await as(moderator).post('/admin/opportunities', {})).status).toBe(403);
   });
 
   it('Admin Support cannot change a monthly target; Desk Lead can reach the route', async () => {

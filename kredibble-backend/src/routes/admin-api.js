@@ -3991,7 +3991,7 @@ adminApiRouter.put('/roles-permissions', requireAdminOrStaffAuth, requireScreen(
 
   invalidateTogglesCache();
 
-  auditReq(req, {
+  await auditReq(req, {
     action: AUDIT_ACTIONS.ROLES_PERMISSIONS_UPDATE,
     resourceType: 'roles_permissions',
     resourceId: config._id,

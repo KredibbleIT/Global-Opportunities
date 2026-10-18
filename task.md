@@ -1625,6 +1625,7 @@ Found while planning the move to the company infrastructure platform (`Company_I
 **Acceptance criteria:**
 - [x] A Moderator gets 403 on create, a content `PATCH` and `DELETE`, and 200 on approve, reject and unpublish (`tests/sec-137-moderator-queue-scope.test.js`; also 403 when moderation fields come with a content field, and on an empty `PATCH`)
 - [x] An Opportunities Officer keeps all of them; the SEC-131 role table covers `listings_curate` (new rows: queue-moderation `PATCH` and unpublish, curate `POST`, content `PATCH` and `DELETE`, every role in both realms). SEC-131 + SEC-137 files: 41/41. With `main`'s routes put back, 4 fail
+- Verified 2026-10-18: backend 55 suites, 817 tests, all green. In the full run, 5 suites lost their in-memory MongoDB under memory pressure (`ECONNREFUSED`, 3 GB free); they passed 22/22 when rerun. `tests/sec-132-135-staff-authz.test.js` (SEC-133) now shows the Moderator moderating with a `PATCH` (404 on an unknown id: past the guard) and refused a create (403); it used to expect a create to get past the guard. Also fixed: `PUT /admin/roles-permissions` didn't await its BE-018 audit write, so `be-001-permissions.test.js` raced it and failed intermittently under load (2 of 4 paired runs); it now awaits, as every other audited route in the file does. Lint clean
 
 # Execution Order
 
