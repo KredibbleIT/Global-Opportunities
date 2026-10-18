@@ -2711,6 +2711,27 @@ test.describe('Roles: gated navigation (dev role cookie, mock mode)', () => {
     await expect(page.getByTestId('page-title')).toHaveText('Invite Staff');
   });
 
+  test('SEC-134: only a Super Admin adds staff or changes their roles and access', async ({ page, context }) => {
+    await asRoles(context, 'admin_support');
+    await page.goto(`${BASE_URL}/team`, { timeout: 30_000 });
+    await expect(page.getByTestId('table-row').first()).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Invite Staff' })).toHaveCount(0);
+    await page.goto(`${BASE_URL}/staff/invite`);
+    await expect(page.getByTestId('invite-super-admin-only')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Send invite' })).toHaveCount(0);
+    await page.goto(`${BASE_URL}/staff/staff-2`);
+    await expect(page.getByTestId('page-title')).toBeVisible();
+    for (const box of await page.getByRole('group', { name: 'Roles' }).getByRole('checkbox').all()) await expect(box).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Suspend access' })).toHaveCount(0);
+    await expect(page.getByText('Only a Super Admin can change them.')).toBeVisible();
+
+    await asRoles(context, 'super_admin');
+    await page.goto(`${BASE_URL}/staff/staff-2`);
+    await expect(page.getByRole('button', { name: 'Suspend access' })).toBeVisible();
+    await page.goto(`${BASE_URL}/team`);
+    await expect(page.getByRole('link', { name: 'Invite Staff' })).toBeVisible();
+  });
+
   test('the Scorecard has a Team tab only for the desk lead and the super admin', async ({ page, context }) => {
     await asRoles(context, 'moderator');
     await page.goto(`${BASE_URL}/scorecard?tab=team`, { timeout: 30_000 });

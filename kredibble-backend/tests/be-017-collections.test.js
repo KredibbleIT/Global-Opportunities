@@ -211,6 +211,7 @@ describe('BE-017: Remaining Collections Integration', () => {
     });
 
     it('DELETE /api/v1/admin/staff/:id removes staff member and audits', async () => {
+      const before = await User.findById(supportStaff.userId).select('tokenVersion').lean();
       const res = await request(app)
         .delete(`/api/v1/admin/staff/${supportStaff._id}`)
         .set('Cookie', adminCookie)
@@ -218,8 +219,12 @@ describe('BE-017: Remaining Collections Integration', () => {
 
       expect(res.body.data.removed).toBe(true);
 
-      const found = await StaffMember.findById(supportStaff._id);
-      expect(found).toBeNull();
+      // SEC-134: the record stays, deactivated (with none, the user would count
+      // as the root admin), and the person is signed out everywhere.
+      const found = await StaffMember.findById(supportStaff._id).lean();
+      expect(found.status).toBe('deactivated');
+      const after = await User.findById(supportStaff.userId).select('tokenVersion').lean();
+      expect(after.tokenVersion).toBe((before.tokenVersion || 0) + 1);
     });
   });
 

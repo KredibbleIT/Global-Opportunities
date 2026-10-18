@@ -404,7 +404,8 @@ test.describe('Accounts: access (mock mode)', () => {
       await expect(page.getByTestId('create-account-open')).toHaveCount(0);
       await expect(page.getByTestId('account-history-open')).toHaveCount(0);
       await expect(page.getByRole('button', { name: /^Account actions for / })).toHaveCount(0);
-      await expect(page.getByRole('link', { name: 'Invite Staff' })).toBeVisible(); // the older invite flow is unchanged
+      // SEC-134: the older invite flow gives roles too, so it is Super Admin only as well.
+      await expect(page.getByRole('link', { name: 'Invite Staff' })).toHaveCount(0);
     });
   }
 

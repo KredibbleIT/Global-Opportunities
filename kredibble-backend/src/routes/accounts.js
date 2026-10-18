@@ -106,15 +106,23 @@ accountsRouter.post(
       passwordHash: await bcrypt.hash(randomPassword, 12),
     });
 
-    const staff = await StaffMember.create({
-      userId: user._id,
-      name: user.name,
-      email: user.email,
-      roles,
-      role: roles.join(','),
-      status: 'invited',
-      joinedDate: new Date().toISOString().slice(0, 10),
-    });
+    // SEC-134: an admin user with no staff record counts as the root admin,
+    // so a failed staff insert must not leave this user behind.
+    let staff;
+    try {
+      staff = await StaffMember.create({
+        userId: user._id,
+        name: user.name,
+        email: user.email,
+        roles,
+        role: roles.join(','),
+        status: 'invited',
+        joinedDate: new Date().toISOString().slice(0, 10),
+      });
+    } catch (error) {
+      await User.deleteOne({ _id: user._id });
+      throw error;
+    }
 
     const token = mintInviteToken();
     await AccountInvite.create({

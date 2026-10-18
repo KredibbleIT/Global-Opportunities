@@ -9,8 +9,10 @@
  * derived from the current permissions on Team > Roles & permissions. The chosen roles show as chips; the second can be
  * removed with its x.
  *
- * Behaviour: errors show after a field is left and on submit; Send invite shows a spinner while saving,
- * then a toast and back to Team; leaving with unsaved changes asks first.
+ * Behaviour: errors show after a field is left and on submit; Send invite shows a spinner while the API saves,
+ * then a toast and back to Team, or the API's error and the form stays; leaving with unsaved changes asks first.
+ * Who: adding staff gives them roles, so only a Super Admin gets the form (accounts.create, SEC-134). Anyone else with
+ * Team edit sees why instead; the API refuses them too.
  * Data: the ONE staff collection (services/staff.ts): the new person is added to it, so the Team page, their member page
  * and the scorecards see them at once.
  */
@@ -20,6 +22,7 @@ import { MAX_STAFF_ROLES } from "@/config/staff-roles";
 import { ROLE_IDS, ROLES, type Role } from "@/config/roles";
 import { inviteStaff } from "@/lib/services/staff";
 import { describeRole } from "@/lib/role-permissions";
+import { useRoles } from "@/components/access/RoleProvider";
 import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/form/Field";
 import { FormSection } from "@/components/ui/form/FormSection";
@@ -53,6 +56,8 @@ export default function InviteStaffPage() {
   const formRef = useRef<HTMLFormElement>(null);
   const { show, touch, touchAll } = useTouched();
   const toast = useToast();
+  const { can } = useRoles();
+  const allowed = can("accounts.create", "edit");
 
   const dirty = name !== "" || email !== "" || role !== "support" || second !== NO_SECOND;
   const chosen: Role[] = second === NO_SECOND ? [role] : [role, second].slice(0, MAX_STAFF_ROLES) as Role[];
@@ -72,12 +77,27 @@ export default function InviteStaffPage() {
       return;
     }
     setSaving(true);
-    // TODO(backend): persist this change (send the invitation). The in-memory staff store stands in for now.
-    await new Promise((resolve) => setTimeout(resolve, 700));
-    inviteStaff(name.trim(), email.trim(), chosen);
+    try {
+      await inviteStaff(name.trim(), email.trim(), chosen);
+    } catch (problem) {
+      setSaving(false);
+      toast.error(problem instanceof Error ? problem.message : "The invitation could not be sent. Try again.");
+      return;
+    }
     toast.success(`${name.trim()} was invited as ${chosen.map((held) => ROLES[held].label).join(" and ")}.`);
     guard.leaveNow(LIST_HREF);
   };
+
+  if (!allowed) {
+    return (
+      <div className="max-w-160">
+        <h1 data-testid="page-title" className="page-title">Invite Staff</h1>
+        <p data-testid="invite-super-admin-only" className="page-subtitle mt-1">
+          Only a Super Admin can add staff, because adding someone gives them a role. Ask a Super Admin to invite them.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <form ref={formRef} onSubmit={submit} noValidate className="flex flex-1 flex-col">

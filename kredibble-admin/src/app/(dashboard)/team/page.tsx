@@ -4,7 +4,7 @@
  * Team: this one page replaces Staff and Roles & Permissions (their old URLs redirect here: see
  * src/config/redirects.ts). The tab is kept in the URL: /team (Members) and /team?tab=roles.
  *
- * - Members: the staff list on the shared list template, with "Invite Staff" (opens /staff/invite) and, for a Super Admin only,
+ * - Members: the staff list on the shared list template, with, for a Super Admin only, "Invite Staff" (opens /staff/invite),
  *   "Create account" (User or Admin, created as Invited with a 48-hour invite link), "Account history" and a row menu (see use-account-manager).
  *   A member's row opens /staff/[id]; both stay real routes under Team.
  * - Roles & permissions: three role cards with switches, a sticky save bar and the compact matrix of the other ten roles.
@@ -56,10 +56,13 @@ export default function TeamPage() {
                 </Button>
               </>
             )}
-            <Link href="/staff/invite" className={buttonClasses("primary")}>
-              <Plus size={16} strokeWidth={2} aria-hidden="true" />
-              Invite Staff
-            </Link>
+            {/* Adding staff gives them roles, so it is Super Admin only like Create account (SEC-134). */}
+            {accounts.allowed && (
+              <Link href="/staff/invite" className={buttonClasses("primary")}>
+                <Plus size={16} strokeWidth={2} aria-hidden="true" />
+                Invite Staff
+              </Link>
+            )}
           </div>
         )}
       </header>

@@ -43,6 +43,20 @@ describe('BE-031 upload: only real images, 5 MB at most', () => {
     expect(res.body.data.url).toMatch(/^https:\/\/res\.cloudinary\.com\/test\/image\/upload\/kredibble\/admin\/showcase-photo\//);
   });
 
+  it('lets the editor of any one category upload (SEC-132 screen check), and nobody without Showcase edit', async () => {
+    const { StaffMember } = await import('../src/models/User.js');
+    const staffCookie = async (roles) => {
+      const user = await User.create({ name: `Test ${roles[0]}`, email: `be031-${roles[0]}-${Date.now()}@example.com`, role: 'admin', passwordHash: 'x' });
+      await StaffMember.create({ userId: user._id, name: user.name, email: user.email, roles, status: 'active' });
+      return ['Cookie', `kredibble_admin_token=${signAdminToken(user)}`];
+    };
+    const as = async (roles) => request(app).post(api('/admin/upload?purpose=showcase-photo')).set(...(await staffCookie(roles))).attach('file', PNG, { filename: 'face.png', contentType: 'image/png' });
+    expect((await as(['country_lead'])).status).toBe(200);
+    expect((await as(['partnerships_officer'])).status).toBe(200);
+    expect((await as(['communications_officer'])).status).toBe(200);
+    expect((await as(['support'])).status).toBe(403);
+  });
+
   it('refuses a text file, a renamed executable and a file over 5 MB', async () => {
     expect((await upload(Buffer.from('hello'), 'notes.txt', 'text/plain')).status).toBe(400);
     expect((await upload(EXE, 'photo.png', 'image/png')).status).toBe(400);
