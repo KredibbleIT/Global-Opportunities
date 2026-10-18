@@ -463,6 +463,10 @@ export async function requestPage<T>(path: string): Promise<Paginated<T>> {
   return { data: payload.data, meta: payload.meta };
 }
 
+/**
+ * Asks the API who is signed in (GET /auth/admin/me) and saves the answer, with the staff roles and screens, as the
+ * session user. Returns null and clears the session when the API refuses (no session, a suspended or removed staffer).
+ */
 export const checkAdminSession = async (): Promise<AuthUser | null> => {
   try {
     const data = await request<AuthUser>("/auth/admin/me");
@@ -543,6 +547,11 @@ export const loginAdmin = async (email: string, password: string) => {
   }
 
   saveAdminUser(session.user);
+  // SEC-136: the session role is "admin" for every staff member, so it says nothing about their screens. The staff
+  // roles come from /auth/admin/me, which refuses anyone with no roles (a suspended or invited staff record).
+  if (!(await checkAdminSession())) {
+    throw new Error("This account does not have admin access");
+  }
   return session;
 };
 
