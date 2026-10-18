@@ -122,7 +122,10 @@ test.describe('Partners and Programs for their own roles (real API, SEC-135)', (
       await trainerPage.getByRole('option', { name: partnerName }).click();
       await trainerPage.getByRole('button', { name: 'Create program' }).click();
       await expect(trainerPage.getByText(`${programName} was created.`)).toBeVisible({ timeout: 15_000 });
-      await expect(trainerPage.getByTestId('partner-link')).toHaveText(partnerName, { timeout: 15_000 });
+      // The program names its partner. With SEC-136 the UI follows the trainer's own roles: there is no Partners
+      // screen, so the name is plain text rather than a link to the partner page.
+      await expect(trainerPage.locator('main')).toContainText(partnerName, { timeout: 15_000 });
+      await expect(trainerPage.getByTestId('partner-link')).toHaveCount(0);
     } finally {
       await context.close();
     }
