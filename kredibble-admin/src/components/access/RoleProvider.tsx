@@ -7,8 +7,9 @@
  * Where the roles come from (first match wins)
  * 1. Development with mock data only: the role(s) chosen in the dev switcher. The choice is kept in a cookie
  *    (src/config/dev-roles.ts) that the server layout reads, so the first paint already uses it (no flash).
- * 2. The real session: role "admin" maps to super_admin; a session role that is already a desk role id is used as is.
- * 3. No session user in mock mode: super_admin, so the mock app is fully usable.
+ * 2. The real session: the staff roles GET /auth/admin/me reported, which the login and the dashboard shell save with
+ *    the session user (SEC-136). The session role itself is "admin" for every staff member, so it is not used.
+ * 3. Mock mode without those roles: super_admin, so the mock app is fully usable.
  * In production only (2) applies: the cookie and the switcher do not exist.
  *
  * Provides (useRoles): roles, can(screen, level), the switcher state and setDevRoles(roles).
@@ -39,13 +40,11 @@ interface RoleContextValue {
 
 const RoleContext = createContext<RoleContextValue | null>(null);
 
-/** Roles from the real session (see the file header). */
+/** Roles from the real session (see the file header). No roles means no screens beyond what the server allows. */
 function sessionRoles(mockMode: boolean): Role[] {
-  const role = getAdminUser()?.role as string | undefined;
-  if (role === "admin") return ["super_admin"];
-  if (role && isRole(role)) return [role];
-  if (!role && mockMode) return ["super_admin"];
-  return [];
+  const fromServer = (getAdminUser()?.roles ?? []).filter(isRole);
+  if (fromServer.length > 0) return fromServer;
+  return mockMode ? ["super_admin"] : [];
 }
 
 export function RoleProvider({ initialDevRoles, children }: { initialDevRoles: Role[]; children: ReactNode }) {

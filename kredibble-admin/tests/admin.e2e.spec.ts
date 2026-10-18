@@ -601,9 +601,13 @@ test.describe('Overview', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
   test('greets the signed-in person by first name, time-of-day aware', async ({ page }) => {
-    await signedIn(page); // name: "Test Admin"
+    await signedIn(page); // name: "Test Admin" (in real mode the shell replaces it with the API's session user: SEC-136)
     await page.goto(`${BASE_URL}/`);
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText(/^Good (morning|afternoon|evening), Test\.$/);
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    const first = await page.evaluate(() => ((JSON.parse(localStorage.getItem('kredibble_admin_user') ?? '{}') as { name?: string }).name ?? '').split(' ')[0]);
+    expect(first).toBeTruthy();
+    const escaped = first.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(new RegExp(`^Good (morning|afternoon|evening), ${escaped}\\.$`));
     await expect(page.getByText("Here's what's happening across your platform today.")).toBeVisible();
     await expect(page.getByRole('link', { name: 'View report' })).toHaveAttribute('href', `/monthly-report/partner?month=${currentMonth()}`);
   });

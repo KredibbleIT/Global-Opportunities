@@ -4,6 +4,10 @@
  * DashboardShell: the client half of the dashboard layout.
  * Session gate + sidebar + top bar + <main> + command palette.
  *
+ * Session gate: no saved session goes to /login. In real mode the shell then asks the API who is signed in
+ * (/auth/admin/me) before rendering, so the roles the RoleProvider reads are the server's current ones: a role change
+ * shows on the next load, and a suspended or removed staffer, or an expired session, goes back to /login (SEC-136).
+ *
  * State it owns
  * - collapsed: the sidebar rail preference. The server layout reads the
  *   "sidebar" cookie and passes it as `initialSidebar`, so the first paint is
@@ -30,7 +34,7 @@ import { TopBar } from "@/components/TopBar";
 import { ToastProvider } from "@/components/ui/Toast";
 import type { Role } from "@/config/roles";
 import { SIDEBAR_COOKIE, type SidebarPreference } from "@/config/sidebar";
-import { hasAdminSession } from "@/lib/api";
+import { checkAdminSession, hasAdminSession } from "@/lib/api";
 import { useMockStoreVersion } from "@/lib/mock-store";
 import { getMockNavCounts } from "@/lib/services/mock-counts";
 import { isMockMode } from "@/lib/services/mock-mode";
@@ -79,8 +83,17 @@ export function DashboardShell({ initialSidebar, initialDevRoles, children }: Da
       return;
     }
 
-    const timer = setTimeout(() => setIsCheckingSession(false), 0);
-    return () => clearTimeout(timer);
+    // Mock mode has no server session to ask; the RoleProvider uses its dev roles there.
+    let cancelled = false;
+    const confirmed = isMockMode() ? Promise.resolve(true) : checkAdminSession().then(Boolean);
+    void confirmed.then((ok) => {
+      if (cancelled) return;
+      if (ok) setIsCheckingSession(false);
+      else router.replace("/login");
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   // Global shortcuts.
