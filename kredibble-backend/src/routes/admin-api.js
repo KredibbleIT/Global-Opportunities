@@ -540,6 +540,20 @@ const prepareOpportunity = (data, actorId, existing = {}) => {
   return next;
 };
 
+// SEC-137: moderating a listing (approve, reject) is the queue's job; writing one is listings_curate's. A Moderator holds
+// the first through the "moderate" toggle, and Opportunities Officers, Desk Leads and Super Admins hold both.
+const MODERATION_FIELDS = new Set(['moderationStatus', 'vetted']);
+
+/**
+ * Guards PATCH /opportunities/:id: `opportunities_queue` edit when the body only moderates (moderationStatus, vetted),
+ * `listings_curate` edit for anything else, an empty body included.
+ */
+const requireOpportunityPatchScreen = (req, res, next) => {
+  const fields = Object.keys(req.body || {});
+  const moderationOnly = fields.length > 0 && fields.every((field) => MODERATION_FIELDS.has(field));
+  return requireScreen(moderationOnly ? 'opportunities_queue' : 'listings_curate', 'edit')(req, res, next);
+};
+
 adminApiRouter.get('/opportunities/counts', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'view'), asyncHandler(async (req, res) => {
   const [unvettedDrafts, drafts, published, pending, vetted, total] = await Promise.all([
     Opportunity.countDocuments({ status: 'draft', vetted: false }),
@@ -592,7 +606,7 @@ adminApiRouter.get('/opportunities/:id', requireAdminOrStaffAuth, requireScreen(
   itemResponse(res, toOpportunityAdminObject(record));
 }));
 
-adminApiRouter.post('/opportunities', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'edit'), validate(opportunityCreateSchema), asyncHandler(async (req, res) => {
+adminApiRouter.post('/opportunities', requireAdminOrStaffAuth, requireScreen('listings_curate', 'edit'), validate(opportunityCreateSchema), asyncHandler(async (req, res) => {
   const prepared = prepareOpportunity(req.body, req.auth.sub);
   const record = new Opportunity({ ...prepared, createdBy: req.auth.sub });
   await record.save();
@@ -615,7 +629,7 @@ adminApiRouter.post('/opportunities', requireAdminOrStaffAuth, requireScreen('op
   res.status(201).json({ data: { ...toOpportunityAdminObject(record), sync } });
 }));
 
-adminApiRouter.patch('/opportunities/:id', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'edit'), validate(opportunityUpdateSchema), asyncHandler(async (req, res) => {
+adminApiRouter.patch('/opportunities/:id', requireAdminOrStaffAuth, requireOpportunityPatchScreen, validate(opportunityUpdateSchema), asyncHandler(async (req, res) => {
   const record = await Opportunity.findById(validId(req.params.id, 'Opportunity'));
   if (!record) throw notFound('Opportunity');
   const wasVetted = record.vetted;
@@ -729,7 +743,7 @@ adminApiRouter.get('/opportunities/:id/analytics', requireAdminOrStaffAuth, requ
   itemResponse(res, analytics);
 }));
 
-adminApiRouter.delete('/opportunities/:id', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'edit'), asyncHandler(async (req, res) => {
+adminApiRouter.delete('/opportunities/:id', requireAdminOrStaffAuth, requireScreen('listings_curate', 'edit'), asyncHandler(async (req, res) => {
   const record = await Opportunity.findById(validId(req.params.id, 'Opportunity'));
   if (!record) throw notFound('Opportunity');
   let sync;

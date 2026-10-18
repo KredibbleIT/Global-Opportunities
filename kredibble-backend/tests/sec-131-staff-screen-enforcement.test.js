@@ -19,8 +19,8 @@ const randomId = () => new mongoose.Types.ObjectId().toString();
 const ROOT_ADMIN = 'root admin (no staff record)';
 
 // One GET and one write per screen that has a requireScreen route. Writes send
-// an empty body (or an unknown id) so an allowed caller stops at validation or
-// a 404 and nothing is written. Since SEC-133 the BE-001 matrix alone decides:
+// an empty body (or `body`, with an unknown id) so an allowed caller stops at
+// validation or a 404 and nothing is written. Since SEC-133 the BE-001 matrix alone decides:
 // no route chains an older role list any more.
 const SCREEN_ROUTES = [
   { screens: ['overview'], level: 'view', method: 'get', path: '/admin/targets' },
@@ -31,7 +31,12 @@ const SCREEN_ROUTES = [
   { screens: ['my_scorecard'], level: 'view', method: 'get', path: '/admin/scorecards/me' },
   { screens: ['team_scorecard'], level: 'view', method: 'get', path: '/admin/scorecards/team' },
   { screens: ['opportunities_queue'], level: 'view', method: 'get', path: '/admin/opportunities' },
-  { screens: ['opportunities_queue'], level: 'edit', method: 'post', path: '/admin/opportunities' },
+  // SEC-137: approving or rejecting is the queue's; creating, rewriting and deleting a listing are listings_curate's.
+  { screens: ['opportunities_queue'], level: 'edit', method: 'patch', path: () => `/admin/opportunities/${randomId()}`, body: { moderationStatus: 'rejected' } },
+  { screens: ['opportunities_queue'], level: 'edit', method: 'post', path: () => `/admin/opportunities/${randomId()}/unpublish` },
+  { screens: ['listings_curate'], level: 'edit', method: 'post', path: '/admin/opportunities' },
+  { screens: ['listings_curate'], level: 'edit', method: 'patch', path: () => `/admin/opportunities/${randomId()}`, body: { title: 'Probe listing title' } },
+  { screens: ['listings_curate'], level: 'edit', method: 'delete', path: () => `/admin/opportunities/${randomId()}` },
   { screens: ['programs'], level: 'view', method: 'get', path: '/admin/programs' },
   { screens: ['programs'], level: 'edit', method: 'patch', path: () => `/admin/programs/${randomId()}` },
   { screens: ['partners'], level: 'view', method: 'get', path: '/admin/partners' },
@@ -76,7 +81,7 @@ const call = (route, credentials, path = pathOf(route)) => {
   let req = request(app)[route.method](api(path));
   if (credentials.cookie) req = req.set('Cookie', credentials.cookie);
   if (credentials.bearer) req = req.set('Authorization', `Bearer ${credentials.bearer}`);
-  return route.method === 'get' ? req : req.send({});
+  return route.method === 'get' ? req : req.send(route.body ?? {});
 };
 
 /** Every row the caller got wrong, as readable strings (empty when all match). */
