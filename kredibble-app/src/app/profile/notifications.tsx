@@ -5,9 +5,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
 import { profileStore, NotificationSettings } from '../../constants/mockProfile';
+import { useToast } from '../../components/ui/ToastProvider';
+import { usePushPreference } from '../../lib/pushPreference';
 
 export default function ManageNotificationsScreen() {
   const router = useRouter();
+  const { showToast } = useToast();
+  // SEC-138: the push switch is saved on the server; the other switches are still local.
+  const push = usePushPreference(message => showToast(message, 'error'));
   const [settings, setSettings] = useState<NotificationSettings>(profileStore.notifications);
 
   useEffect(() => {
@@ -88,7 +93,17 @@ export default function ManageNotificationsScreen() {
         <View style={styles.card}>
           {renderToggle('Marketing communication updates', settings.marketingUpdates, 'marketingUpdates')}
           <View style={styles.divider} />
-          {renderToggle('Push notifications', settings.pushNotifications, 'pushNotifications')}
+          <View style={styles.toggleRow}>
+            <Text style={styles.toggleLabel} className="font-sans">Push notifications</Text>
+            <Switch
+              value={push.enabled}
+              disabled={push.saving}
+              onValueChange={push.setEnabled}
+              trackColor={{ false: '#E5E6F2', true: Colors.primary }}
+              thumbColor="#FFFFFF"
+              ios_backgroundColor="#E5E6F2"
+            />
+          </View>
         </View>
 
       </ScrollView>

@@ -4,6 +4,7 @@ import * as Device from 'expo-device';
 import NetInfo from '@react-native-community/netinfo';
 import { openPrivacyPolicy, openTermsOfService, PRIVACY_POLICY_URL, TERMS_OF_SERVICE_URL } from '../src/lib/legal';
 import { registerForPushNotificationsAsync } from '../src/lib/notifications';
+import { registerPushToken } from '../src/lib/api';
 import { computeIsOffline, checkNetworkConnection } from '../src/lib/network';
 
 jest.mock('lucide-react-native', () => ({
@@ -40,6 +41,7 @@ jest.mock('@react-native-community/netinfo', () => ({
 
 jest.mock('../src/lib/api', () => ({
   getMobileToken: jest.fn().mockResolvedValue('test-user-session-token'),
+  registerPushToken: jest.fn().mockResolvedValue(undefined),
   API_BASE_URL: 'https://api.kredibble.app/api/v1',
 }));
 
@@ -85,15 +87,8 @@ describe('store compliance: legal links, push notifications, netinfo (MOB-015 / 
       const token = await registerForPushNotificationsAsync('ios');
 
       expect(token).toBe('ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]');
-      expect(global.fetch).toHaveBeenCalledWith(
-        expect.stringContaining('/users/me/push-token'),
-        expect.objectContaining({
-          method: 'POST',
-          headers: expect.objectContaining({
-            Authorization: 'Bearer test-user-session-token',
-          }),
-        })
-      );
+      // The request itself (POST /users/me/push-token with the session) is covered in push-notifications.test.ts.
+      expect(registerPushToken).toHaveBeenCalledWith('ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]', 'ios');
     });
 
     test('requests permissions if not initially granted and succeeds when accepted', async () => {

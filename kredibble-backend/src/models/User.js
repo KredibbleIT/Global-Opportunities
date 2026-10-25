@@ -47,6 +47,8 @@ const userSchema = new mongoose.Schema({
     verifications: { type: Boolean, default: true },
     reports: { type: Boolean, default: true },
     testimonials: { type: Boolean, default: false },
+    // SEC-138: phone pushes. Off stops pushes only; the in-app list still shows everything.
+    push: { type: Boolean, default: true },
   },
 }, { timestamps: true });
 

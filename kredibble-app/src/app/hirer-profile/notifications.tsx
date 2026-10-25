@@ -5,9 +5,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
 import { authStore, HirerNotificationSettings } from '../../constants/authStore';
+import { useToast } from '../../components/ui/ToastProvider';
+import { usePushPreference } from '../../lib/pushPreference';
 
 export default function HirerNotificationsScreen() {
   const router = useRouter();
+  const { showToast } = useToast();
+  // SEC-138: the push switch is saved on the server; the other switches are still local.
+  const push = usePushPreference(message => showToast(message, 'error'));
   const [settings, setSettings] = useState<HirerNotificationSettings>(authStore.hirerNotifications);
 
   useEffect(() => {
@@ -43,6 +48,21 @@ export default function HirerNotificationsScreen() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <Text style={styles.sectionHeader} className="font-sans">Phone notifications</Text>
+        <View style={styles.card}>
+          <View style={styles.toggleRow}>
+            <Text style={styles.toggleLabel} className="font-sans">Push notifications</Text>
+            <Switch
+              value={push.enabled}
+              disabled={push.saving}
+              onValueChange={push.setEnabled}
+              trackColor={{ false: '#E5E6F2', true: Colors.primary }}
+              thumbColor="#FFFFFF"
+              ios_backgroundColor="#E5E6F2"
+            />
+          </View>
+        </View>
+
         <Text style={styles.sectionHeader} className="font-sans">Recruiting Activity</Text>
         <View style={styles.card}>
           {renderToggle('New applicants', 'newApplicants')}

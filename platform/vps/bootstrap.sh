@@ -10,8 +10,11 @@ set -euo pipefail
 #
 # Tasks performed:
 #   1. System packages upgrade and automatic security updates
-#   2. SSH daemon security hardening (key-only authentication)
-#   3. UFW firewall setup (strictly allow 22, 80, 443 only)
+#   2. SSH daemon security hardening (key-only authentication), checked
+#      against the configuration sshd actually loads (SEC-139)
+#   3. UFW firewall setup (allow 22, 80, 443). Docker-published ports such as
+#      Caddy's 80/443 bypass UFW, so limiting them to Cloudflare happens in the
+#      Hostinger panel firewall (docs/infrastructure/VPS.md, SEC-140)
 #   4. Fail2ban configuration for brute-force SSH defense
 #   5. Official Docker Engine & Docker Compose plugin installation
 #   6. Unprivileged 'deploy' user creation and docker group assignment
@@ -48,9 +51,20 @@ echo "==> Step 2: Configuring unattended security updates..."
 systemctl enable --now unattended-upgrades
 
 echo "==> Step 3: Hardening SSH daemon configuration..."
-mkdir -p /etc/ssh/sshd_config.d
-cat > /etc/ssh/sshd_config.d/99-god-hardening.conf << 'EOF'
-# Enforced by Global Opportunities infrastructure bootstrap
+# SEC-139: sshd keeps the FIRST value it reads for each keyword, and it reads
+# sshd_config.d/*.conf in name order before the rest of sshd_config. The cloud
+# image ships 50-cloud-init.conf with "PasswordAuthentication yes" and an
+# sshd_config with "PermitRootLogin yes", so a hardening file named 99-... is
+# read last and loses. Ours is named 00-... so it is read first, and the
+# image's values are switched off too in case our file is ever removed.
+SSHD_DROPIN_DIR=/etc/ssh/sshd_config.d
+SSHD_HARDENING_FILE="${SSHD_DROPIN_DIR}/00-god-hardening.conf"
+mkdir -p "$SSHD_DROPIN_DIR"
+# The old name sorted last and never took effect.
+rm -f "${SSHD_DROPIN_DIR}/99-god-hardening.conf"
+cat > "$SSHD_HARDENING_FILE" << 'EOF'
+# Enforced by Global Opportunities infrastructure bootstrap (SEC-139).
+# Named 00- so sshd reads it before the image's own drop-ins: the first value wins.
 PermitRootLogin prohibit-password
 PasswordAuthentication no
 KbdInteractiveAuthentication no
@@ -60,9 +74,48 @@ ClientAliveInterval 300
 ClientAliveCountMax 2
 EOF
 
-# Test sshd configuration before restarting
+for sshd_file in /etc/ssh/sshd_config "$SSHD_DROPIN_DIR"/*.conf; do
+  if [[ "$sshd_file" == "$SSHD_HARDENING_FILE" || ! -f "$sshd_file" ]]; then
+    continue
+  fi
+  sed -i -E \
+    -e 's/^[[:space:]]*PasswordAuthentication[[:space:]]+yes\b/PasswordAuthentication no/I' \
+    -e 's/^[[:space:]]*KbdInteractiveAuthentication[[:space:]]+yes\b/KbdInteractiveAuthentication no/I' \
+    -e 's/^[[:space:]]*PermitRootLogin[[:space:]]+yes\b/PermitRootLogin prohibit-password/I' \
+    "$sshd_file"
+done
+
+# cloud-init writes 50-cloud-init.conf from ssh_pwauth; keep it from turning
+# password login back on.
+if [[ -d /etc/cloud/cloud.cfg.d ]]; then
+  echo 'ssh_pwauth: false' > /etc/cloud/cloud.cfg.d/99-disable-ssh-pwauth.cfg
+fi
+
 sshd -t
-systemctl reload ssh || systemctl restart ssh || true
+if systemctl is-active --quiet ssh; then
+  systemctl reload ssh
+fi
+
+# Check what sshd will enforce, not what our file says.
+effective_sshd_config="$(sshd -T)"
+require_sshd_setting() {
+  local keyword="$1"
+  shift
+  local actual allowed
+  actual="$(awk -v keyword="$keyword" '$1 == keyword { print $2; exit }' <<< "$effective_sshd_config")"
+  for allowed in "$@"; do
+    if [[ "$actual" == "$allowed" ]]; then
+      return 0
+    fi
+  done
+  echo "Error: sshd would run with '${keyword} ${actual:-<unset>}' (expected: $*)." >&2
+  echo "Find the file that sets it: grep -rn -i '^[[:space:]]*${keyword}' /etc/ssh/sshd_config /etc/ssh/sshd_config.d/" >&2
+  exit 1
+}
+require_sshd_setting passwordauthentication no
+require_sshd_setting kbdinteractiveauthentication no
+require_sshd_setting permitrootlogin prohibit-password without-password no
+echo "Verified with sshd -T: key-only SSH, root login by key only."
 
 echo "==> Step 4: Configuring Fail2ban..."
 cat > /etc/fail2ban/jail.d/sshd.local << 'EOF'
@@ -79,6 +132,10 @@ systemctl enable --now fail2ban
 systemctl restart fail2ban || true
 
 echo "==> Step 5: Configuring UFW firewall..."
+# UFW governs host services such as SSH. Docker writes its own iptables rules
+# for published ports, so Caddy's 80/443 are reachable whatever UFW says.
+# Limit 80/443 to Cloudflare's ranges in the Hostinger panel firewall
+# (docs/infrastructure/VPS.md, section 7; SEC-140).
 ufw default deny incoming
 ufw default allow outgoing
 ufw allow 22/tcp comment 'SSH'
@@ -174,4 +231,7 @@ echo "6. Install backup systemd service and timer:"
 echo "     cp platform/vps/systemd/god-backup-production.* /etc/systemd/system/"
 echo "     systemctl daemon-reload && systemctl enable --now god-backup-production.timer"
 echo "7. Launch edge reverse proxy: docker compose -f platform/vps/edge/compose.yml up -d"
+echo "8. In the Hostinger panel firewall, allow 80/443 only from Cloudflare's ranges"
+echo "     (UFW cannot limit Docker-published ports; see docs/infrastructure/VPS.md)"
+echo "9. Never commit this server's IP: it lets anyone bypass Cloudflare (SEC-140)"
 echo "--------------------------------------------------------------------------------"

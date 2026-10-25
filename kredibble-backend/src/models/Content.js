@@ -38,6 +38,19 @@ notificationSchema.index({ audience: 1, status: 1, sentAt: -1 });
 export const Article = mongoose.model('Article', articleSchema);
 export const Notification = mongoose.model('Notification', notificationSchema);
 
+// SEC-138: one row per push Expo accepted. Expo reports whether the phone
+// actually took it ("receipt") only later, so lib/push.js reads receipts for
+// rows older than 15 minutes and deletes them. Expo keeps receipts for a day;
+// rows nobody could check expire then.
+const pushTicketSchema = new mongoose.Schema({
+  ticketId: { type: String, required: true, unique: true },
+  token: { type: String, required: true },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  createdAt: { type: Date, default: Date.now, expires: 60 * 60 * 24 },
+});
+
+export const PushTicket = mongoose.model('PushTicket', pushTicketSchema);
+
 // BE-022: ingested news store (Insight Ghana, The African Journal).
 // `externalId` (`<source>:<wordpressId>`) is stable across ingests so
 // re-runs update instead of duplicating. `hidden` is staff-only and never

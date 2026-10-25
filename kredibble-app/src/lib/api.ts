@@ -82,6 +82,7 @@ export type AuthUser = {
   seeker?: unknown;
   hirer?: unknown;
   staff?: unknown;
+  notificationPreferences?: { push?: boolean };
 };
 
 type AuthResponse = {
@@ -117,6 +118,19 @@ export const API_BASE_URL = getApiUrl();
 const TOKEN_KEY = 'kredibble_app_token';
 const REFRESH_TOKEN_KEY = 'kredibble_app_refresh_token';
 const USER_KEY = 'kredibble_app_user';
+// SEC-138: the Expo push token this phone last registered, so logout can name it.
+const PUSH_TOKEN_KEY = 'kredibble_app_push_token';
+
+let sessionSavedHandler: (() => unknown) | null = null;
+
+/**
+ * SEC-138: runs after every sign-in or sign-up saves its session, without making the
+ * caller wait. The root layout registers the phone's push token here, because a token
+ * can only reach the server once there is a session.
+ */
+export const setSessionSavedHandler = (handler: (() => unknown) | null) => {
+  sessionSavedHandler = handler;
+};
 
 export const saveMobileSession = async ({ token, user, refreshToken }: AuthResponse) => {
   try {
@@ -127,6 +141,12 @@ export const saveMobileSession = async ({ token, user, refreshToken }: AuthRespo
     await SecureStore.setItemAsync(USER_KEY, JSON.stringify(user));
   } catch {
     // Silently fail if secure store unavailable
+  }
+  const onSaved = sessionSavedHandler;
+  if (onSaved) {
+    Promise.resolve()
+      .then(onSaved)
+      .catch(err => console.warn('After-sign-in step failed:', err));
   }
 };
 
@@ -141,6 +161,15 @@ export const getMobileToken = async () => {
 export const getMobileRefreshToken = async () => {
   try {
     return await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+};
+
+/** The push token this phone last registered (SEC-138), or null if none or unreadable. */
+const getStoredPushToken = async (): Promise<string | null> => {
+  try {
+    return (await SecureStore.getItemAsync(PUSH_TOKEN_KEY)) ?? null;
   } catch {
     return null;
   }
@@ -372,6 +401,9 @@ export const clearMobileSession = async () => {
   try {
     const refreshToken = await getMobileRefreshToken();
     const token = await getMobileToken();
+    // SEC-138: naming this phone's push token stops the server pushing to it,
+    // without touching another phone signed in to the same account.
+    const pushToken = await getStoredPushToken();
     if (refreshToken) {
       await fetch(`${API_BASE_URL}/auth/logout`, {
         method: 'POST',
@@ -379,15 +411,45 @@ export const clearMobileSession = async () => {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ refreshToken }),
+        body: JSON.stringify({ refreshToken, ...(pushToken ? { pushToken } : {}) }),
       }).catch(() => null);
     }
     await SecureStore.deleteItemAsync(TOKEN_KEY);
     await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
     await SecureStore.deleteItemAsync(USER_KEY);
+    await SecureStore.deleteItemAsync(PUSH_TOKEN_KEY);
   } catch {
     // Ignore errors
   }
+};
+
+// --- Push notifications (SEC-138) ---
+
+export type PushPlatform = 'ios' | 'android' | 'web' | 'other';
+
+/**
+ * Sends this phone's Expo push token to the API (which takes it off any other
+ * account) and remembers it on the phone for logout.
+ */
+export const registerPushToken = async (pushToken: string, platform: PushPlatform): Promise<void> => {
+  await request<{ success: boolean }>('/users/me/push-token', {
+    method: 'POST',
+    body: JSON.stringify({ token: pushToken, platform }),
+  });
+  try {
+    await SecureStore.setItemAsync(PUSH_TOKEN_KEY, pushToken);
+  } catch (error) {
+    // The server already has the token; without the copy, logout clears the account's token instead.
+    console.warn('Could not store the push token on this phone:', error);
+  }
+};
+
+/** Turns phone pushes on or off for the signed-in person. The in-app list is not affected. */
+export const updatePushPreference = async (enabled: boolean): Promise<{ push: boolean }> => {
+  return request<{ push: boolean }>('/users/me/notification-preferences', {
+    method: 'PATCH',
+    body: JSON.stringify({ push: enabled }),
+  });
 };
 
 // --- Applicant Management ---
