@@ -12,13 +12,15 @@
 |----------|----------|-------------------------------|-------------|-----|--------------|-------|
 | GitHub repository | GitHub | `KredibbleIT` org | | | | `Aeomar999/Global-Opportunities` → transfer to org |
 | Container images | GHCR | `KredibbleIT` org | | | | `ghcr.io/kredibbleit/...` |
-| Mobile builds/OTA | Expo | Company Expo org | | | | `app.json` owner: `amoahjerry835` → company org |
+| Mobile builds/OTA | Expo | Company Expo org | | | | `app.json` owner: `kredibble-it` (company org) |
 | Admin dashboard | Vercel | Company Vercel team | | | | Scope `jerry-amoahs-projects` → company team |
 | API hosting | Render | Company Render org | | | | `kredibble-api` service → company org |
 | Database | MongoDB Atlas | Company Atlas org | | | | Projects `god-production`, `god-staging` |
 | DNS / edge | Cloudflare | Company Cloudflare account | | | | `globalopportunitydesk.com` zone |
 | VPS / edge proxy | Hostinger | Company Hostinger account | | | | `187.7.72.87` |
 | Transactional email | Resend | Company Resend account | | | | Domain `kredibble.app` verification (SEC-091) |
+| Apple Developer Program | Apple | Company Apple Developer account | | | | DUNS `780481031`; used for App Store Connect org enrollment |
+| Google Play Console | Google | Company Google Play developer account | | | | One-time $25 USD fee; used for Play Console |
 | Secrets / password manager | (TBD) | Company vault | | | | `JWT_SECRET`, `ADMIN_JWT_SECRET`, DB credentials |
 
 ## 2. Acceptance criteria (SEC-114)

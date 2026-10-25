@@ -72,7 +72,7 @@ describe('store compliance: legal links, push notifications, netinfo (MOB-015 / 
       await openTermsOfService();
 
       expect(WebBrowser.openBrowserAsync).toHaveBeenCalledWith(TERMS_OF_SERVICE_URL);
-      expect(TERMS_OF_SERVICE_URL).toBe('https://globalopportunitydesk.com/privacy-policy/');
+      expect(TERMS_OF_SERVICE_URL).toBe('https://globalopportunitydesk.com/terms-of-service/');
     });
   });
 

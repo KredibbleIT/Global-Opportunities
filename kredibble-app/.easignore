@@ -1,0 +1,11 @@
+node_modules
+dist
+.expo
+.github
+__tests__
+*.md
+.env
+.git
+.gitignore
+.gitattributes
+.npmrc
