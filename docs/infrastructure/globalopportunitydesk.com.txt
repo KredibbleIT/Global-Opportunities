@@ -1,6 +1,6 @@
 ;;
 ;; Domain:     globalopportunitydesk.com.
-;; Exported:   2026-10-11 03:12:42
+;; Exported:   2026-10-20 17:36:48
 ;;
 ;; This file is intended for use for informational and archival
 ;; purposes ONLY and MUST be edited before use on a production
@@ -24,7 +24,7 @@
 ;;
 ;; Use at your own risk.
 ;; SOA Record
-globalopportunitydesk.com	3600	IN	SOA	may.ns.cloudflare.com. dns.cloudflare.com. 2054335496 10000 2400 604800 3600
+globalopportunitydesk.com	3600	IN	SOA	may.ns.cloudflare.com. dns.cloudflare.com. 2054418440 10000 2400 604800 3600
 
 ;; NS Records
 globalopportunitydesk.com.	86400	IN	NS	may.ns.cloudflare.com.
@@ -41,7 +41,7 @@ staging-api.globalopportunitydesk.com.	1	IN	A	187.7.72.87 ; cf_tags=cf-proxied:t
 admin.globalopportunitydesk.com.	300	IN	CNAME	29cdf9b0ee672268.vercel-dns-017.com. ; cf_tags=cf-proxied:false
 rsend.globalopportunitydesk.com.	3600	IN	CNAME	rsend-euw1.forge.rmta.net. ; cf_tags=cf-proxied:false
 send.globalopportunitydesk.com.	3600	IN	CNAME	send.forge.rmta.net. ; cf_tags=cf-proxied:false
-staging-admin.globalopportunitydesk.com.	300	IN	CNAME	cname.vercel-dns.com. ; cf_tags=cf-proxied:false
+staging-admin.globalopportunitydesk.com.	300	IN	CNAME	29cdf9b0ee672268.vercel-dns-017.com. ; cf_tags=cf-proxied:false
 www.globalopportunitydesk.com.	300	IN	CNAME	www.globalopportunitydesk.com.cdn.hstgr.net. ; cf_tags=cf-proxied:false
 
 ;; MX Records
