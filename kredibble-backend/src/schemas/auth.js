@@ -107,3 +107,10 @@ export const pushTokenSchema = z.object({
     platform: z.enum(['ios', 'android', 'web', 'other']).optional(),
   }),
 });
+
+// SEC-138: the app's own notification switches. Only `push` lives on the server today.
+export const notificationPreferencesSchema = z.object({
+  body: z.object({
+    push: z.boolean({ error: 'push must be true or false' }),
+  }).strict(),
+});

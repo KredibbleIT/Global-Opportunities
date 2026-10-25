@@ -1,4 +1,9 @@
 ;;
+;; SEC-140: the VPS origin address is replaced with <VPS_IP>. Never commit the
+;; address behind a Cloudflare-proxied record (cf-proxied:true): anyone who has
+;; it can reach the server without going through Cloudflare. Keep it in the
+;; password manager. The records below are a snapshot; live DNS may differ.
+;;
 ;; Domain:     globalopportunitydesk.com.
 ;; Exported:   2026-10-20 17:36:48
 ;;
@@ -31,11 +36,11 @@ globalopportunitydesk.com.	86400	IN	NS	may.ns.cloudflare.com.
 globalopportunitydesk.com.	86400	IN	NS	theo.ns.cloudflare.com.
 
 ;; A Records
-api.globalopportunitydesk.com.	1	IN	A	187.7.72.87 ; cf_tags=cf-proxied:true
-dev-api.globalopportunitydesk.com.	1	IN	A	187.7.72.87 ; cf_tags=cf-proxied:true
+api.globalopportunitydesk.com.	1	IN	A	<VPS_IP> ; cf_tags=cf-proxied:true
+dev-api.globalopportunitydesk.com.	1	IN	A	<VPS_IP> ; cf_tags=cf-proxied:true
 globalopportunitydesk.com.	300	IN	A	147.79.116.134 ; cf_tags=cf-proxied:false
 globalopportunitydesk.com.	300	IN	A	77.37.50.148 ; cf_tags=cf-proxied:false
-staging-api.globalopportunitydesk.com.	1	IN	A	187.7.72.87 ; cf_tags=cf-proxied:true
+staging-api.globalopportunitydesk.com.	1	IN	A	<VPS_IP> ; cf_tags=cf-proxied:true
 
 ;; CNAME Records
 admin.globalopportunitydesk.com.	300	IN	CNAME	29cdf9b0ee672268.vercel-dns-017.com. ; cf_tags=cf-proxied:false

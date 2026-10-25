@@ -116,6 +116,11 @@ const env = {
   resendFromEmail: process.env.RESEND_FROM_EMAIL || 'verify@kredibble.com',
   emailVerificationCodeTtlMinutes: Number(process.env.EMAIL_VERIFICATION_CODE_TTL_MINUTES || 10),
   outboundRequestTimeoutMs: Number(process.env.OUTBOUND_REQUEST_TIMEOUT_MS || 10000),
+  // SEC-138: phone push through the Expo push service. On by default outside
+  // tests (Expo needs no key); PUSH_ENABLED=false turns it off. The access
+  // token is only needed when "enhanced push security" is on in the Expo project.
+  pushEnabled: process.env.PUSH_ENABLED ? process.env.PUSH_ENABLED === 'true' : nodeEnv !== 'test',
+  expoAccessToken: process.env.EXPO_ACCESS_TOKEN || null,
   aiSystemPrompt: process.env.AI_SYSTEM_PROMPT || 'You are the Global Opportunities assistant. Give accurate, helpful opportunity guidance.',
   // BE-025: per-user daily AI message budget (cost cap). Attempts, not successes.
   aiDailyMessageLimit: Number(process.env.AI_DAILY_MESSAGE_LIMIT || 50),

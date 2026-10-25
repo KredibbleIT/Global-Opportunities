@@ -291,7 +291,7 @@ Note: the audit's own text reached the same conclusion on #10 ("Actually this on
 | SEC-121 | Email verification flow missing in mobile app (blocks high-trust actions with 403) | P0 | Mobile auth | ✅ Done |
 | SEC-122 | Community feed photo attachment and prompt dialogs crash or no-op on native mobile | P1 | Mobile community | ✅ Done |
 | SEC-123 | Event booking payment flow simulated: collects card numbers without payment gateway | P1 | Mobile events | ✅ Done |
-| SEC-124 | App Store & Google Play compliance gaps: policy links, push notifications, offline netinfo | P1 | Mobile store | ✅ Done |
+| SEC-124 | App Store & Google Play compliance gaps: policy links, push notifications, offline netinfo | P1 | Mobile store | ✅ Done — push covered permission and token storage only; delivery is SEC-138 |
 | SEC-125 | AI Assistant in mobile app is canned setTimeout demo disconnected from backend | P2 | Mobile assistant | ✅ Done |
 | SEC-126 | Mock data fallbacks in notifications, saved items, and hardcoded Wave job descriptions | P2 | Mobile app | ✅ Done |
 | SEC-127 | Hirer postings and managed channels rely on mock in-memory authStore data | P2 | Mobile hirer | ✅ Done |
@@ -305,6 +305,13 @@ Note: the audit's own text reached the same conclusion on #10 ("Actually this on
 | SEC-135 | Partners and Programs pages read other screens' data (`/admin/programs`, `/admin/staff`, `/admin/partners`), which SEC-131 now refuses for Partnerships and Training Officers | P1 | Admin + backend authz | ✅ Done: merged in PR #126 (2026-10-18) |
 | SEC-136 | The admin shows every staff member Super Admin's screens: `RoleProvider` maps the session role `admin` (which every staff User has) to `super_admin` and never reads `/auth/admin/me` | P1 | Admin authz UI | ✅ Done: merged in PR #127 (2026-10-18) |
 | SEC-137 | A Moderator can create, rewrite and delete opportunities: every opportunities write takes `opportunities_queue` edit, not just moderation | P2 | Backend authz | ✅ Done: merged in PR #128 (2026-10-18) |
+| SEC-138 | Push notifications are never delivered: the API stores each phone's Expo push token and nothing ever sends to it; scheduled broadcasts never go out, yet show in the in-app feed before their time | P1 | Backend + Mobile notifications | 🟡 Fixed on `security/SEC-138-push-delivery` (2026-10-18), not merged: Expo sender with receipts, scheduled-broadcast job, one phone per account, server push switch. Android needs FCM credentials and iOS a new build before real phones get pushes |
+| SEC-139 | The production VPS accepted SSH passwords on a port open to the internet: `bootstrap.sh`'s `99-god-hardening.conf` lost to the image's `50-cloud-init.conf` (sshd keeps the first value), and the script never checked the result | P1 | Deployment / Host | ✅ Live box fixed by hand 2026-10-18; `bootstrap.sh` fix on `security/SEC-139-140-vps-ssh-origin` |
+| SEC-140 | The VPS origin IP behind Cloudflare is published in the public repo (DNS export, commit `bf1d0d5`), and 80/443 accept connections from anywhere, so traffic can skip Cloudflare | P2 | Deployment / Edge | 🟡 IP removed from the tree (still in history); Cloudflare-only firewall on 80/443 is an owner step in hPanel |
+| SEC-141 | The root admin is inferred from a *missing* staff record: any admin User without a StaffMember record is Super Admin, and accounts removed before SEC-134 may still be | P2 | Backend authz / Data | 🔴 Open — filed 2026-10-19 (staff authorization session summary) |
+| SEC-142 | Admin staff screens still show pre-SEC-134/136 leftovers: every staffer labelled "Admin", "not connected" notices on pages that now save to the API, and an Invite Staff form that duplicates BE-028's Create account | P3 | Admin UI | 🔴 Open — filed 2026-10-19 |
+| SEC-143 | Dead authorization code: `requirePortalRoles` is exported with no callers, and three `/admin` routes in `routes/index.js` can never run (the staff-portal router answers them first) | P3 | Backend code health | 🔴 Open — filed 2026-10-19 |
+| SEC-144 | The admin e2e suite signs in as the root admin only, so role bugs pass it; two of its tests are unreliable (a hydration race, and a test that undoes itself on repeat) | P3 | Admin tests | 🔴 Open — filed 2026-10-19 |
 
 ---
 
@@ -1639,6 +1646,139 @@ Found while planning the move to the company infrastructure platform (`Company_I
 - [x] An Opportunities Officer keeps all of them; the SEC-131 role table covers `listings_curate` (new rows: queue-moderation `PATCH` and unpublish, curate `POST`, content `PATCH` and `DELETE`, every role in both realms). SEC-131 + SEC-137 files: 41/41. With `main`'s routes put back, 4 fail
 - Verified 2026-10-18: backend 55 suites, 817 tests, all green. In the full run, 5 suites lost their in-memory MongoDB under memory pressure (`ECONNREFUSED`, 3 GB free); they passed 22/22 when rerun. `tests/sec-132-135-staff-authz.test.js` (SEC-133) now shows the Moderator moderating with a `PATCH` (404 on an unknown id: past the guard) and refused a create (403); it used to expect a create to get past the guard. Also fixed: `PUT /admin/roles-permissions` didn't await its BE-018 audit write, so `be-001-permissions.test.js` raced it and failed intermittently under load (2 of 4 paired runs); it now awaits, as every other audited route in the file does. Lint clean
 
+### SEC-138 — Push notifications are never delivered
+**Priority:** P1
+**Evidence (2026-10-18, code read on `main` @ `c14b457`):**
+- The app asks for permission and posts an Expo push token to `POST /users/me/push-token`, which saves it on `User.pushToken` (MOB-015). No backend code reads `pushToken` or calls the Expo push service, so no phone ever receives a push.
+- `notifyUser` (ambassador decisions, "Added to a group") emits a socket `notification` event to `user_<id>`, but the app never listens for it, so the bell only changes on the next refresh.
+- `POST /admin/notifications` with a future `scheduledFor` saves `status: 'scheduled'`, and no job ever sends it. `notificationReadScope` doesn't filter on `status`, so a scheduled broadcast appears in everyone's in-app feed straight away, before its time.
+- The app registers the token only when the root layout mounts. A first-time user isn't signed in at that point, so their token doesn't reach the server until a later cold start. The MOB-015 card says it registers "on login".
+- The token stays on the account after logout. If a second account signs in on the same phone, the token ends up on both accounts. Once pushes are sent, the first person's notifications would show on the lock screen of a phone they've signed out of.
+- The "Push notifications" switch on Manage notifications only writes a local store; the server has no push preference.
+**Risk:** ambassador decisions and staff announcements reach people only when they happen to open the app. Scheduled announcements leak early. Turning on delivery without the logout and shared-phone fixes would send one person's notifications to someone else's phone, so all of this ships together.
+**Fix:**
+- New `src/lib/push.js` sends through the Expo push API in batches of 100. It keeps each ticket and checks receipts about 15 minutes later. Tokens that come back `DeviceNotRegistered` (from a ticket or a receipt) are removed. It never throws to its caller, and it is off in tests unless a test turns it on.
+- `notifyUser` and immediate broadcasts push in the background, so the request doesn't wait on Expo.
+- A job (every minute, on every instance) claims due scheduled broadcasts one at a time with an atomic update, marks each sent, then pushes it. Two instances never send the same broadcast twice.
+- The in-app feed hides `scheduled` and `cancelled` broadcasts.
+- Registering a token removes it from every other account. Logout and account deletion clear it.
+- A new `notificationPreferences.push` (default on) is set through `PATCH /users/me/notification-preferences`. Pushes skip people who turned it off, and the in-app feed still shows everything.
+- The app registers after login, signup and every launch with a session. Tapping a push opens Notifications. The Home tab listens for the socket event and re-syncs. The Push switch saves to the server. `expo-notifications` is added to the `app.json` plugins.
+**Done 2026-10-18 on `security/SEC-138-push-delivery`:** as above, plus `PUSH_ENABLED` / `EXPO_ACCESS_TOKEN` in `.env.example`, logout finding the user by refresh token when the access token has expired, and hirers getting a Push switch too. The admin's My Account keeps its four email alerts (`push` isn't part of BE-016's contract). Not done here: Android needs FCM v1 credentials in EAS and a `google-services.json`, and iOS needs a new store build for the push entitlement, before real phones receive anything.
+**Acceptance criteria:**
+- [x] Jest (mocked Expo API): batching above 100 messages, ticket and receipt `DeviceNotRegistered` clear the token, a network failure or a 5xx doesn't throw, and nothing is sent while push is disabled (`tests/sec-138-push-delivery.test.js`, 23 tests)
+- [x] `notifyUser` pushes to that user only; a broadcast pushes only to its audience's roles (no staff, deleted or muted accounts); people with push turned off get nothing
+- [x] A due scheduled broadcast is sent once, even with two jobs running at the same time; a future one waits and stays out of the feed until it is sent. With the feed filter removed, that test fails
+- [x] Registering a token removes it from another account; logout clears it (also with an expired access token), a logout from another phone leaves it, and account deletion clears it
+- [x] App Jest: the token registers after login, a tap opens Notifications (the launch tap once), and the socket event re-syncs (`__tests__/push-notifications.test.ts`); backend 55 suites / 837 tests and lint clean; app 111 tests, `lint` and `typecheck` clean
+
+### SEC-139 — The production VPS accepted SSH passwords
+**Priority:** P1
+**Evidence (probed 2026-10-18):** from outside, `ssh -o PreferredAuthentications=none` against the VPS listed `publickey,password`, on port 22 open to the internet. On the server, `sshd -T` showed `passwordauthentication yes`. sshd keeps the first value it reads for each setting, and it reads `sshd_config.d/*.conf` in name order before the rest of `sshd_config`. `platform/vps/bootstrap.sh` wrote `PasswordAuthentication no` to `99-god-hardening.conf`, which sorts after the image's `50-cloud-init.conf` (`PasswordAuthentication yes`), so it never took effect. `sshd_config` line 144 also had an active `PermitRootLogin yes`; the drop-in overrode it, but only while that file existed. The script ran `systemctl reload ssh || systemctl restart ssh || true` and never checked the result.
+**Risk:** password guessing against root and every account on a host whose IP is public (SEC-140). Fail2ban slows guessing but doesn't stop it.
+**Live fix (owner, 2026-10-18):** renamed the file to `00-god-hardening.conf`; set `sshd_config` to `PermitRootLogin prohibit-password` and `50-cloud-init.conf` to `PasswordAuthentication no`; added `/etc/cloud/cloud.cfg.d/99-disable-ssh-pwauth.cfg` (`ssh_pwauth: false`). `sshd -T` now shows `passwordauthentication no` and `permitrootlogin prohibit-password`, and the outside probe lists `publickey` only.
+**Repo fix (`security/SEC-139-140-vps-ssh-origin`):** `bootstrap.sh` writes `00-god-hardening.conf` and removes the old `99-` file. It also switches any `yes` for `PasswordAuthentication`, `KbdInteractiveAuthentication` or `PermitRootLogin` in `sshd_config` and the other drop-ins to the safe value, and writes the cloud-init setting. It reloads ssh only if it's running, without `|| true`. It then reads `sshd -T` and exits non-zero, naming the setting and the `grep` to find it, unless passwords and keyboard-interactive are off and root is key-only. `docs/infrastructure/VPS.md` section 8 has the verify-and-repair steps for a live server.
+**Acceptance criteria:**
+- [x] Step 3 run against a copy of the server's files (the image's `50-cloud-init.conf`, `60-cloudimg-settings.conf`, `sshd_config` with `PermitRootLogin yes`, the old `99-` file) and a stand-in `sshd -T` that keeps the first value: before, `passwordauthentication yes`; after, every `yes` is switched off, the `99-` file is gone, and the check passes. A second run changes nothing. A drop-in named `00-aaa.conf` with `PermitRootLogin forced-commands-only` makes it exit 1 with the setting named
+- [ ] Re-run `bootstrap.sh` on a fresh VPS: it finishes and `sshd -T` matches (owner, next rebuild)
+
+### SEC-140 — The VPS origin IP is public, and 80/443 accept anyone
+**Priority:** P2
+**Evidence (probed 2026-10-18):** `docs/infrastructure/globalopportunitydesk.com.txt`, a Cloudflare zone export committed on 2026-10-11 (`bf1d0d5`) to this public repo, lists the address behind the proxied `api.`, `staging-api.` and `dev-api.` records. Connecting to that address directly: 22, 80 and 443 accept connections; 4000, 6379, 27017 and 2019 don't. HTTPS fails the handshake, because Caddy asks for Cloudflare's origin-pull client certificate (Authenticated Origin Pulls hold), and :80 only answers a 308 redirect. `bootstrap.sh` allows 80/443 in UFW, but Docker-published ports bypass UFW anyway.
+**Risk:** anyone can skip Cloudflare's DDoS protection and WAF by opening connections straight to Caddy. No data is reachable without the client certificate.
+**Fix:** the address is replaced with `<VPS_IP>` in the export, with a header note never to commit origin addresses. It stays in git history; a history rewrite of a public repo doesn't make it private again, so the firewall is the real fix. `docs/infrastructure/VPS.md` section 7 says how to limit 80/443 to Cloudflare's ranges in the Hostinger panel firewall (recommended) or the `DOCKER-USER` chain. `bootstrap.sh`'s comments no longer imply UFW limits those ports, and its closing checklist includes the panel firewall.
+**Acceptance criteria:**
+- [x] `git grep` finds the address nowhere in the tree
+- [ ] Hostinger panel firewall allows 80/443 only from Cloudflare's ranges; a direct `curl --resolve` to the origin times out while `https://api.globalopportunitydesk.com/api/v1/health` still returns 200 (owner step)
+- [ ] Optional: move to a new IP once the firewall is in place
+
+### SEC-141 — The root admin is inferred from a missing staff record
+**Priority:** P2
+**Evidence (2026-10-19, `main` at `c518e9c`):** `resolveStaffRoles` (`kredibble-backend/src/middleware/portal-auth.js:25-27`) gives `super_admin` to any admin session whose user has no StaffMember record at all. That is how the CLI root admin (`npm run user:create-admin`) and the e2e admin get full access. Nothing marks the root admin explicitly. SEC-134 removed the known ways to create such a user (staff removal now deactivates instead of deleting, and BE-028 deletes the User if its staff record fails to save). But before SEC-134 merged, `DELETE /admin/staff/:id` hard-deleted records, so any staffer removed that way still counts as a root admin today. SEC-134 deferred an explicit flag because `render.yaml` runs no migrations, and requiring a flag could lock the production root admin out until someone ran one. The VPS deploy (`deploy/bin/god-deploy:72`) does run `scripts/migrate.js`.
+**Risk:** any future path that leaves an admin User without a staff record, such as a script, a manual database edit or a new route, silently mints a Super Admin. Accounts removed before SEC-134 may be Super Admins now.
+**Fix:**
+1. Operator check now: list admin Users with no staff record and confirm each is a real root admin. `db.users.aggregate([{ $match: { role: 'admin' } }, { $lookup: { from: 'staffmembers', localField: '_id', foreignField: 'userId', as: 's' } }, { $match: { s: { $size: 0 } } }, { $project: { email: 1, createdAt: 1 } }])`. Deactivate or delete any that aren't.
+2. Make it explicit: a `rootAdmin` flag on the User, set by `scripts/create-admin.js` and `scripts/e2e-server.js`, plus a migration that sets it for the admin Users confirmed in step 1. `resolveStaffRoles` then requires the flag as well as no staff record.
+3. Ship it only where migrations run on deploy (VPS `god-deploy`), or run the migration by hand before deploying to Render, so the root admin keeps access.
+**Acceptance criteria:**
+- [ ] Operator check done; every staff-less admin is a confirmed root admin
+- [ ] An admin User with no staff record and no `rootAdmin` flag gets no roles; the root admin and the e2e admin keep full access
+- [ ] The migration ran on every live environment before the code that needs it
+
+### SEC-142 — Admin staff screens still show pre-SEC-134/136 leftovers
+**Priority:** P3
+**Evidence (2026-10-19, `main` at `c518e9c`):**
+- `kredibble-admin/src/components/TopBar.tsx:166` and `src/components/sidebar/UserCard.tsx:30` label the signed-in person with the session role, capitalised, so every staff member reads "Admin". Since SEC-136 the saved user carries the real `roles`.
+- `src/app/(dashboard)/staff/[id]/page.tsx:97` and `staff/invite/page.tsx:108` still render `NotConnectedNotice` ("This page isn't connected to live data yet"), though since SEC-134 both read from and save to the API and wait for its answer.
+- The older Invite Staff form (`/staff/invite` → `POST /admin/staff/invite`) activates a staff record at once, with no invite link. BE-028's Create account sends a 48-hour invite instead. Both are Super Admin only now (SEC-134), so this is duplication, not a hole.
+**Risk:** staff see a wrong role and a false "sample data" warning; two ways to add staff behave differently.
+**Fix:** show the role labels from `roles` (`ROLES[role].label`). Remove the two stale notices. Retire Invite Staff in favour of Create account, or make it call BE-028's flow, after confirming nothing else links to it.
+**Acceptance criteria:**
+- [ ] A Partnerships Officer's top bar and user card say "Partnerships Officer"
+- [ ] No "not connected" notice on pages that read and save through the API
+- [ ] One way to add staff, through BE-028's invite
+
+### SEC-143 — Dead authorization code
+**Priority:** P3
+**Evidence (2026-10-19, `main` at `c518e9c`):** `requirePortalRoles` (`kredibble-backend/src/middleware/portal-auth.js`) has no callers since SEC-133. In `src/routes/index.js`, `POST /admin/staff/invite` (line 731), `GET /admin/community/channels/:channelId/posts` (787) and `GET /admin/opportunities/:id` (861) can never run: `adminApiRouter` is mounted on `/admin` first and serves the same method and path. They are guarded since SEC-132, but a mount-order change would revive them with logic nobody maintains. The `index.js` invite still says "there is no email-invite flow".
+**Fix:** delete the unused export and the three shadowed routes, along with any imports they leave unused. Any `.gitleaksignore` concerns are gone since SEC-130 (inline allows).
+**Acceptance criteria:**
+- [ ] `requirePortalRoles` and the three routes are gone; the SEC-131 and SEC-132 suites (role table, admin-route manifest) still pass
+
+### SEC-144 — The admin e2e suite tests the root admin only, and two tests are unreliable
+**Priority:** P3
+**Evidence (2026-10-17/18, staff authorization session):**
+- `kredibble-admin/tests/global-setup.ts` signs in once as the e2e admin, a root admin with no staff record, and every real-mode test reuses that session. SEC-131, SEC-132, SEC-134, SEC-135 and SEC-136 all passed this suite while broken for other roles. Only `tests/session-roles.spec.ts` (SEC-136) and `tests/role-lookups.spec.ts` (SEC-135) sign in as other roles; both create the staffer through BE-028 and accept the invite.
+- `tests/admin.e2e.spec.ts:1578`, "keyboard still moves between tabs", focuses a tab and presses ArrowRight right after `goto`, before the page has hydrated. Run alone with `--repeat-each=3` it failed 3/3, the same with `main`'s backend files swapped in. In full runs it fails about half the time.
+- `tests/admin.e2e.spec.ts:1487`, "role descriptions follow the permissions without a reload", reads the Support "broadcast" switch before the saved toggles load, so on a repeat it clicks it back off. With `--repeat-each=3` it goes pass, fail, fail, the same on `main`'s backend.
+- "Sidebar: only the active group stays open" (line 1613) failed once and passed on rerun.
+**Risk:** role regressions reach `main` with green e2e, and known flakes teach the team to ignore red runs.
+**Fix:** add a real-mode smoke spec that creates one staffer per role through BE-028 and checks the nav and one allowed and one refused page each (the `session-roles.spec.ts` pattern). Wait for hydration before keyboard input, for example by waiting for a hydrated marker or for the tab's handlers. Make the toggle test read the saved state first and restore it.
+**Acceptance criteria:**
+- [ ] Every role signs in once in real mode and sees exactly its pages
+- [ ] Both tests pass 10/10 with `--repeat-each=10`
+
+## 2026-10-19 — Staff authorization hardening (SEC-131 to SEC-137): summary, recommendations and todos
+
+**Summary.** On 2026-10-17 a probe showed that a staff member whose only role was Support could read and create partners. The BE-001 permission matrix was never applied to staff: every staff User has the session role `admin`, and the guards waved every admin session through. Following that thread over 2026-10-17/18 found seven linked findings. All are fixed and merged:
+
+| ID | What was wrong | Fixed in |
+|----|----------------|----------|
+| SEC-131 | `requireScreen` / `requirePortalRoles` let any admin session through | PR #123 |
+| SEC-132 | `/admin` data routes took the session alone; `POST /admin/staff` let any staffer mint a Super Admin | PR #126 |
+| SEC-133 | Older role lists contradicted the matrix (Moderator locked out of the opportunities queue; Admin Support could change targets) | PR #126 |
+| SEC-134 | Team edit could add staff, change anyone's roles (one's own included) and delete staff records, and a deleted record made the user root admin | PR #125 (landed with #126) |
+| SEC-135 | Partners and Programs pages (and the Overview's programs card) read data their roles can't see | PR #126 |
+| SEC-136 | The admin UI treated every staff member as Super Admin and never read `/auth/admin/me` | PR #127 |
+| SEC-137 | A Moderator could create, rewrite and delete listings, not just moderate them | PR #128 |
+
+How it works now:
+- One resolver, `resolveStaffRoles(req)`, decides every guard and `/auth/admin/me`. The ACTIVE staff record's roles decide; an admin session with no staff record is the root admin; suspended or invited staff get nothing. The matrix alone decides every `/admin` route, and a manifest test proves none takes the session alone.
+- Adding staff and changing roles or status is Super Admin only, never on your own record. Removal deactivates.
+- The admin reads roles from the server on sign-in and on every load.
+- Two smaller fixes rode along: admin sessions are now refused after revocation (`tokenVersion`), and `PUT /admin/roles-permissions` awaits its audit write.
+
+**Decisions taken (product owner, 2026-10-17):**
+- Only a Super Admin adds staff or changes roles or status. Admin Support keeps renaming and segment moves.
+- The matrix alone decides, so Moderators moderate the opportunities queue (approve, reject, unpublish), and creating, editing and deleting listings is `listings_curate` (Opportunities Officer, Desk Lead, Super Admin).
+
+**Recommendations.**
+1. Run the SEC-141 operator check before anything else. Staff removed before SEC-134 may still be root admins in production.
+2. Make the root admin explicit (SEC-141) once migrations run on every deploy target. Treat "no record means root" as a pattern to avoid elsewhere.
+3. Test permissions with the credentials real users carry. The SEC-131 role table (every role × every screen, both token realms) and the SEC-132 route manifest are the templates. Extend the role table whenever a screen or route is added; a source scan fails the test if a `requireScreen` screen has no row.
+4. Add per-role e2e smoke tests (SEC-144). The root-admin-only suite can't see role bugs, and five of the seven passed it.
+5. Keep authoring separate from reviewing in the matrix (the SEC-137 split). If Super Admins become a bottleneck for adding staff, add an approval step (Admin Support drafts, a Super Admin approves), not the grant itself.
+6. Treat "done" claims in this file as unverified until probed. BE-001 was ticked "verified" with tests that used a token the admin never sends.
+7. Run full local suites only when the machine is quiet, or rely on CI. Parallel sessions here exhaust ports 3000/3100/4000 and RAM, which shows up as fake failures: in-memory MongoDB dying, `ERR_INSUFFICIENT_RESOURCES`. SEC-138 made the Jest MongoDB start retry; still check ports and free memory first, run with `CI=1`, and rerun failures alone before calling them real.
+
+**Todos.**
+- [ ] Owner: SEC-141 operator check: list staff-less admin Users in production and confirm each is a real root admin
+- [ ] Owner: in the Claude desktop app, re-pin the repository origin (Help → Troubleshooting → Review Pinned Git Origins). It still says `Aeomar999/Global-Opportunities` against `KredibbleIT/Global-Opportunities`, so the app can't merge PRs or sync branches
+- [ ] Dev: SEC-141 explicit `rootAdmin` flag and migration (P2)
+- [ ] Dev: SEC-144 per-role e2e smoke tests, and fix the two unreliable tests (P3)
+- [ ] Dev: SEC-142 role labels, stale notices, retire the legacy Invite Staff (P3)
+- [ ] Dev: SEC-143 delete the dead authorization code (P3)
+
 # Execution Order
 
 Phases run in sequence per `AGENTS.md`. Within a phase, respect this dependency chain:
@@ -2084,12 +2224,13 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
 - **To do:**
   - [x] Store `roles: string[]` (one or two) using the 12 ids: `super_admin, moderator, support, partnerships_officer, opportunities_officer, training_officer, database_officer, communications_officer, social_media_manager, country_lead, admin_support, desk_lead`. Migrate the existing single roles with backwards-compatible schema hooks.
   - [x] Store the permission matrix (screen × view/edit) and the Moderator and Support toggles. `GET` and `PUT /admin/roles-permissions` (Desk Lead and Super Admin only; Desk Lead may view, Super Admin edits).
-  - [ ] One middleware `requireScreen(screen, level)` on EVERY admin route, using the union of the person's roles. A wrong role gets 403. **Reopened 2026-10-17.** `requireScreen` exists, and since SEC-131 it reads the caller's real roles. But the `/admin` data mounts in `routes/index.js` still take any admin session (SEC-132: a Support staffer minted a Super Admin through `POST /admin/staff`), 26 routes add pre-BE-001 role lists that disagree with the matrix for Moderator (SEC-133), and deleting a staff record turns that user into the root Super Admin (SEC-134).
+  - [x] One middleware `requireScreen(screen, level)` on EVERY admin route, using the union of the person's roles. A wrong role gets 403. **Reopened 2026-10-17, closed 2026-10-19.** SEC-131 to SEC-137 are merged (PRs #123, #125 to #128). Every `/admin` route decides through `resolveStaffRoles` and the matrix: `requireScreen`, `requireAdminScreen` for the data mounts, or a stricter Super-Admin or named-role guard for account actions and bulk import/export. Evidence: `tests/sec-132-135-staff-authz.test.js` walks every `/api/v1/admin` route (more than 100) and a suspended, deactivated or invited staffer's admin session gets 403 on each. The SEC-131 role table checks every role against every `requireScreen` screen at view and edit. Staff-record writes are Super Admin only (SEC-134). The root admin is still inferred from a missing staff record (SEC-141).
   - [x] `GET /me` (and `/auth/admin/me`) returns the roles and the resolved screens. Since SEC-131 they are the same roles the guards enforce; a suspended or invited staffer gets 401.
   - [x] Admin frontend (`RolesTab.tsx`) connected to live backend API with optimistic updates and persistence.
 - **Verify:** every role can open exactly the screens in the admin's `config/permissions.ts`; a request without the grant returns 403 whatever the UI does.
   - **Correction 2026-10-17:** this was not true. The 15 tests in `tests/be-001-permissions.test.js` sign staff in with user-realm Bearer tokens, which the admin UI never sends. Real staff use an admin session, and `requireScreen` / `requirePortalRoles` waved every admin session through: on 2026-10-17 a staffer whose only role is `support` got 200 on `GET /admin/partners` and 201 on `POST /admin/partners` (SEC-131).
   - **Now (SEC-131, `security/SEC-131-staff-screen-enforcement`):** true for every route behind `requireScreen`. `tests/sec-131-staff-screen-enforcement.test.js` drives 36 routes over the 20 screens that have a `requireScreen` route, at view and edit, for all 12 roles and a two-role staffer, with admin-session and user-realm tokens, and compares each answer with `roleCan` (38/38; 15 fail with the old bypass put back). Not yet true for the eight screens that no `requireScreen` route names (`events`, `grants`, `seekers`, `hirers`, `verification`, `reports_queue`, `career_resources`, `listings_curate`); their data comes through the SEC-132 mounts. Also not true for Moderator on the opportunities queue (SEC-133).
+  - **2026-10-19, after SEC-132 to SEC-137 merged:** true for every screen. The SEC-132 mounts follow the matrix (`tests/sec-132-135-staff-authz.test.js` covers seekers, hirers, verification, events, grants, articles, reports and channels by role), `listings_curate` guards creating, editing and deleting listings (SEC-137, `tests/sec-137-moderator-queue-scope.test.js`), and Moderators moderate the queue (SEC-133). The admin UI shows each staff member their own roles' screens, read from `/auth/admin/me` (SEC-136). Real-mode e2e covers only two non-root roles so far (SEC-144).
 
 #### BE-002 — Targets with append-only history
 - **Today:** `PUT /targets/:metric` upserts `{month, metric}` and overwrites.
@@ -2556,6 +2697,20 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
   - Fix: `// gitleaks:allow` on `routes/index.js` (the two `verification/companies` policy keys), `tests/sec-083-084.test.js` and `tests/sec-065.test.js` (the wrong passwords). `.gitleaksignore` now holds only the 3 PLAN-doc pins, in CI's `/repo/` form, with a header explaining when a pin is acceptable.
   - Verified with CI's own command (`gitleaks:v8.30.1 dir /repo -i /repo/.gitleaksignore`) under podman: no leaks. Without the ignore file, exactly the 3 pinned PLAN lines remain. Shift test: 7 lines inserted above every allowed line, still no leaks. Plant test: a random key appended to `routes/index.js` fails the scan (`generic-api-key`, line 1841). So the inline allow is per line, not per file.
   - `npm test -- tests/sec-083-084.test.js tests/sec-065.test.js`: 22/22 (with `APP_ENV=development`; the local `.env` sets `staging`, which refuses to boot tests). Backend `eslint .` clean. `check:encoding` 0 failing.
+- 2026-10-18 — SEC-138 filed (commit `14f4d58`, before any fix) and fixed on `security/SEC-138-push-delivery`. Phones never received a push: the API stored Expo tokens and nothing sent to them. MOB-015 / SEC-124 were ticked anyway, so both cards are corrected.
+  - Backend: `lib/push.js` (Expo batches, tickets then receipts, dead-token clean-up, never throws), background pushes from `notifyUser` and immediate broadcasts, `lib/notification-scheduler.js` (atomic claim per due broadcast, run each minute from `server.js`, receipts every 15 minutes). The feed hides `scheduled` and `cancelled`. A token moves to the latest account on its phone; logout and deletion clear it. `PATCH /users/me/notification-preferences` sets `notificationPreferences.push`. The admin's My Account still answers only its four email alerts.
+  - App: registration after every saved session (session-saved hook), Android channel before the prompt, tap opens Notifications, socket and foreground pushes re-sync, server-backed Push switch for seekers and hirers, `expo-notifications` plugin.
+  - Gitleaks: this branch first pinned the two moved `verification/companies` lines (819, 1510) in `.gitleaksignore`. Merging `main` brought SEC-130's inline `// gitleaks:allow` on those lines, so the pins were dropped and `main`'s ignore file kept.
+  - CI on PR #131: `ambassador.test.js` failed all 14 tests when its in-memory MongoDB lost a port race to another Jest worker (`Port "43981" already in use`). It passes locally (14/14), and the other 55 suites passed. `tests/setup.js` now retries the MongoDB start up to 3 times on that one error only.
+  - Verified: backend 55 suites / 837 tests in two shards (`--maxWorkers=2`; an orphaned run from a killed session had been starving memory) and lint clean; app 14 suites / 111 tests, `lint` and `typecheck` clean; `check:encoding` 0 failing. Not verified on a real phone: Android needs FCM v1 credentials in EAS plus `google-services.json`, and iOS needs a new store build.
+- 2026-10-18 — SEC-139 and SEC-140 filed and fixed on `security/SEC-139-140-vps-ssh-origin`, after a Plan 4f readiness check probed the VPS from outside:
+  - SEC-139: the VPS accepted SSH passwords because `bootstrap.sh`'s `99-` drop-in lost to the image's `50-cloud-init.conf`. The owner fixed the live box (outside probe now: `publickey` only). `bootstrap.sh` now writes `00-god-hardening.conf`, switches off the image's `yes` values, stops cloud-init re-enabling passwords, and fails unless `sshd -T` shows key-only login. Step 3 was tested against a copy of the server's files with a stand-in `sshd` (pass, idempotent, and a failing case).
+  - SEC-140: the origin IP in the zone export is replaced with `<VPS_IP>` (still in history). `VPS.md` sections 7 and 8 cover the Cloudflare-only firewall (Hostinger panel; UFW can't limit Docker ports) and SSH verify-and-repair. Open: the panel firewall (owner).
+  - Same check, not fixed here: the production OTA went to the VPS on 2026-10-15 outside Plan 4f, and Render/VPS secret and database parity is unverified. A required reviewer was added to the `Production` environment on 2026-10-18.
+- 2026-10-19 — Staff authorization session wrapped up; the full summary, decisions, recommendations and todos are under "2026-10-19 — Staff authorization hardening" (after SEC-144).
+  - Merged: SEC-131 (#123), SEC-134 (#125, landed with #126), SEC-132/133/135 (#126), SEC-136 (#127) and SEC-137 (#128). Every `/admin` route now follows the BE-001 matrix for staff, and a route manifest test proves it. The BE-001 "requireScreen on every admin route" box is ticked again with that evidence.
+  - Not logged above until now: SEC-134 made adding staff and changing roles or status Super Admin only and never on your own record, and removal deactivates. SEC-136 makes the admin read roles from `/auth/admin/me` on sign-in and every load. SEC-137 limits Moderators to approve, reject and unpublish, with `listings_curate` for authoring. Along the way, `PUT /admin/roles-permissions` now awaits its audit write.
+  - Filed from this session's leftovers: SEC-141 (P2, root admin inferred from a missing staff record, plus an operator check of staff-less admins), SEC-142 (P3, admin staff UI leftovers), SEC-143 (P3, dead authorization code) and SEC-144 (P3, root-admin-only e2e and two unreliable tests). Each was checked in code on `main` at `c518e9c`.
 | 2026-10-16 | SEC-129 | security/SEC-129-reference-data-manifest | Done | Manifest allowlist already present on `origin/main` (merged after 2026-10-15 sync); made AI 503 test env-independent (`env.aiEnabled=false` save/restore in `tests/security.p0.test.js`). `npm test -- tests/security.p0.test.js`: 71/71 with local `.env` AI keys AND with `.env` neutralized (CI-equivalent). Backend `npm run lint` clean. |
 
 ---
@@ -2627,6 +2782,7 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
   - Install `expo-notifications`, configure push notification request permissions, and register APNs/FCM tokens to the backend on login.
   - Install `@react-native-community/netinfo`, create `useNetworkStatus` hook, and display an offline banner with graceful request caching/retry.
 - **Verify:** Tapping Privacy Policy opens legal document; simulated offline mode shows offline banner and prevents crashing.
+- **Correction (2026-10-18):** the token was registered only when the app launched, not on login, and the backend never sent a push. Both are fixed under SEC-138.
 
 #### MOB-016 — AI Assistant live backend integration (SEC-125)
 - **Problem:** `assistant/index.tsx:129-173` uses a 1.2-second `setTimeout` with hardcoded responses and static Wave jobs.
