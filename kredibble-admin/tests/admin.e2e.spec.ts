@@ -9040,10 +9040,8 @@ test.describe('Social: phones and the platform table and chart', () => {
     const beforeReach = await stat(page, 'total-reach');
     const beforeEngagement = await stat(page, 'total-engagement');
     const beforeWhatsappRow = page.getByTestId('platform-row-whatsapp');
-    const beforeWhatsappText = await beforeWhatsappRow.textContent() ?? '';
-    const beforeWhatsappNums = beforeWhatsappText.match(/[\d,]+/g)?.map(num) ?? [];
-    const beforeWhatsappReach = beforeWhatsappNums[0] ?? 0;
-    const beforeWhatsappEngagement = beforeWhatsappNums[1] ?? 0;
+    const beforeWhatsappReach = num(await beforeWhatsappRow.locator('td').nth(1).textContent() ?? '');
+    const beforeWhatsappEngagement = num(await beforeWhatsappRow.locator('td').nth(2).textContent() ?? '');
     const card = page.getByRole('region', { name: 'Log a post' });
     await card.getByRole('combobox', { name: 'Platform' }).click();
     await page.getByRole('option', { name: 'WhatsApp', exact: true }).click();
@@ -9075,8 +9073,8 @@ test.describe('Social: phones and the platform table and chart', () => {
     expect(snapshot.engagement).toBe(beforeEngagement + 21);
     // The logged platform may already have seeded posts (WhatsApp joins the seed mid-month): expect deltas, not fresh figures.
     expect(snapshot.whatsapp).toContain('WhatsApp');
-    expect(snapshot.whatsapp).toContain(String(beforeWhatsappReach + 321));
-    expect(snapshot.whatsapp).toContain(String(beforeWhatsappEngagement + 21));
+    expect(num(await beforeWhatsappRow.locator('td').nth(1).textContent() ?? '')).toBe(beforeWhatsappReach + 321);
+    expect(num(await beforeWhatsappRow.locator('td').nth(2).textContent() ?? '')).toBe(beforeWhatsappEngagement + 21);
     expect(snapshot.firstRow).toContain('Snapshot post');
   });
 });
