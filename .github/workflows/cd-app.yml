@@ -46,6 +46,94 @@ jobs:
       - run: npm run typecheck
       - run: npm test -- --ci
 
+  build-android-store:
+    name: Build Android Store (AAB)
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: kredibble-app
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EXPO_NO_TELEMETRY: 1
+    steps:
+      - name: Check Expo token
+        id: creds
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::notice title=Android store build skipped::Set the EXPO_TOKEN repository secret to build store artifacts."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.creds.outputs.ready == 'true'
+        uses: actions/checkout@v7
+      - if: steps.creds.outputs.ready == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: kredibble-app/package-lock.json
+      - if: steps.creds.outputs.ready == 'true'
+        run: npm ci
+      - if: steps.creds.outputs.ready == 'true'
+        uses: expo/expo-github-action@v9
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+          packager: npm
+      - if: steps.creds.outputs.ready == 'true'
+        name: Build Android production AAB
+        run: |
+          eas build --platform android --profile production --non-interactive
+
+  submit-android:
+    name: Submit Android to Play Store
+    needs: [verify, build-android-store]
+    if: always() && needs.verify.result == 'success' && needs.build-android-store.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: Production
+    defaults:
+      run:
+        working-directory: kredibble-app
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      EAS_CREDENTIALS_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+      EXPO_NO_TELEMETRY: 1
+    steps:
+      - name: Check credentials
+        id: creds
+        run: |
+          if [ -z "$EXPO_TOKEN" ] || [ -z "$EAS_CREDENTIALS_JSON" ]; then
+            echo "::notice title=Play Store submit skipped::Set EXPO_TOKEN and GOOGLE_PLAY_SERVICE_ACCOUNT_JSON repository secrets."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.creds.outputs.ready == 'true'
+        uses: actions/checkout@v7
+      - if: steps.creds.outputs.ready == 'true'
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: kredibble-app/package-lock.json
+      - if: steps.creds.outputs.ready == 'true'
+        run: npm ci
+      - if: steps.creds.outputs.ready == 'true'
+        uses: expo/expo-github-action@v9
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+          packager: npm
+      - if: steps.creds.outputs.ready == 'true'
+        name: Submit to Play Store
+        run: |
+          eas submit --platform android --latest --non-interactive
+
   publish-staging:
     name: Publish EAS Update (Staging)
     needs: verify
