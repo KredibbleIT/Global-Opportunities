@@ -21,7 +21,7 @@ export default [
   {
     files: ['tests/**/*.js'],
     languageOptions: {
-      globals: { ...globals.jest },
+      globals: { ...globals.jest, __ENV: 'readonly' },
     },
   },
 ];
