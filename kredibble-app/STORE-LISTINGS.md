@@ -2,6 +2,8 @@
 
 Source of truth for Google Play Store and Apple App Store metadata. Reuse when submitting new builds via `eas submit`.
 
+> Pending submission: Android AAB build `3e54241b-c70f-416c-9c65-64919c299916` is ready at expo.dev (version 1.0.0, code 1). Submit via `eas submit --platform android --id 3e54241b-c70f-416c-9c65-64919c299916` once `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` is configured in GitHub secrets.
+
 ---
 
 ## Google Play Store
