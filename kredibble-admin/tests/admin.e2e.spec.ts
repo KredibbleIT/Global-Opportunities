@@ -8981,6 +8981,8 @@ test.describe('Social: phones and the platform table and chart', () => {
       await expect(page.getByTestId(`platform-row-${platform.toLowerCase()}`)).toBeVisible();
     }
   };
+  const num = (text: string) => Number(text.replace(/[^\d]/g, ''));
+  const stat = async (page: import('@playwright/test').Page, id: string) => num(await page.getByTestId(id).locator('.ministat-value').innerText());
 
   for (const width of [434, 390, 360]) {
     test(`${width}px: the platform table is stacked rows with labelled figures, the chart is horizontal bars, nothing scrolls sideways`, async ({ page }) => {
