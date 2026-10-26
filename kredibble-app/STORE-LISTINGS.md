@@ -66,3 +66,4 @@ Download Global Opportunity Desk today and take your next step.
 - Production API env: `https://api.globalopportunitydesk.com/api/v1`
 - Privacy policy and terms URLs are required by both stores before review.
 - App screenshots must be captured per device size (phone + tablet for Play Store; iPhone + iPad for App Store).
+- Required GitHub secrets: EXPO_TOKEN, GOOGLE_PLAY_SERVICE_ACCOUNT_JSON.
