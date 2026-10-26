@@ -175,7 +175,7 @@ export default function ProfileScreen() {
               <TouchableOpacity
               style={styles.menuItem}
               activeOpacity={0.7}
-              onPress={() => router.push('/profile/people')}
+              onPress={() => router.push('./people')}
               accessibilityRole="button"
             >
               <View style={styles.menuItemLeft}>
@@ -340,7 +340,7 @@ export default function ProfileScreen() {
           <TouchableOpacity
             style={styles.menuItem}
             activeOpacity={0.7}
-            onPress={() => router.push('/profile/people')}
+            onPress={() => router.push('./people')}
             accessibilityRole="button"
           >
             <View style={styles.menuItemLeft}>

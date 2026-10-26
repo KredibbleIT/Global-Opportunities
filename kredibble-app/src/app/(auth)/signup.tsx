@@ -462,6 +462,7 @@ export default function SignupScreen() {
   const [docProofOfOrgFile, setDocProofOfOrgFile] = useState<PickedFile | null>(null);
   const [authError, setAuthError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   // Picker sheet
   const [activePicker, setActivePicker] = useState<PickerType>(null);
@@ -1139,18 +1140,34 @@ export default function SignupScreen() {
       ) : null}
 
       {/* Legal Compliance Notice (Apple App Store Guideline 5.1.1 & Google Play) */}
-      <View style={{ paddingHorizontal: 24, paddingVertical: 8, alignItems: 'center', backgroundColor: '#F7F7F9' }}>
-        <Text style={{ fontSize: 11, color: '#8A8D9F', textAlign: 'center', lineHeight: 16 }} className="font-sans">
-          By creating an account, you agree to Kredibble&apos;s{' '}
-          <Text onPress={openTermsOfService} style={{ color: '#6671E4', fontWeight: '600', textDecorationLine: 'underline' }}>
-            Terms of Service
-          </Text>{' '}
-          and{' '}
-          <Text onPress={openPrivacyPolicy} style={{ color: '#6671E4', fontWeight: '600', textDecorationLine: 'underline' }}>
-            Privacy Policy
+      <View style={{ paddingHorizontal: 24, marginBottom: 16 }}>
+        <TouchableOpacity
+          onPress={() => setTermsAccepted(v => !v)}
+          activeOpacity={0.8}
+          style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}
+        >
+          <View
+            style={{
+              width: 22, height: 22, borderRadius: 5, borderWidth: 2,
+              borderColor: termsAccepted ? Colors.primary : '#A1A1AA',
+              backgroundColor: termsAccepted ? Colors.primary : '#FFFFFF',
+              justifyContent: 'center', alignItems: 'center',
+            }}
+          >
+            {termsAccepted && <Check size={14} color="#FFFFFF" strokeWidth={2} />}
+          </View>
+          <Text style={{ fontSize: 12, color: '#374151', lineHeight: 18 }} className="font-sans">
+            I agree to the{' '}
+            <Text onPress={openTermsOfService} style={{ color: '#6671E4', fontWeight: '600', textDecorationLine: 'underline' }}>
+              Terms of Service
+            </Text>{' '}
+            and{' '}
+            <Text onPress={openPrivacyPolicy} style={{ color: '#6671E4', fontWeight: '600', textDecorationLine: 'underline' }}>
+              Privacy Policy
+            </Text>
+            .
           </Text>
-          .
-        </Text>
+        </TouchableOpacity>
       </View>
 
       {/* Fixed bottom buttons */}
@@ -1172,7 +1189,7 @@ export default function SignupScreen() {
           </TouchableOpacity>
         )}
         <TouchableOpacity
-          disabled={!isNextActive || isSubmitting}
+          disabled={!isNextActive || !termsAccepted || isSubmitting}
           onPress={async () => {
             if (step < totalSteps) {
               setStep(s => s + 1);

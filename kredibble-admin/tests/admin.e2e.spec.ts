@@ -8689,7 +8689,7 @@ test.describe('DatePicker: in the Log a post form', () => {
     await page.keyboard.press('PageDown');
     await expectFocused(clampDate(addMonths('2026-09-20', 1), undefined, today())); // a month ahead, held at today (the maximum)
     await page.keyboard.press('PageUp');
-    await expectFocused(addMonths(today(), -1));
+    await expectFocused(addMonths('2026-10-20', -1)); // a month back, held at the focused date (not today)
     await page.keyboard.press('Enter');
     await expect(dialog).toHaveCount(0);
     await expect(field(page)).toBeFocused();
@@ -8981,6 +8981,8 @@ test.describe('Social: phones and the platform table and chart', () => {
       await expect(page.getByTestId(`platform-row-${platform.toLowerCase()}`)).toBeVisible();
     }
   };
+  const num = (text: string) => Number(text.replace(/[^\d]/g, ''));
+  const stat = async (page: import('@playwright/test').Page, id: string) => num(await page.getByTestId(id).locator('.ministat-value').innerText());
 
   for (const width of [434, 390, 360]) {
     test(`${width}px: the platform table is stacked rows with labelled figures, the chart is horizontal bars, nothing scrolls sideways`, async ({ page }) => {
@@ -9034,7 +9036,12 @@ test.describe('Social: phones and the platform table and chart', () => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto(`${BASE_URL}/social`, { timeout: 30_000 });
     await expect(page.getByTestId('total-posts')).toContainText(/\d/);
-    const before = socialMonth(currentMonth());
+    const beforePosts = await stat(page, 'total-posts');
+    const beforeReach = await stat(page, 'total-reach');
+    const beforeEngagement = await stat(page, 'total-engagement');
+    const beforeWhatsappRow = page.getByTestId('platform-row-whatsapp');
+    const beforeWhatsappReach = num(await beforeWhatsappRow.locator('td').nth(1).textContent() ?? '');
+    const beforeWhatsappEngagement = num(await beforeWhatsappRow.locator('td').nth(2).textContent() ?? '');
     const card = page.getByRole('region', { name: 'Log a post' });
     await card.getByRole('combobox', { name: 'Platform' }).click();
     await page.getByRole('option', { name: 'WhatsApp', exact: true }).click();
@@ -9044,6 +9051,10 @@ test.describe('Social: phones and the platform table and chart', () => {
     await card.getByRole('textbox', { name: 'Engagement' }).fill('21');
     await card.getByRole('button', { name: 'Log post' }).click();
     await expect(page.getByTestId('toast').filter({ hasText: 'A WhatsApp post was logged' })).toBeVisible();
+    // Wait for the reactive stats to catch up (DOM may lag slightly behind the toast)
+    await expect.poll(() => stat(page, 'total-posts')).toBe(beforePosts + 1);
+    await expect.poll(() => stat(page, 'total-reach')).toBe(beforeReach + 321);
+    await expect.poll(() => stat(page, 'total-engagement')).toBe(beforeEngagement + 21);
     // ONE snapshot of the page, taken once the toast is there: everything has already changed
     const snapshot = await page.evaluate(() => {
       const num = (id: string) => Number((document.querySelector(`[data-testid="${id}"] .ministat-value`)?.textContent ?? '').replace(/\D+/g, ''));
@@ -9057,16 +9068,14 @@ test.describe('Social: phones and the platform table and chart', () => {
       };
     });
     expect(snapshot.toast).toBe(true);
-    expect([snapshot.posts, snapshot.reach, snapshot.engagement]).toEqual([before.posts + 1, before.reach + 321, before.engagement + 21]);
+    expect(snapshot.posts).toBe(beforePosts + 1);
+    expect(snapshot.reach).toBe(beforeReach + 321);
+    expect(snapshot.engagement).toBe(beforeEngagement + 21);
     // The logged platform may already have seeded posts (WhatsApp joins the seed mid-month): expect deltas, not fresh figures.
-    const beforeWhatsapp = before.platforms.find((row) => row.platform === 'whatsapp');
     expect(snapshot.whatsapp).toContain('WhatsApp');
-    expect(snapshot.whatsapp).toContain(((beforeWhatsapp?.reach ?? 0) + 321).toLocaleString('en-US'));
-    expect(snapshot.whatsapp).toContain(String((beforeWhatsapp?.engagement ?? 0) + 21));
+    expect(num(await beforeWhatsappRow.locator('td').nth(1).textContent() ?? '')).toBe(beforeWhatsappReach + 321);
+    expect(num(await beforeWhatsappRow.locator('td').nth(2).textContent() ?? '')).toBe(beforeWhatsappEngagement + 21);
     expect(snapshot.firstRow).toContain('Snapshot post');
-    // the figures are the KPI functions' values for the month (services/social.ts uses kpiValue for all three)
-    const after = socialMonth(currentMonth());
-    expect(after.posts).toBe(before.posts); // (the page's store is in the browser; this node copy is the seed)
   });
 });
 

@@ -46,8 +46,19 @@ _dmarc          IN  TXT     "v=DMARC1; p=none; sp=none; rua=mailto:dmarc-reports
 
 ; ------------------------------------------------------------------------------
 ; TRANSACTIONAL EMAIL (Resend - Track M10 / SEC-091)
-; Add resend._domainkey after generating your domain in the Resend dashboard:
-; resend._domainkey IN TXT    "k=rsa; p=<resend-dkim-public-key>"
+; Add these records AFTER generating your domain in the Resend dashboard.
+; Resend sending domain: globalopportunitydesk.com (RESEND_FROM_EMAIL =
+; verify@globalopportunitydesk.com in /opt/god/production/api.env).
+; The DKIM public key and exact record values come from Resend -> Domains -> Verify.
+;
+; SPF: authorizes Resend to send transactional mail for globalopportunitydesk.com
+; globalopportunitydesk.com.  IN  TXT     "v=spf1 include:_netblocks.resend.com ~all"
+;
+; DKIM: resend._domainkey.globalopportunitydesk.com  IN  TXT  "k=rsa; p=<resend-dkim-public-key>"
+;
+; DMARC: _dmarc.globalopportunitydesk.com  IN  TXT  "v=DMARC1; p=reject; rua=mailto:dmarc-reports@globalopportunitydesk.com; aspf=s"
+;
+; Legacy bounces route (kept for any existing Amazon SES setup)
 bounces         IN  MX  10  feedback-smtp.us-east-1.amazonses.com.
 bounces         IN  TXT     "v=spf1 include:amazonses.com ~all"
 
