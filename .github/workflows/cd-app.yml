@@ -58,6 +58,7 @@ jobs:
       EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
       EXPO_NO_TELEMETRY: 1
     steps:
+      - uses: actions/checkout@v7
       - name: Check Expo token
         id: creds
         run: |
@@ -67,8 +68,6 @@ jobs:
           else
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
-      - if: steps.creds.outputs.ready == 'true'
-        uses: actions/checkout@v7
       - if: steps.creds.outputs.ready == 'true'
         uses: actions/setup-node@v7
         with:
@@ -104,6 +103,7 @@ jobs:
       EAS_CREDENTIALS_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
       EXPO_NO_TELEMETRY: 1
     steps:
+      - uses: actions/checkout@v7
       - name: Check credentials
         id: creds
         run: |
@@ -113,8 +113,6 @@ jobs:
           else
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
-      - if: steps.creds.outputs.ready == 'true'
-        uses: actions/checkout@v7
       - if: steps.creds.outputs.ready == 'true'
         uses: actions/setup-node@v7
         with:
