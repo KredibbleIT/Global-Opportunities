@@ -131,7 +131,7 @@ jobs:
       - if: steps.creds.outputs.ready == 'true'
         name: Configure Play Store credentials
         run: |
-          eas credentials --platform android --non-interactive
+          eas credentials --platform android
       - if: steps.creds.outputs.ready == 'true'
         name: Submit to Play Store
         run: |
