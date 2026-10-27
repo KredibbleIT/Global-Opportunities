@@ -129,6 +129,17 @@ jobs:
           token: ${{ secrets.EXPO_TOKEN }}
           packager: npm
       - if: steps.creds.outputs.ready == 'true'
+        name: Configure Play Store credentials
+        run: |
+          mkdir -p ~/.eas
+          node -e '
+            const fs = require("fs");
+            const raw = process.env.EAS_CREDENTIALS_JSON;
+            const creds = { google_play: { serviceAccountKey: JSON.parse(raw) } };
+            fs.mkdirSync(process.env.HOME + "/.eas", { recursive: true });
+            fs.writeFileSync(process.env.HOME + "/.eas/credentials.json", JSON.stringify(creds, null, 2));
+          '
+      - if: steps.creds.outputs.ready == 'true'
         name: Submit to Play Store
         run: |
           eas submit --platform android --latest --non-interactive
