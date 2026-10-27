@@ -18,7 +18,7 @@ export const metadata = {
 };
 
 export default function DeleteAccountPage() {
-  const supportEmail = "privacy@kredibble-desk.com";
+  const supportEmail = "kredibbleagency@gmail.com";
 
   return (
     <main className="flex flex-1 items-center justify-center px-6 py-12 bg-canvas text-ink">
