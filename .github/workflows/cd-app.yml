@@ -147,6 +147,7 @@ jobs:
       - if: steps.creds.outputs.ready == 'true'
         name: Submit to Play Store
         run: |
+          eas credentials:google-play --non-interactive
           eas submit --platform android --latest --non-interactive
 
   publish-staging:
