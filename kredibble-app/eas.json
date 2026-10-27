@@ -30,7 +30,9 @@
   },
   "submit": {
     "production": {
-      "serviceAccountKeyPath": "google-play-service-account.json"
+      "android": {
+        "serviceAccountKeyPath": "google-play-service-account.json"
+      }
     }
   }
 }
