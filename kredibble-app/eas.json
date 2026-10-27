@@ -29,6 +29,8 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "serviceAccountKeyPath": "google-play-service-account.json"
+    }
   }
 }
