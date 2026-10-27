@@ -129,6 +129,11 @@ jobs:
           token: ${{ secrets.EXPO_TOKEN }}
           packager: npm
       - if: steps.creds.outputs.ready == 'true'
+        name: Configure Play Store credentials
+        run: |
+          mkdir -p ~/.eas
+          echo "$EAS_CREDENTIALS_JSON" > ~/.eas/credentials.json
+      - if: steps.creds.outputs.ready == 'true'
         name: Submit to Play Store
         run: |
           eas submit --platform android --latest --non-interactive
