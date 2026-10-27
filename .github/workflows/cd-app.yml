@@ -131,14 +131,19 @@ jobs:
       - if: steps.creds.outputs.ready == 'true'
         name: Configure Play Store credentials
         run: |
+          echo "HOME=$HOME"
           mkdir -p ~/.eas
           node -e '
             const fs = require("fs");
-            const raw = process.env.EAS_CREDENTIALS_JSON;
-            const creds = { google_play: { serviceAccountKey: JSON.parse(raw) } };
-            fs.mkdirSync(process.env.HOME + "/.eas", { recursive: true });
-            fs.writeFileSync(process.env.HOME + "/.eas/credentials.json", JSON.stringify(creds, null, 2));
+            const parsed = JSON.parse(process.env.EAS_CREDENTIALS_JSON);
+            const creds = parsed && parsed.google_play ? parsed : { google_play: { serviceAccountKey: parsed } };
+            const dir = process.env.HOME + "/.eas";
+            fs.mkdirSync(dir, { recursive: true });
+            const path = dir + "/credentials.json";
+            fs.writeFileSync(path, JSON.stringify(creds, null, 2));
+            console.log("wrote Play credentials to", path);
           '
+          ls -la ~/.eas/credentials.json
       - if: steps.creds.outputs.ready == 'true'
         name: Submit to Play Store
         run: |
