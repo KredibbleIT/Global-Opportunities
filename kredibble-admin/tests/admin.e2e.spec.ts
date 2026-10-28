@@ -8158,7 +8158,8 @@ test.describe('Social: the page', () => {
     const want = socialMonth(previous);
     await page.getByRole('combobox', { name: 'Month' }).click();
     await page.getByRole('option', { name: formatMonth(previous) }).click();
-    await expect.poll(() => stat(page, 'total-posts')).toBe(want.posts);
+    await expect(page.getByText(`A snapshot of ${formatMonth(previous)}`)).toBeVisible();
+    expect(await stat(page, 'total-posts')).toBe(want.posts);
     expect(await stat(page, 'total-reach')).toBe(want.reach);
     expect(await stat(page, 'total-engagement')).toBe(want.engagement);
     await expect(page.getByTestId('platform-table').locator('tbody tr')).toHaveCount(want.platforms.length);
