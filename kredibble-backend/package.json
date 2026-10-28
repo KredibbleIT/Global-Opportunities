@@ -23,7 +23,7 @@
         "sync:news-ingest": "node scripts/news-ingest.js",
         "sync:website-tally": "node scripts/website-tally.js",
         "sync:ambassador-pictures": "node scripts/ambassador-pictures.js",
-        "test": "cross-env NODE_OPTIONS=--experimental-vm-modules jest",
+        "test": "cross-env NODE_ENV=test APP_ENV=test NODE_OPTIONS=--experimental-vm-modules jest",
         "lint": "eslint .",
         "docs:generate": "node scripts/generate-docs.js",
         "e2e:server": "node --import ./src/instrument.js scripts/e2e-server.js",
