@@ -5,8 +5,8 @@
  * all ten (worst first) and "Show fewer" folds it back.
  *
  * "Behind" is measured against the pace: the share of the target the month has earned so far (day 10 of 30 = a third). A KPI
- * with no target is left out (nothing to be behind). The bar's colour follows the card's status (never colour alone: the percent
- * and the status word are printed).
+ * with no target is left out (nothing to be behind). The bar's fill and the status words are colour-coded (red / amber / green);
+ * colour is never the only signal: the status word and the percent are always printed.
  *
  * Props:
  * - cards: the ten KpiCardData, or null when unavailable
@@ -24,7 +24,8 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { furthestBehind, paceAttainment, rankByPace } from "@/lib/services/dashboard";
 import { formatAttainment } from "@/lib/scorecard";
 import type { KpiCardData } from "@/lib/services/dashboard-types";
-import { CARD_STATUS_WORDS, TargetBar } from "./KpiGrid";
+import { cn } from "@/lib/cn";
+import { CARD_STATUS_WORDS, STATUS_TEXT, TargetBar } from "@/components/kpi/KpiStatus";
 import { NotAvailableYet } from "./NotAvailableYet";
 import { UnavailableNote } from "./UnavailableNote";
 
@@ -77,8 +78,11 @@ export function PrioritiesCard({ cards, loading, isPast, notConnected = false, c
                 </div>
                 <TargetBar card={card} label={definition.label} showPace={!isPast} />
                 <p className="caption mt-1.5">
-                  {card.status ? CARD_STATUS_WORDS[card.status] : "No target"}
-                  {paceAttainment(card) !== null ? ` · ${formatAttainment(paceAttainment(card)).text} ${isPast ? "of the target" : "of where it should be today"}` : ""}
+                  <span data-status={card.status ?? undefined} className={cn("font-semibold", card.status ? STATUS_TEXT[card.status] : "text-neutral")}>
+                    {card.status ? CARD_STATUS_WORDS[card.status] : "No target"}
+                    {paceAttainment(card) !== null ? ` · ${formatAttainment(paceAttainment(card)).text}` : ""}
+                  </span>
+                  {paceAttainment(card) !== null ? ` ${isPast ? "of the target" : "of where it should be today"}` : ""}
                 </p>
               </li>
             );

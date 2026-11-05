@@ -608,12 +608,12 @@ test.describe('Overview', () => {
     expect(first).toBeTruthy();
     const escaped = first.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(new RegExp(`^Good (morning|afternoon|evening), ${escaped}\\.$`));
-    await expect(page.getByText("Here's what's happening across your platform today.")).toBeVisible();
+    await expect(page.getByText("See how your team is doing against its monthly targets.")).toBeVisible();
     await expect(page.getByRole('link', { name: 'View report' })).toHaveAttribute('href', `/monthly-report/partner?month=${currentMonth()}`);
   });
 
   test('shows the dark attention card and the activity timeline', async ({ page }) => {
-    test.skip(!MOCK_RUN, 'the ten cards, the feed and the attention counts come from the mock store: see npm run test:e2e:mock');
+    test.skip(!MOCK_RUN, 'the feed and the attention counts come from the mock store: see npm run test:e2e:mock');
     await signedIn(page);
     await page.goto(`${BASE_URL}/`);
     const attention = page.getByRole('region', { name: 'Needs your attention' });
@@ -657,7 +657,7 @@ test.describe('Overview ?state= switch (dev server, mock mode)', () => {
 
     await page.goto(`${BASE_URL}/?state=partial`);
     await expect(page.getByRole('alert').filter({ hasText: 'Some sections could not be loaded' })).toBeVisible();
-    await expect(page.getByTestId('kpi-card-social_reach').getByTestId('kpi-status')).toBeVisible(); // the cards still load
+    await expect(page.getByTestId('priorities-card').getByTestId('priority-row').first()).toBeVisible(); // the priorities still load
     await expect(page.getByRole('region', { name: 'Needs your attention' }).getByRole('link', { name: /Pending verifications/ })).toContainText(String(MOCK_COUNTS.pendingVerifications));
     await expect(page.getByRole('region', { name: 'Trend' }).getByText('The trend could not be loaded.')).toBeVisible(); // the trend does not
   });
@@ -671,9 +671,9 @@ test.describe('Overview ?state= switch (dev server, mock mode)', () => {
     await expect(page.getByText('All clear: nothing is waiting on you.')).toBeVisible();
 
     await page.goto(`${BASE_URL}/?state=loading`);
-    await expect(page.getByTestId('kpi-skeleton')).toHaveCount(10);
+    await expect(page.getByLabel('Loading priorities')).toBeVisible();
     await page.waitForTimeout(1500);
-    await expect(page.getByTestId('kpi-skeleton')).toHaveCount(10); // never resolves
+    await expect(page.getByLabel('Loading priorities')).toBeVisible(); // never resolves
   });
 });
 
@@ -702,8 +702,8 @@ test.describe('Overview error hygiene', () => {
       await page.getByRole('button', { name: 'See all' }).click();
       await page.getByRole('button', { name: 'Show fewer' }).click();
     } else {
-      // Real-API mode: the live KPI cards render, with no "not connected" states anywhere.
-      await expect(page.getByTestId('kpi-card-social_reach')).toBeVisible();
+      // Real-API mode: the live priorities panel renders, with no "not connected" states anywhere.
+      await expect(page.getByTestId('priorities-card')).toBeVisible();
       await expect(page.getByTestId('not-available-yet')).toHaveCount(0);
       await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
     }
@@ -3136,12 +3136,15 @@ test.describe('Seed data', () => {
     }
   });
 
-  test('website audience: six consecutive months, a channel table that adds up to the views', () => {
+  test('website audience: six consecutive months, a channel table that adds up to the views, app views tracked from the third month on (nulls before)', () => {
     expect(seed.websiteMonths.map((row) => row.month)).toEqual(FIXED_MONTHS);
-    for (const row of seed.websiteMonths) {
+    for (const [index, row] of seed.websiteMonths.entries()) {
       expect(row.channels.reduce((sum, c) => sum + c.views, 0)).toBe(row.views);
       expect(row.dailyFirstVisits).toBeGreaterThan(0);
       expect(row.dailyVisitors).toBeGreaterThan(row.dailyFirstVisits);
+      // the report shows "No data" (never a zero bar) for the months app analytics are not tracked
+      if (index < 2) expect(row.appViews, row.month).toBeNull();
+      else expect(row.appViews, row.month).toBeGreaterThan(0);
     }
   });
 
@@ -10886,63 +10889,23 @@ test.describe('Change history: replaced rows and what a save touched', () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// Overview: the dashboard of the doc (ten KPI cards, trend, priorities, upcoming programs, recent activity, the dark attention card).
+// Overview: the dashboard of the doc (trend, priorities, upcoming programs, recent activity, the dark attention card).
+// The ten KPI cards were removed in the November 2026 review; the Priorities panel is the compact statement of the same judgement.
 // Expectations are worked out from buildSeed() with the same functions the page uses, never typed by hand.
 // ---------------------------------------------------------------------------------------------
-test.describe('Overview: the ten KPI cards and the sections below them', () => {
-  test.skip(!MOCK_RUN, 'the ten cards come from the mock store: see npm run test:e2e:mock');
+test.describe('Overview: the prioritised sections', () => {
+  test.skip(!MOCK_RUN, 'the overview figures come from the mock store: see npm run test:e2e:mock');
   test.use({ viewport: { width: 1440, height: 1100 } });
   type P = import('@playwright/test').Page;
-  const WORDS = { green: 'On track', amber: 'Behind', red: 'Off track' } as const;
-  const SCREEN_HREF: Record<string, string> = {
-    opportunities_queue: '/opportunities',
-    programs: '/programs',
-    network: '/network',
-    partners: '/partners',
-    database: '/database',
-    social: '/social',
-    monthly_report: '/monthly-report',
-  };
   const open = async (page: P, query = '') => {
     await signedIn(page);
     await page.goto(`${BASE_URL}/${query}`, { timeout: 30_000 });
-    await expect(page.getByTestId('kpi-card-social_reach')).toBeVisible();
+    await expect(page.getByTestId('priorities-card')).toBeVisible();
   };
   const today = () => new Date();
   const seedData = () => buildSeed().collections;
 
-  test('ten cards, each with the label, the value, "of {target} {unit}", the right status and the note', async ({ page }) => {
-    await open(page);
-    const data = seedData();
-    const month = currentMonth();
-    await expect(page.getByTestId('kpi-grid').locator('[data-testid^="kpi-card-"]')).toHaveCount(10);
-    for (const key of KPI_KEYS) {
-      const card = page.getByTestId(`kpi-card-${key}`);
-      const status = kpiMonthStatus(key, month, today(), data);
-      await expect(card).toHaveAttribute('data-status', status);
-      await expect(card.getByTestId('kpi-status')).toHaveText(WORDS[status]);
-      await expect(card.getByTestId('kpi-value')).toHaveText(kpiValue(key, month, data).toLocaleString('en-US'));
-      await expect(card.getByTestId('kpi-of')).toHaveText(`of ${kpiTarget(key, data, month).toLocaleString('en-US')} ${kpiUnit(key, kpiTarget(key, data, month))}`);
-      await expect(card).toContainText(KPIS[key].label);
-      await expect(card.getByRole('progressbar')).toBeVisible();
-      await expect(card.getByTestId('kpi-pace-tick')).toHaveCount(KPIS[key].kind === 'running_total' ? 0 : 1); // a running total has no pace tick
-    }
-    // the seed gives a mix of statuses, not ten of one colour
-    const statuses = new Set(KPI_KEYS.map((key) => kpiMonthStatus(key, month, today(), data)));
-    expect(statuses.size).toBeGreaterThan(1);
-  });
-
-  test('the grid is 5 columns at 1440, 4 at 1280, 2 at 1024 and 1 below 640', async ({ page }) => {
-    await open(page);
-    const columns = () =>
-      page.evaluate(() => new Set([...document.querySelectorAll('[data-testid^="kpi-card-"]')].map((card) => Math.round(card.getBoundingClientRect().left))).size);
-    for (const [width, expected] of [[1440, 5], [1280, 4], [1024, 2], [639, 1]] as const) {
-      await page.setViewportSize({ width, height: 1100 });
-      await expect.poll(columns).toBe(expected);
-    }
-  });
-
-  test('a target saved in Settings changes the status and the target on the Overview (client-side, the store keeps it)', async ({ page }) => {
+  test('a target saved in Settings changes the status on the Overview (client-side, the store keeps it)', async ({ page }) => {
     await signedIn(page);
     await page.goto(`${BASE_URL}/settings/targets`, { timeout: 30_000 });
     await expect(page.getByRole('region', { name: 'Monthly targets' })).toBeVisible();
@@ -10951,37 +10914,19 @@ test.describe('Overview: the ten KPI cards and the sections below them', () => {
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(page.getByTestId('toast')).toBeVisible();
     await goViaSidebar(page, 'Dashboard', 'Overview');
-    const card = page.getByTestId('kpi-card-social_reach');
-    await expect(card).toHaveAttribute('data-status', 'green');
-    await expect(card.getByTestId('kpi-status')).toHaveText('On track');
-    await expect(card.getByTestId('kpi-of')).toHaveText('of 100 people reached');
+    await page.getByRole('button', { name: 'See all' }).click();
+    const row = page.locator('[data-testid="priority-row"][data-kpi="social_reach"]');
+    await expect(row.locator('span[data-status]')).toHaveAttribute('data-status', 'green');
+    await expect(row.getByText('On track')).toBeVisible();
+    await expect(row).toContainText('of 100');
   });
 
-  test('every card links to the screen that owns the metric', async ({ page }) => {
-    test.setTimeout(150_000);
-    await open(page);
-    for (const key of KPI_KEYS) await expect(page.getByTestId(`kpi-card-${key}`)).toHaveAttribute('href', SCREEN_HREF[KPIS[key].screen]);
-    for (const key of KPI_KEYS) {
-      await page.goto(`${BASE_URL}/`, { timeout: 30_000 });
-      await page.getByTestId(`kpi-card-${key}`).click();
-      await expect(page).toHaveURL(new RegExp(`${SCREEN_HREF[KPIS[key].screen]}(\\?.*)?$`));
-    }
-  });
-
-  test('the "Needs your attention" card is the only dark card, and it comes directly under the ten cards', async ({ page }) => {
+  test('the "Needs your attention" card is the only dark card, and it sits below the programs row, above the trend', async ({ page }) => {
     await open(page);
     await expect(page.locator('main .dark-feature')).toHaveCount(1);
     await expect(page.locator('main .dark-feature')).toHaveAttribute('data-testid', 'needs-attention');
     const order = await page.evaluate(() => [...document.querySelectorAll('main section[aria-label]')].map((el) => el.getAttribute('aria-label')));
-    expect(order).toEqual(['Key numbers', 'Needs your attention', 'Trend', 'Priorities', 'Programs in progress and upcoming', 'Recent activity']);
-    // none of the ten cards has a dark background
-    const darkest = await page.evaluate(() =>
-      Math.min(...[...document.querySelectorAll('[data-testid^="kpi-card-"]')].map((card) => {
-        const [r, g, b] = getComputedStyle(card).backgroundColor.match(/\d+/g)!.map(Number);
-        return (r + g + b) / 3;
-      })),
-    );
-    expect(darkest).toBeGreaterThan(200);
+    expect(order).toEqual(['Programs in progress and upcoming', 'Recent activity', 'Needs your attention', 'Trend', 'Priorities']);
   });
 
   test('the attention rows and the card links follow what the role may see', async ({ page, context }) => {
@@ -10996,7 +10941,7 @@ test.describe('Overview: the ten KPI cards and the sections below them', () => {
     for (const role of ['super_admin', 'desk_lead', 'communications_officer', 'database_officer', 'opportunities_officer', 'social_media_manager', 'training_officer'] as const) {
       await asRoles(context, role);
       await page.goto(`${BASE_URL}/`, { timeout: 30_000 });
-      await expect(page.getByTestId('kpi-card-social_reach')).toBeVisible();
+      await expect(page.getByTestId('priorities-card')).toBeVisible();
       const attention = page.getByRole('region', { name: 'Needs your attention' });
       const expectedRows = ROWS.filter(([, screen]) => roleCan([role], screen, 'view'));
       if (expectedRows.length === 0) {
@@ -11004,11 +10949,6 @@ test.describe('Overview: the ten KPI cards and the sections below them', () => {
       } else {
         await expect(attention.getByRole('link'), role).toHaveCount(expectedRows.length);
         for (const [label] of ROWS) await expect(attention.getByRole('link', { name: new RegExp(label) }), `${role}: ${label}`).toHaveCount(expectedRows.some(([name]) => name === label) ? 1 : 0);
-      }
-      // a card is a link only when the role may see the screen that owns the metric
-      for (const key of KPI_KEYS) {
-        const tag = await page.getByTestId(`kpi-card-${key}`).evaluate((el) => el.tagName);
-        expect(tag, `${role}: ${key}`).toBe(roleCan([role], KPIS[key].screen, 'view') ? 'A' : 'DIV');
       }
     }
   });
@@ -11032,9 +10972,10 @@ test.describe('Overview: the ten KPI cards and the sections below them', () => {
     await expect(aside.getByRole('link', { name: /^Reports Queue/ })).toContainText(String(MOCK_COUNTS.openReports));
     await goViaSidebar(page, 'Trust & safety', 'Verification Queue');
     await expect(page.locator('main tbody tr a').first()).toBeVisible();
-    // the ten cards add up to the numbers the data gives
+    // the priorities panel's figures are the numbers the data gives
     await goViaSidebar(page, 'Dashboard', 'Overview');
-    for (const key of KPI_KEYS) await expect(page.getByTestId(`kpi-card-${key}`).getByTestId('kpi-value')).toHaveText(kpiValue(key, currentMonth(), data).toLocaleString('en-US'));
+    await page.getByRole('button', { name: 'See all' }).click();
+    for (const key of KPI_KEYS) await expect(page.locator(`[data-testid="priority-row"][data-kpi="${key}"]`)).toContainText(kpiValue(key, currentMonth(), data).toLocaleString('en-US'));
   });
 
   test('the month selector is real: a past month shows what was reached against the target that applied then, with its final status', async ({ page }) => {
@@ -11044,14 +10985,15 @@ test.describe('Overview: the ten KPI cards and the sections below them', () => {
     await page.getByRole('combobox', { name: 'Month' }).click();
     await page.getByRole('option', { name: new RegExp(formatMonth(previous)) }).click();
     await expect(page).toHaveURL(new RegExp(`month=${previous}`));
+    await page.getByRole('button', { name: 'See all' }).click();
     for (const key of KPI_KEYS) {
-      const card = page.getByTestId(`kpi-card-${key}`);
       const status = kpiMonthStatus(key, previous, today(), data);
-      await expect(card, key).toHaveAttribute('data-status', status);
-      await expect(card.getByTestId('kpi-value')).toHaveText(kpiValue(key, previous, data).toLocaleString('en-US'));
-      await expect(card.getByTestId('kpi-of')).toHaveText(`of ${kpiTarget(key, data, previous).toLocaleString('en-US')} ${kpiUnit(key, kpiTarget(key, data, previous))}`);
-      await expect(card.getByTestId('kpi-pace-tick')).toHaveCount(0); // the month is over: no pace tick
+      const row = page.locator(`[data-testid="priority-row"][data-kpi="${key}"]`);
+      await expect(row.locator('span[data-status]'), key).toHaveAttribute('data-status', status);
+      await expect(row, key).toContainText(kpiValue(key, previous, data).toLocaleString('en-US'));
+      await expect(row, key).toContainText(`of ${kpiTarget(key, data, previous).toLocaleString('en-US')}`);
     }
+    await expect(page.locator('[data-testid="kpi-pace-tick"]')).toHaveCount(0); // the month is over: no pace tick
     await expect(page.getByRole('region', { name: 'Priorities' })).toContainText('Ranked by how far each fell short of its full target');
     // the trend ends with the month shown
     await expect(page.getByRole('table', { name: /last six months/ }).getByRole('row').last().getByRole('rowheader')).toHaveText(formatMonth(previous));
@@ -11132,15 +11074,12 @@ test.describe('Overview: the ten KPI cards and the sections below them', () => {
     expect(gap).toBe('20px');
   });
 
-  test('on a phone (434px): the cards stack in one column, nothing is wider than the screen and the targets are 40px', async ({ page }) => {
+  test('on a phone (434px): the sections stack in one column, nothing is wider than the screen and the targets are 40px', async ({ page }) => {
     await page.setViewportSize({ width: 434, height: 900 });
     await open(page);
     const report = await overflowing(page);
     expect(report.found, JSON.stringify(report)).toEqual([]);
     expect(report.scrollWidth).toBeLessThanOrEqual(report.innerWidth);
-    const lefts = await page.evaluate(() => [...document.querySelectorAll('[data-testid^="kpi-card-"]')].map((card) => [Math.round(card.getBoundingClientRect().left), Math.round(card.getBoundingClientRect().width)]));
-    expect(new Set(lefts.map(([left]) => left)).size).toBe(1);
-    expect(Math.min(...lefts.map(([, width]) => width))).toBeGreaterThan(360);
     await expect(page.getByTestId('upcoming-table')).toBeHidden();
     await expect(page.getByTestId('upcoming-card').first()).toBeVisible();
     const rects = await page.getByRole('region', { name: 'Needs your attention' }).getByRole('link').evaluateAll((nodes) => nodes.map((node) => node.getBoundingClientRect().toJSON()));
@@ -11161,7 +11100,7 @@ test.describe('Overview: the ten KPI cards and the sections below them', () => {
     await page.getByRole('combobox', { name: 'Month' }).click();
     await page.getByRole('option', { name: new RegExp(formatMonth(monthsBefore(currentMonth(), 2))) }).click();
     await expect(page).toHaveURL(/month=/);
-    await expect(page.getByTestId('kpi-card-social_reach')).toBeVisible();
+    await expect(page.getByTestId('priorities-card')).toBeVisible();
     expect(problems).toEqual([]);
   });
 });
@@ -11177,7 +11116,7 @@ test.describe('Overview: real-API mode shows live figures calmly', () => {
   type P = import('@playwright/test').Page;
   const open = async (page: P) => {
     await page.goto(`${BASE_URL}/`, { timeout: 30_000 });
-    await expect(page.getByTestId('kpi-card-social_reach')).toBeVisible();
+    await expect(page.getByTestId('priorities-card')).toBeVisible();
   };
 
   test('no notice, and each of the four sections shows its live state (no "Not available yet", no "could not be loaded")', async ({ page }) => {
@@ -11195,21 +11134,19 @@ test.describe('Overview: real-API mode shows live figures calmly', () => {
     await expect(page.getByText('could not be loaded')).toHaveCount(0);
   });
 
-  test('the ten cards show live figures with status: labels, values, bars and no "Target: —"', async ({ page }) => {
+  test('the priorities panel shows live figures with status: labels, values, bars and no "No target"', async ({ page }) => {
     await open(page);
-    const cards = page.locator('[data-testid^="kpi-card-"]');
-    await expect(cards).toHaveCount(10);
-    for (const key of KPI_KEYS) {
-      const card = page.getByTestId(`kpi-card-${key}`);
-      await expect(card).toContainText(KPIS[key].label);
-    }
-    // The seeded backend has figures and default targets: every card shows a live status word, never "not available".
+    await page.getByRole('button', { name: 'See all' }).click();
+    const rows = page.getByTestId('priority-row');
+    await expect(rows).toHaveCount(10);
+    for (const key of KPI_KEYS) await expect(page.locator(`[data-testid="priority-row"][data-kpi="${key}"]`), key).toBeVisible();
+    // The seeded backend has figures and default targets: every row shows a live status word, never "No target".
     // (The exact figure moves when earlier tests publish records, so only the vocabulary is pinned.)
-    await expect(page.getByTestId('kpi-card-opportunities_published')).toContainText(/On track|Off track|Behind/);
-    await expect(page.getByTestId('kpi-status').first()).toBeVisible();
+    const panel = page.getByTestId('priorities-card');
+    await expect(panel).not.toContainText('No target');
+    await expect(panel).toContainText(/On track|Off track|Behind/);
     await expect(page.getByText('Not available yet')).toHaveCount(0);
     await expect(page.getByText('Status unavailable')).toHaveCount(0);
-    await expect(page.getByText(/^Target .*: —$/)).toHaveCount(0);
   });
 
   test('the dark card shows live queue counts, never "Not available yet"', async ({ page }) => {
@@ -11244,7 +11181,7 @@ test.describe('Overview: mock mode shows no "not connected" states', () => {
   test('neither the notice nor "Not available yet" shows with the sample figures', async ({ page }) => {
     await signedIn(page);
     await page.goto(`${BASE_URL}/`, { timeout: 30_000 });
-    await expect(page.getByTestId('kpi-card-social_reach').getByTestId('kpi-status')).toBeVisible();
+    await expect(page.getByTestId('priorities-card')).toBeVisible();
     await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
     await expect(page.getByTestId('not-available-yet')).toHaveCount(0);
     await expect(page.getByText('Not available yet')).toHaveCount(0);
@@ -11255,39 +11192,35 @@ test.describe('Overview: mock mode shows no "not connected" states', () => {
     await page.goto(`${BASE_URL}/?state=error`, { timeout: 30_000 });
     await expect(page.getByRole('alert').filter({ hasText: 'Could not load the overview' }).getByRole('button', { name: 'Try again' })).toBeEnabled();
     await expect(page.getByRole('region', { name: 'Trend' }).getByText('The trend could not be loaded.')).toBeVisible();
-    await expect(page.getByTestId('kpi-card-social_reach')).toContainText('Status unavailable');
+    await expect(page.getByRole('region', { name: 'Priorities' }).getByText('The priorities could not be loaded.')).toBeVisible();
     await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
     await expect(page.getByTestId('not-available-yet')).toHaveCount(0);
   });
 });
 
 // ---------------------------------------------------------------------------------------------
-// Overview: one status vocabulary, the pro-rating note, the order of the cards for a role, the layout, the programs section, the priorities
-// ranking and the one-line card notes.
+// Overview: one status vocabulary, the pro-rating note, the layout, the programs section, the priorities ranking.
+// The ten KPI cards were removed in the November 2026 review; the prior-card role-ordering tests went with them.
 // ---------------------------------------------------------------------------------------------
-test.describe('Overview: status words, notes, roles, layout and rankings', () => {
-  test.skip(!MOCK_RUN, 'the ten cards come from the mock store: see npm run test:e2e:mock');
+test.describe('Overview: status words, notes, layout and rankings', () => {
+  test.skip(!MOCK_RUN, 'the overview figures come from the mock store: see npm run test:e2e:mock');
   test.use({ viewport: { width: 1440, height: 900 } });
   type P = import('@playwright/test').Page;
   const open = async (page: P, query = '') => {
     await signedIn(page);
     await page.goto(`${BASE_URL}/${query}`, { timeout: 30_000 });
-    await expect(page.getByTestId('kpi-card-social_reach')).toBeVisible();
+    await expect(page.getByTestId('priorities-card')).toBeVisible();
   };
-  const cardOrder = (page: P) => page.evaluate(() => [...document.querySelectorAll('[data-testid="kpi-grid"] > *')].map((el) => el.getAttribute('data-testid')?.replace('kpi-card-', '') ?? el.textContent));
 
-  test('one status vocabulary: the cards say On track, Behind and Off track, never "At risk"', async ({ page }) => {
-    await open(page);
-    const words = await page.getByTestId('kpi-status').allTextContents();
-    expect(new Set(words)).toEqual(new Set(['On track', 'Behind', 'Off track']));
-    await expect(page.getByText('At risk')).toHaveCount(0);
-    // the same words in the card's accessible name and in the priorities list
-    const names = await page.locator('[data-testid^="kpi-card-"]').evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label') ?? ''));
-    expect(names.some((name) => name.endsWith(', Off track'))).toBe(true);
-    expect(names.some((name) => /, At risk$/.test(name))).toBe(false);
+  test('one status vocabulary: the priorities never say "At risk", only On track, Behind and Off track', async ({ page }) => {
+    await open(page, `?month=${monthsBefore(currentMonth(), 1)}`); // a complete month: a mix of statuses in the seed
+    await page.getByRole('button', { name: 'See all' }).click();
+    const rows = page.getByTestId('priority-row');
+    for (const row of await rows.all()) await expect(row).toContainText(/On track|Behind|Off track/);
+    expect(await page.getByText('At risk').count()).toBe(0);
   });
 
-  test('the note under the ten cards says how status is judged, with a worked example in a tooltip', async ({ page }) => {
+  test('the note above the priorities says how status is judged, with a worked example in a tooltip', async ({ page }) => {
     await open(page);
     const note = page.getByTestId('pro-rating-note');
     await expect(note).toHaveText('Targets are monthly. Status compares each figure with where it should be by today.');
@@ -11308,41 +11241,15 @@ test.describe('Overview: status words, notes, roles, layout and rankings', () =>
     await expect(page.getByTestId('pro-rating-help')).toHaveCount(0);
   });
 
-  const ORDER_CASES: { name: string; roles: string }[] = [
-    { name: 'Partnerships Officer', roles: 'partnerships_officer' },
-    { name: 'Database Officer', roles: 'database_officer' },
-    { name: 'Social Media Manager', roles: 'social_media_manager' },
-    { name: 'a two-role pair (Partnerships Officer + Database Officer)', roles: 'partnerships_officer,database_officer' },
-    { name: 'a role that owns nothing (Admin Support)', roles: 'admin_support' },
-    { name: 'Desk Lead', roles: 'desk_lead' },
-    { name: 'Super Admin', roles: 'super_admin' },
-  ];
-  for (const { name, roles } of ORDER_CASES) {
-    test(`the cards start with the KPIs ${name} owns, then "Other metrics"`, async ({ page, context }) => {
-      await signedIn(page);
-      await asRoles(context, roles);
-      await page.goto(`${BASE_URL}/`, { timeout: 30_000 });
-      await expect(page.getByTestId('kpi-card-social_reach')).toBeVisible();
-      const ids = roles.split(',') as Parameters<typeof kpisOwnedBy>[0];
-      const owned = new Set(kpisOwnedBy(ids).map((kpi) => kpi.key));
-      const order = await cardOrder(page);
-      if (owned.size === 0 || owned.size === KPI_KEYS.length) {
-        expect(order, 'default order, no heading').toEqual([...KPI_KEYS]);
-        await expect(page.getByTestId('other-metrics-heading')).toHaveCount(0);
-      } else {
-        const mine = KPI_KEYS.filter((key) => owned.has(key));
-        const others = KPI_KEYS.filter((key) => !owned.has(key));
-        expect(order).toEqual([...mine, 'other-metrics-heading', ...others]);
-        await expect(page.getByTestId('other-metrics-heading')).toHaveText('Other metrics');
-        await expect(page.getByTestId('other-metrics-heading')).toHaveClass(/text-muted/);
-      }
-    });
-  }
-
-  test('the attention card sits directly under the ten cards, above the fold at 1440x900, and no card has a blank band over 24px', async ({ page }) => {
+  test('the programs row leads the page, the attention card follows it, and no card has a blank band over 24px', async ({ page }) => {
     await open(page);
-    const box = await page.getByRole('region', { name: 'Needs your attention' }).boundingBox();
-    expect(box!.y + box!.height).toBeLessThanOrEqual(900);
+    // wait for the real content: skeleton bars are aria-hidden, so the band measurement is only meaningful once the rows are in
+    await expect(page.getByTestId('upcoming-table')).toBeVisible();
+    await expect(page.getByTestId('priorities-list')).toBeVisible();
+    // the review's order: programs and recent activity in one row at the top, attention directly beneath
+    const rows = await page.evaluate(() => ['Programs in progress and upcoming', 'Recent activity', 'Needs your attention'].map((name) => Math.round(document.querySelector(`main section[aria-label="${name}"]`)!.getBoundingClientRect().top)));
+    expect(rows[0]).toBe(rows[1]);
+    expect(rows[2]).toBeGreaterThan(rows[0]);
     const bands = await page.evaluate(() =>
       [...document.querySelectorAll('main section[aria-label]')].map((section) => {
         let bottom = 0;
@@ -11357,9 +11264,6 @@ test.describe('Overview: status words, notes, roles, layout and rankings', () =>
       }),
     );
     for (const [label, band] of bands) expect(band, `${label}: empty space inside the card`).toBeLessThanOrEqual(24);
-    // the two sections of a row are aligned to the top
-    const tops = await page.evaluate(() => ['Programs in progress and upcoming', 'Recent activity'].map((name) => Math.round(document.querySelector(`main section[aria-label="${name}"]`)!.getBoundingClientRect().top)));
-    expect(tops[0]).toBe(tops[1]);
   });
 
   test('"Programs in progress and upcoming": five rows by start date, each with a Running or Planned badge', async ({ page }) => {
@@ -11422,31 +11326,10 @@ test.describe('Overview: status words, notes, roles, layout and rankings', () =>
     expect(rankFor(july)).toEqual(fullTarget);
   });
 
-  test('each card note is ONE line, the card heights stay equal, and the full text is in the tooltip on hover and on focus', async ({ page }) => {
-    await open(page);
-    const heights = await page.locator('[data-testid^="kpi-card-"]').evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().height)));
-    expect(new Set(heights).size).toBe(1);
-    const lines = await page.locator('[data-testid^="kpi-card-"]').evaluateAll((nodes) =>
-      nodes.map((node) => {
-        const note = [...node.querySelectorAll('p, span')].reverse().find((el) => el.children.length === 0 && el.textContent && el.textContent.length > 20)!;
-        const style = getComputedStyle(note);
-        return Math.round(note.getBoundingClientRect().height / parseFloat(style.lineHeight));
-      }),
-    );
-    expect(lines.every((count) => count === 1)).toBe(true);
-    const full = KPIS.opportunities_published.note;
-    const note = page.getByTestId('kpi-card-opportunities_published').getByText(full.slice(0, 12));
-    await note.hover();
-    await expect(page.getByRole('tooltip')).toHaveText(full);
-    await page.keyboard.press('Escape');
-    await page.mouse.move(0, 0);
-    await note.focus();
-    await expect(page.getByRole('tooltip')).toHaveText(full);
-  });
 });
 
 // ---------------------------------------------------------------------------------------------
-// Scorecard (/scorecard): the maths (no browser), then My scorecard, Team, coherence with the Overview and phones.
+// Scorecard (/scorecard): the maths (no browser), then My scorecard, Team, coherence with the Overview's priorities panel and phones.
 // Expectations are worked out from buildSeed() with the same functions the page uses.
 // ---------------------------------------------------------------------------------------------
 test.describe('Scorecard maths (no browser)', () => {
@@ -11763,7 +11646,7 @@ test.describe('Scorecard: My scorecard and Team (mock mode)', () => {
   ];
   for (const { roles, label } of COHERENCE) {
     for (const [monthName, monthOf] of [['this month', () => currentMonth()], ['July', () => monthsBefore(currentMonth(), 3)]] as const) {
-      test(`coherence (${label}, ${monthName}): the scorecard attainment and status equal the Overview card and the Priorities panel`, async ({ page, context }) => {
+      test(`coherence (${label}, ${monthName}): the scorecard attainment and status equal the Priorities panel`, async ({ page, context }) => {
         const month = monthOf();
         if (monthName === 'July') expect(month.endsWith('-07')).toBe(true);
         const query = month === currentMonth() ? '' : `?month=${month}`;
@@ -11779,13 +11662,11 @@ test.describe('Scorecard: My scorecard and Team (mock mode)', () => {
         expect(onCard.length).toBeGreaterThan(0);
         // the Overview, same role, same month
         await page.goto(`${BASE_URL}/${query}`, { timeout: 30_000 });
-        await expect(page.getByTestId('kpi-card-social_reach')).toBeVisible();
+        await expect(page.getByTestId('priorities-card')).toBeVisible();
         const words = { green: 'On track', amber: 'Behind', red: 'Off track' } as const;
+        expect(Object.values(words)).toContain(onCard[0].status);
         await page.getByRole('button', { name: 'See all' }).click();
         for (const metric of onCard) {
-          const card = page.getByTestId(`kpi-card-${metric.kpi}`);
-          await expect(card.getByTestId('kpi-status'), `${metric.kpi}: Overview card status`).toHaveText(metric.status);
-          expect(Object.values(words)).toContain(metric.status);
           // the Priorities row: "<n>% of where it should be today" (this month) or "<n>% of the target" (a past month)
           const priority = page.getByTestId('priority-row').and(page.locator(`[data-kpi="${metric.kpi}"]`));
           await expect(priority, `${metric.kpi}: Priorities`).toContainText(`${metric.percent} of ${month === currentMonth() ? 'where it should be today' : 'the target'}`);
@@ -11864,7 +11745,7 @@ test.describe('Scorecard follow-up maths (no browser)', () => {
 
   test('running totals: Active ambassadors is the only one, judged against the FULL target (pace 1) all month; every other KPI is a count', () => {
     expect(KPIS.active_ambassadors.kind).toBe('running_total');
-    expect(KPIS.active_ambassadors.note).toBe('Running total: judged against the full target');
+    expect(KPIS.active_ambassadors.note).toBe('Total currently active');
     for (const key of KPI_KEYS.filter((k) => k !== 'active_ambassadors')) expect(KPIS[key].kind, key).toBe('count');
     expect(kpiMonthProgress('active_ambassadors', june, day(15))).toEqual({ dayOfMonth: 30, daysInMonth: 30 });
     expect(kpiMonthProgress('social_reach', june, day(15))).toEqual({ dayOfMonth: 15, daysInMonth: 30 });
@@ -12043,7 +11924,7 @@ test.describe('Scorecard follow-up: name and roles, axis, running totals, too ea
   });
 
   for (const monthName of ['this month', 'July']) {
-    test(`running total (${monthName}): Active ambassadors is judged against the FULL target on the Overview card, in Priorities and on the scorecard, with no pace tick`, async ({ page, context }) => {
+    test(`running total (${monthName}): Active ambassadors is judged against the FULL target in Priorities and on the scorecard, with no pace tick`, async ({ page, context }) => {
       const month = monthName === 'July' ? monthsBefore(currentMonth(), 3) : currentMonth();
       const query = month === currentMonth() ? '' : `?month=${month}`;
       const seeded = data();
@@ -12059,27 +11940,22 @@ test.describe('Scorecard follow-up: name and roles, axis, running totals, too ea
       await expect(row.getByTestId('kpi-status')).toHaveText(words[status]);
       await expect(row.getByTestId('metric-of')).toHaveText(`of ${target.toLocaleString('en-US')} ambassadors`); // no "pro-rated to N"
       await expect(row.getByTestId('kpi-pace-tick')).toHaveCount(0);
-      // the Overview card
+      // the Overview (the Priorities panel is the statement of the same judgement)
       await page.goto(`${BASE_URL}/${query}`, { timeout: 30_000 });
-      const card = page.getByTestId('kpi-card-active_ambassadors');
-      await expect(card).toHaveAttribute('data-status', status);
-      await expect(card.getByTestId('kpi-of')).toHaveText(`of ${target.toLocaleString('en-US')} ambassadors`);
-      await expect(card.getByTestId('kpi-pace-tick')).toHaveCount(0);
-      await expect(card).toContainText('Running total: judged against the full target');
-      await expect(card.getByTestId('kpi-value')).toHaveText(value.toLocaleString('en-US'));
-      // the width of the bar's fill is value / full target (capped at the full bar)
-      const fill = await card.getByTestId('kpi-bar-fill').evaluate((el) => (el as HTMLElement).style.width);
-      expect(parseFloat(fill)).toBeCloseTo(Math.min(1, value / target) * 100, 1);
-      // Priorities
       await page.getByRole('button', { name: 'See all' }).click();
       const priority = page.getByTestId('priority-row').and(page.locator('[data-kpi="active_ambassadors"]'));
+      await expect(priority).toContainText(value.toLocaleString('en-US'));
+      await expect(priority).toContainText(`of ${target.toLocaleString('en-US')}`);
       await expect(priority).toContainText(`${expected.text} ${month === currentMonth() ? 'of where it should be today' : 'of the target'}`);
       await expect(priority).toContainText(words[status]);
-      await expect(priority.getByTestId('kpi-pace-tick')).toHaveCount(0);
+      await expect(priority.getByTestId('kpi-pace-tick')).toHaveCount(0); // a running total: judged against the full target
+      // the width of the bar's fill is value / full target (capped at the full bar)
+      const fill = await priority.getByTestId('kpi-bar-fill').evaluate((el) => (el as HTMLElement).style.width);
+      expect(parseFloat(fill)).toBeCloseTo(Math.min(1, value / target) * 100, 1);
     });
   }
 
-  test('too early in the month (day 4): the composite is a dash with the message, the rows and the Overview chips stay, the team waits ("Scores start on day 5")', async ({ page, context }) => {
+  test('too early in the month (day 4): the composite is a dash with the message, the rows stay, and the Overview keeps its priorities panel ("Scores start on day 5")', async ({ page, context }) => {
     const day4 = dayOfThisMonth(4);
     await open(page, context, 'desk_lead', '/scorecard', day4);
     await expect(page.getByTestId('score-value')).toHaveText('—');
@@ -12097,10 +11973,10 @@ test.describe('Scorecard follow-up: name and roles, axis, running totals, too ea
     await expect(page.getByTestId('team-composite')).toHaveCount(0);
     await expect(page.getByTestId('team-heldback-row').first()).toBeVisible();
     await expect(page.getByTestId('team-unranked')).toBeVisible(); // people with no metrics are still listed
-    // the Overview keeps its status chips
+    // the Overview keeps its priorities panel
     await page.goto(`${BASE_URL}/`, { timeout: 30_000 });
-    await expect(page.getByTestId('kpi-card-social_reach')).toBeVisible();
-    await expect(page.getByTestId('kpi-status')).toHaveCount(10);
+    await expect(page.getByTestId('priorities-card')).toBeVisible();
+    await expect(page.getByTestId('priority-row').first()).toBeVisible();
   });
 
   test('day 5 scores; a past month is always scored, even on day 4', async ({ page, context }) => {
@@ -12198,13 +12074,13 @@ test.describe('Monthly report maths (no browser)', () => {
   test('the ten figures equal the matching KPI, newInMonth and the website table; the daily sums are the averages times the days', () => {
     const metrics = partnerMetrics(may, FIXED_TODAY, reportData);
     const byId = Object.fromEntries(metrics.map((metric) => [metric.id, metric]));
-    expect(metrics.map((metric) => metric.id)).toEqual(['website_views', 'daily_first_visits', 'daily_visitors', 'social_reach', 'social_engagement', 'posts_published', 'new_ambassadors', 'new_partners', 'opportunities_published', 'projects_organised']);
+    expect(metrics.map((metric) => metric.id)).toEqual(['website_views', 'daily_first_visits', 'daily_visitors', 'social_reach', 'social_engagement', 'posts_published', 'new_ambassadors', 'new_partners', 'opportunities_published', 'programs_organised']);
     expect(byId.website_views.value).toBe(kpiValue('website_views', may, kpiData));
     expect(byId.social_reach.value).toBe(kpiValue('social_reach', may, kpiData));
     expect(byId.social_engagement.value).toBe(kpiValue('social_engagement', may, kpiData));
     expect(byId.posts_published.value).toBe(kpiValue('posts_published', may, kpiData));
     expect(byId.opportunities_published.value).toBe(kpiValue('opportunities_published', may, kpiData));
-    expect(byId.projects_organised.value).toBe(kpiValue('programs_organised', may, kpiData));
+    expect(byId.programs_organised.value).toBe(kpiValue('programs_organised', may, kpiData));
     expect(byId.new_partners.value).toBe(kpiValue('partners_onboarded', may, kpiData));
     expect(byId.new_ambassadors.value).toBe(kpiData.ambassadors.filter((a) => a.status !== 'applicant' && a.joinedAt.startsWith(may)).length); // joinedAt
     const row = kpiData.websiteMonths.find((entry) => entry.month === may)!;
@@ -12233,9 +12109,9 @@ test.describe('Monthly report maths (no browser)', () => {
   test('a zero previous value is "n/a", not a percentage (a month after an empty one)', () => {
     const emptyMay = { ...kpiData, programs: kpiData.programs.map((program) => (program.deliveredAt?.startsWith(may) ? { ...program, status: 'planned' as const, deliveredAt: undefined } : program)) } as never;
     expect(kpiValue('programs_organised', may, emptyMay)).toBe(0);
-    const projects = partnerMetrics(june, FIXED_TODAY, { ...(reportData as object), ...(emptyMay as object) } as never).find((metric) => metric.id === 'projects_organised')!;
-    expect(projects.previous).toBe(0);
-    expect(projects.delta).toEqual({ kind: 'na', text: 'n/a', percent: null });
+    const programs = partnerMetrics(june, FIXED_TODAY, { ...(reportData as object), ...(emptyMay as object) } as never).find((metric) => metric.id === 'programs_organised')!;
+    expect(programs.previous).toBe(0);
+    expect(programs.delta).toEqual({ kind: 'na', text: 'n/a', percent: null });
   });
 
   test('shouldRecordReport is once per reportMonth AND view in each calendar month; recordReport adds the record the Monthly reports KPI counts', () => {
@@ -12292,38 +12168,38 @@ test.describe('Monthly report: routes, access, the two templates and the coheren
     await expect(page.getByTestId('partner-report')).toBeVisible();
   });
 
-  test('the partner report: the header, the intro, the ten cells with their descriptions, the footer and no sideways scroll', async ({ page, context }) => {
+  test('the partner report: the header, one line on what the percentages are compared with, the ten cells, the footer and no sideways scroll', async ({ page, context }) => {
     await open(page, context, 'desk_lead');
     const paper = page.getByTestId('partner-report');
     await expect(paper).toBeVisible();
     await expect(paper.getByText('GLOBAL OPPORTUNITY DESK', { exact: true })).toBeVisible();
     await expect(paper.getByRole('heading', { name: 'Progress report' })).toBeVisible();
     await expect(page.getByTestId('report-month')).toHaveText(formatMonth(defaultMonth())); // the last COMPLETE month
-    await expect(page.getByTestId('report-intro')).toHaveText(`A summary of the Desk's reach and growth this month, prepared for our partners. Figures are compared with ${formatMonth(monthsBefore(defaultMonth(), 1))}.`);
+    await expect(paper.getByRole('heading', { name: 'Performance overview' })).toBeVisible();
+    await expect(paper.getByText(`Percentage changes are compared with ${formatMonth(monthsBefore(defaultMonth(), 1))}.`, { exact: true })).toBeVisible();
     const cells = paper.locator('[data-testid^="metric-"]:not([data-testid="metric-value"]):not([data-testid="metric-delta"])');
     await expect(cells).toHaveCount(10);
-    const expected: [string, string, string][] = [
-      ['website_views', 'Website views', 'Pages opened across the Desk website'],
-      ['daily_first_visits', 'Daily first visits (sum)', 'Daily counts; returning people can appear again on another day'],
-      ['daily_visitors', 'Daily visitors (sum)', 'Visitor-days, not unique monthly people; cached page loads may be missed'],
-      ['social_reach', 'Social reach', 'People reached across our channels'],
-      ['social_engagement', 'Social engagement', 'Likes, shares, comments and saves'],
-      ['posts_published', 'Posts published', 'Across all social channels'],
-      ['new_ambassadors', 'New ambassadors', 'Young people who joined the network'],
-      ['new_partners', 'New partners', 'Organisations that came on board'],
-      ['opportunities_published', 'Opportunities published', 'Scholarships, grants and roles shared publicly'],
-      ['projects_organised', 'Projects organised', 'Trainings, workshops and projects GOD ran'],
+    const expected: [string, string][] = [
+      ['website_views', 'Website views'],
+      ['daily_first_visits', 'Daily first visits (sum)'],
+      ['daily_visitors', 'Daily visitors (sum)'],
+      ['social_reach', 'Social reach'],
+      ['social_engagement', 'Social engagement'],
+      ['posts_published', 'Posts published'],
+      ['new_ambassadors', 'New ambassadors'],
+      ['new_partners', 'New partners'],
+      ['opportunities_published', 'Opportunities published'],
+      ['programs_organised', 'Programs organised'],
     ];
-    for (const [id, label, description] of expected) {
+    for (const [id, label] of expected) {
       await expect(page.getByTestId(`metric-${id}`)).toContainText(label);
-      await expect(page.getByTestId(`metric-${id}`)).toContainText(description);
     }
     await expect(page.getByTestId('report-footer')).toHaveText(`Global Opportunity Desk · ${formatMonth(defaultMonth())}`);
     await expect(paper.getByText("Figures from the Desk's own records.")).toBeVisible();
     // the grid is 5 across on the paper
     const lefts = await paper.locator('[data-testid^="metric-"]:not([data-testid="metric-value"]):not([data-testid="metric-delta"])').evaluateAll((nodes) => new Set(nodes.map((node) => Math.round(node.getBoundingClientRect().left))).size);
     expect(lefts).toBe(5);
-    await expect(page.getByTestId('audience-none').or(page.getByRole('group', { name: /^Website views, last \d+ months/ }))).toBeVisible();
+    await expect(page.getByTestId('audience-none').or(page.getByRole('group', { name: /^Views by platform, last \d+ months/ }))).toBeVisible();
   });
 
   test('the partner report holds no staff name, no ambassador name and not the word "scoreboard"', async ({ page, context }) => {
@@ -12395,7 +12271,7 @@ test.describe('Monthly report: routes, access, the two templates and the coheren
     await expect(page.getByTestId('report-month')).toHaveText(formatMonth(defaultMonth()));
   });
 
-  test('coherence: the ten values equal the Overview cards, the Social totals and the data, for every month; the deltas are right (a normal month, a zero previous value, the first month)', async ({ page, context }) => {
+  test('coherence: the ten values equal the Overview\'s priorities panel, the Social totals and the data, for every month; the deltas are right (a normal month, a zero previous value, the first month)', async ({ page, context }) => {
     test.setTimeout(240_000);
     const seeded = reportData();
     const kinds = new Set<string>();
@@ -12408,18 +12284,15 @@ test.describe('Monthly report: routes, access, the two templates and the coheren
         await expect(page.getByTestId(`metric-${metric.id}`).getByTestId('metric-delta'), `${month} ${metric.id} delta`).toHaveText(metric.delta.text);
         kinds.add(metric.delta.kind);
       }
-      // the Overview cards of the same month
+      // the Overview's priorities panel, same month (the report's values are printed there, one row per KPI)
       await page.goto(`${BASE_URL}/?month=${month}`, { timeout: 30_000 });
-      await expect(page.getByTestId('kpi-card-social_reach')).toBeVisible();
-      const idToKpi: Record<string, string> = { website_views: 'website_views', social_reach: 'social_reach', social_engagement: 'social_engagement', posts_published: 'posts_published', new_partners: 'partners_onboarded', opportunities_published: 'opportunities_published', projects_organised: 'programs_organised' };
-      const onOverview: Record<string, string> = {};
-      for (const [id, kpi] of Object.entries(idToKpi)) onOverview[id] = (await page.getByTestId(`kpi-card-${kpi}`).getByTestId('kpi-value').textContent()) ?? '';
+      await expect(page.getByTestId('priorities-card')).toBeVisible();
+      await page.getByRole('button', { name: 'See all' }).click();
+      const idToKpi: Record<string, string> = { website_views: 'website_views', social_reach: 'social_reach', social_engagement: 'social_engagement', posts_published: 'posts_published', new_partners: 'partners_onboarded', opportunities_published: 'opportunities_published', programs_organised: 'programs_organised' };
+      for (const [id, kpi] of Object.entries(idToKpi)) await expect(page.locator(`[data-testid="priority-row"][data-kpi="${kpi}"]`), `${month} ${id} on the Overview`).toContainText(`${expected.find((m) => m.id === id)!.value.toLocaleString('en-US')} of`);
       // the Social page totals of the same month
       await page.goto(`${BASE_URL}/social?month=${month}`, { timeout: 30_000 });
       await expect(page.getByTestId('total-posts')).toBeVisible();
-      for (const metric of expected) {
-        if (idToKpi[metric.id]) expect(onOverview[metric.id], `${month} ${metric.id} on the Overview`).toBe(metric.value.toLocaleString('en-US'));
-      }
       await expect(page.getByTestId('total-posts'), `${month} posts on Social`).toContainText(String(expected.find((m) => m.id === 'posts_published')!.value));
       await expect(page.getByTestId('total-reach'), `${month} reach on Social`).toContainText(expected.find((m) => m.id === 'social_reach')!.value.toLocaleString('en-US'));
       await expect(page.getByTestId('total-engagement'), `${month} engagement on Social`).toContainText(expected.find((m) => m.id === 'social_engagement')!.value.toLocaleString('en-US'));
@@ -12549,7 +12422,7 @@ test.describe('Monthly report: routes, access, the two templates and the coheren
     expect(problems).toEqual([]);
   });
 
-  test('the Overview: "View report" opens the Partner report of the selected month for roles that may view it, and is not rendered for the others; the Monthly reports card links to /monthly-report', async ({ page, context }) => {
+  test('the Overview: "View report" opens the Partner report of the selected month for roles that may view it, and is not rendered for the others', async ({ page, context }) => {
     await open(page, context, 'desk_lead', '/');
     await expect(page.getByRole('link', { name: 'View report' })).toHaveAttribute('href', `/monthly-report/partner?month=${currentMonth()}`);
     const previous = monthsBefore(currentMonth(), 2);
@@ -12559,12 +12432,8 @@ test.describe('Monthly report: routes, access, the two templates and the coheren
     await expect(page).toHaveURL(`${BASE_URL}/monthly-report/partner?month=${previous}`);
     await expect(page.getByTestId('report-month')).toHaveText(formatMonth(previous));
     await open(page, context, 'moderator', '/');
-    await expect(page.getByTestId('kpi-card-social_reach')).toBeVisible();
+    await expect(page.getByTestId('priorities-card')).toBeVisible();
     await expect(page.getByRole('link', { name: 'View report' })).toHaveCount(0);
-    await open(page, context, 'desk_lead', '/');
-    await expect(page.getByTestId('kpi-card-monthly_reports')).toHaveAttribute('href', '/monthly-report');
-    await page.getByTestId('kpi-card-monthly_reports').click();
-    await expect(page).toHaveURL(`${BASE_URL}/monthly-report/partner`);
   });
 });
 
@@ -12624,7 +12493,8 @@ test.describe('Monthly report: Download PDF and printing (mock mode)', () => {
     await expect(toast.last()).toContainText(`Report recorded for ${formatMonth(monthsBefore(currentMonth(), 3))}`);
     // three different reports were recorded: the Monthly reports KPI on the Overview went up by three
     await goViaSidebar(page, 'Dashboard', 'Overview');
-    await expect(page.getByTestId('kpi-card-monthly_reports').getByTestId('kpi-value')).toHaveText(String(baseline + 3));
+    await page.getByRole('button', { name: 'See all' }).click();
+    await expect(page.locator('[data-testid="priority-row"][data-kpi="monthly_reports"]')).toContainText(`${(baseline + 3).toLocaleString('en-US')} of`);
   });
 
   test('the document title is set when printing starts (also for Ctrl+P) and put back afterwards: partner and team', async ({ page, context }) => {

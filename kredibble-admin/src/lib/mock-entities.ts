@@ -365,6 +365,11 @@ export interface WebsiteMonth {
   dailyVisitors: number;
   /** Where the visits came from; the visits add up to `views`. */
   channels: { channel: string; views: number }[];
+  /**
+   * App views for the month, or null when app analytics are not tracked for it (the report shows "No data", never a fake 0).
+   * Optional only so stores saved before the field existed still load; the seed always writes it explicitly.
+   */
+  appViews?: number | null;
 }
 
 // ---- People and goals -------------------------------------------------------------------------------

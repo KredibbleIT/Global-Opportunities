@@ -9,7 +9,7 @@
  * Props:
  * - row: the MetricResult from lib/scorecard.ts
  */
-import { StatusChip, TargetBar } from "@/components/overview/KpiGrid";
+import { StatusChip, TargetBar } from "@/components/kpi/KpiStatus";
 import { TruncatedText } from "@/components/ui/TruncatedText";
 import { AttainmentFigure } from "./AttainmentFigure";
 import { kpiUnit } from "@/lib/plural";
