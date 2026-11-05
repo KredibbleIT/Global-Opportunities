@@ -11309,21 +11309,20 @@ test.describe('Overview: status words, notes, layout and rankings', () => {
     for (const [index, key] of rankFor(currentMonth()).entries()) await expect(rows.nth(index)).toHaveAttribute('data-kpi', key);
   });
 
-  test('priorities: a past month (July) ranks by shortfall against the FULL target', async ({ page }) => {
-    const july = monthsBefore(currentMonth(), 3);
-    expect(july.endsWith('-07')).toBe(true); // October minus three months
-    await open(page, `?month=${july}`);
+  test('priorities: a past month (three months back) ranks by shortfall against the FULL target', async ({ page }) => {
+    const threeBack = monthsBefore(currentMonth(), 3);
+    await open(page, `?month=${threeBack}`);
     await expect(page.getByRole('region', { name: 'Priorities' })).toContainText('Ranked by how far each fell short of its full target');
     await page.getByRole('button', { name: 'See all' }).click();
     const rows = page.getByTestId('priority-row');
     await expect(rows).toHaveCount(10);
-    for (const [index, key] of rankFor(july).entries()) await expect(rows.nth(index)).toHaveAttribute('data-kpi', key);
+    for (const [index, key] of rankFor(threeBack).entries()) await expect(rows.nth(index)).toHaveAttribute('data-kpi', key);
     // with the full target, the ranking is value over target, whatever the day of the month is
     const data = buildSeed().collections;
-    const fullTarget = KPI_KEYS.map((key, index) => ({ key, index, ratio: kpiValue(key, july, data) / kpiTarget(key, data, july) }))
+    const fullTarget = KPI_KEYS.map((key, index) => ({ key, index, ratio: kpiValue(key, threeBack, data) / kpiTarget(key, data, threeBack) }))
       .sort((a, b) => a.ratio - b.ratio || a.index - b.index)
       .map((entry) => entry.key);
-    expect(rankFor(july)).toEqual(fullTarget);
+    expect(rankFor(threeBack)).toEqual(fullTarget);
   });
 
 });
@@ -11645,10 +11644,9 @@ test.describe('Scorecard: My scorecard and Team (mock mode)', () => {
     { roles: 'social_media_manager', label: 'Social Media Manager' },
   ];
   for (const { roles, label } of COHERENCE) {
-    for (const [monthName, monthOf] of [['this month', () => currentMonth()], ['July', () => monthsBefore(currentMonth(), 3)]] as const) {
+    for (const [monthName, monthOf] of [['this month', () => currentMonth()], ['three months back', () => monthsBefore(currentMonth(), 3)]] as const) {
       test(`coherence (${label}, ${monthName}): the scorecard attainment and status equal the Priorities panel`, async ({ page, context }) => {
         const month = monthOf();
-        if (monthName === 'July') expect(month.endsWith('-07')).toBe(true);
         const query = month === currentMonth() ? '' : `?month=${month}`;
         await asRole(page, context, roles, `/scorecard${query}`);
         await expect(page.getByTestId('metric-row').first()).toBeVisible();
@@ -11923,9 +11921,9 @@ test.describe('Scorecard follow-up: name and roles, axis, running totals, too ea
     }
   });
 
-  for (const monthName of ['this month', 'July']) {
+  for (const monthName of ['this month', 'three months back']) {
     test(`running total (${monthName}): Active ambassadors is judged against the FULL target in Priorities and on the scorecard, with no pace tick`, async ({ page, context }) => {
-      const month = monthName === 'July' ? monthsBefore(currentMonth(), 3) : currentMonth();
+      const month = monthName === 'three months back' ? monthsBefore(currentMonth(), 3) : currentMonth();
       const query = month === currentMonth() ? '' : `?month=${month}`;
       const seeded = data();
       const value = kpiValue('active_ambassadors', month, seeded);
@@ -12483,7 +12481,7 @@ test.describe('Monthly report: Download PDF and printing (mock mode)', () => {
     await page.getByRole('link', { name: 'Partner report' }).click();
     const monthCombo = page.getByRole('combobox', { name: 'Month' });
     await monthCombo.click();
-    // Options are newest first with September selected: two downs land on July 2026 (option index 3).
+    // Options are newest first with the current month selected: two downs land three entries up (option index 3).
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('ArrowDown');
     await expect.poll(async () => monthCombo.getAttribute('aria-activedescendant')).toMatch(/option-3$/);
