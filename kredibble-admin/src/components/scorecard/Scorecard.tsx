@@ -24,7 +24,7 @@
 import { useId, useMemo, useState } from "react";
 import { ChevronDown, ListChecks, Users } from "lucide-react";
 import { NotAvailableYet } from "@/components/overview/NotAvailableYet";
-import { StatusChip } from "@/components/overview/KpiGrid";
+import { StatusChip } from "@/components/kpi/KpiStatus";
 import { Avatar } from "@/components/ui/Avatar";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";

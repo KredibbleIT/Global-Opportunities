@@ -15,7 +15,7 @@
  */
 import { PipelineHealthCard } from "@/components/partners/PipelineHealthCard";
 import { RecordsPaceCard } from "@/components/database/RecordsPaceCard";
-import { StatusChip } from "@/components/overview/KpiGrid";
+import { StatusChip } from "@/components/kpi/KpiStatus";
 import { Scorecard } from "@/components/scorecard/Scorecard";
 import { MiniStat } from "@/components/ui/MiniStat";
 import { KPIS } from "@/config/kpis";

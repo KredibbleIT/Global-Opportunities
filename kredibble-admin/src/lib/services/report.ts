@@ -15,14 +15,22 @@ import { partnerMetrics, storeReportData, teamReport, type PartnerMetric, type R
 import { platformRows, type PlatformRow } from "@/lib/services/social";
 import { buildTrend } from "@/lib/services/dashboard";
 import { earliestMonth } from "@/lib/report";
-import type { TrendPoint } from "@/lib/services/dashboard-types";
 import { isMockMode } from "./mock-mode";
+
+/** One month of the "Monthly views by platform" chart: the website views, and the app views when they are tracked (null = "No data"). */
+export interface AudiencePoint {
+  month: MonthKey;
+  label: string;
+  tooltipLabel: string;
+  website: number;
+  app: number | null;
+}
 
 export interface PartnerReportData {
   month: MonthKey;
   metrics: PartnerMetric[];
-  /** The last six months of website views, ending with the report month: only the months the desk has figures for (never a made-up 0). */
-  audience: TrendPoint[];
+  /** The last six months of views, ending with the report month: only the months the desk has figures for (never a made-up 0). `app` is null when app analytics are not tracked for a month (the report shows "No data"). */
+  audience: AudiencePoint[];
   /** Channel, posts, reach and engagement of the month, the leading channel first. Empty when the month has no posts. */
   channels: PlatformRow[];
 }
@@ -74,11 +82,20 @@ export function getPartnerReport(month: MonthKey): Promise<PartnerReportResult> 
     const data = storeReportData();
     const metrics = partnerMetrics(month, new Date(), data);
     const empty = forced === "empty";
+    const websiteByMonth = new Map(data.websiteMonths.map((row) => [row.month, row]));
     return {
       data: {
         month,
         metrics: empty ? metrics.map((metric) => ({ ...metric, value: 0, previous: null, delta: { kind: "none" as const, text: "—", percent: null } })) : metrics,
-        audience: buildTrend(month, data).website_views.filter((point) => point.month >= earliestMonth()).map((point) => (empty ? { ...point, value: 0 } : point)),
+        audience: buildTrend(month, data).website_views
+          .filter((point) => point.month >= earliestMonth())
+          .map((point) => ({
+            month: point.month,
+            label: point.label,
+            tooltipLabel: point.tooltipLabel,
+            website: empty ? 0 : point.value,
+            app: empty ? null : (websiteByMonth.get(point.month)?.appViews ?? null),
+          })),
         channels: empty ? [] : platformRows(data.socialPosts, month),
       },
       issue: null,

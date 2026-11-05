@@ -8,8 +8,9 @@
  * mock store changes (a target saved in Settings changes a status). There are no automatic retries; the banner's "Try again"
  * re-runs it.
  *
- * Reading order: the ten KPI cards (the viewer's own KPIs first), how status is judged, the dark "Needs your attention" card (full width, directly
- * under the cards so it is above the fold), the trend, the priorities, the programs in progress and upcoming, and the recent activity.
+ * Reading order: the programs in progress and upcoming (with the latest activity beside them), the dark "Needs your attention" card,
+ * how status is judged, the trend and the priorities. The ten KPI cards were removed in the November 2026 design review: the Priorities
+ * panel shows the same judgement against the monthly targets in a compact form ("See all" expands to all ten).
  *
  * Failure handling: a slim banner explains what went wrong, and only the affected sections show "—". Every section keeps its final
  * dimensions while loading, loaded and unavailable, so the layout never jumps.
@@ -22,10 +23,10 @@ import { useAsync } from "@/lib/use-async";
 import { useMonth } from "@/lib/use-month";
 import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 import { PageFooter } from "@/components/ui/PageFooter";
-import { KpiGrid, ProRatingNote } from "@/components/overview/KpiGrid";
 import { NeedsAttentionCard } from "@/components/overview/NeedsAttentionCard";
 import { OverviewHeader } from "@/components/overview/OverviewHeader";
 import { PrioritiesCard } from "@/components/overview/PrioritiesCard";
+import { ProRatingNote } from "@/components/overview/ProRatingNote";
 import { RecentActivityCard } from "@/components/overview/RecentActivityCard";
 import { StatusBanner } from "@/components/overview/StatusBanner";
 import { TrendCard } from "@/components/overview/TrendCard";
@@ -57,20 +58,18 @@ export default function DashboardHomePage() {
 
         {issue && !loading && <StatusBanner issue={issue} onRetry={overview.reload} />}
 
-        <KpiGrid cards={data?.kpis ?? null} loading={loading} isPast={data?.isPast ?? false} notConnected={notConnected} />
-
-        <ProRatingNote month={data?.month ?? month} isPast={data?.isPast ?? false} loading={loading} />
+        <div className="grid grid-cols-1 items-start gap-4 min-[1025px]:grid-cols-3">
+          <UpcomingProgramsCard programs={data?.programs ?? null} loading={loading} notConnected={notConnected} className="min-[1025px]:col-span-2" />
+          <RecentActivityCard items={data?.activity ?? null} loading={loading} notConnected={notConnected} />
+        </div>
 
         <NeedsAttentionCard counts={data?.attention ?? null} loading={loading} notConnected={notConnected} />
+
+        <ProRatingNote month={data?.month ?? month} isPast={data?.isPast ?? false} loading={loading} />
 
         <div className="grid grid-cols-1 items-start gap-4 min-[1025px]:grid-cols-3">
           <TrendCard trend={data?.trend ?? null} loading={loading} notConnected={notConnected} className="min-[1025px]:col-span-2" />
           <PrioritiesCard cards={data?.kpis ?? null} loading={loading} isPast={data?.isPast ?? false} notConnected={notConnected} />
-        </div>
-
-        <div className="grid grid-cols-1 items-start gap-4 min-[1025px]:grid-cols-3">
-          <UpcomingProgramsCard programs={data?.programs ?? null} loading={loading} notConnected={notConnected} className="min-[1025px]:col-span-2" />
-          <RecentActivityCard items={data?.activity ?? null} loading={loading} notConnected={notConnected} />
         </div>
 
       </div>

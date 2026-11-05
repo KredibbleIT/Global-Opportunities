@@ -469,7 +469,7 @@ describe('BE-013: Monthly Reports & KPI Engine Integration', () => {
       expect(metricIds).toContain('new_ambassadors');
       expect(metricIds).toContain('new_partners');
       expect(metricIds).toContain('opportunities_published');
-      expect(metricIds).toContain('projects_organised');
+      expect(metricIds).toContain('programs_organised');
 
       // Verify metric fields
       const websiteMetric = metrics.find((m) => m.id === 'website_views');

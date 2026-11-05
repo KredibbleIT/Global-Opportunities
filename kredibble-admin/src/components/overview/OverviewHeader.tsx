@@ -36,7 +36,7 @@ export function OverviewHeader() {
     <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
       <div>
         <h1 data-testid="page-title" className="hero-title">{greeting}</h1>
-        <p className="page-subtitle mt-1">Here&apos;s what&apos;s happening across your platform today.</p>
+        <p className="page-subtitle mt-1">See how your team is doing against its monthly targets.</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">

@@ -4,7 +4,7 @@
  * the leaderboard ranking, the scorecard composite), so a report always agrees with the Overview, the lists and Social for the same month.
  *
  * Two reports, two audiences:
- * - PARTNER report: aggregate only (ten headline figures with their change, the website audience, the channels). No person appears in it.
+ * - PARTNER report: aggregate only (ten headline figures with their change, the views by platform, the channels). No person appears in it.
  * - TEAM report (internal): the ten KPIs against their targets, pipeline health, database pace, records by source, the network, the top five ambassadors,
  *   social totals and the team scoreboard of the Scorecard.
  *
@@ -83,7 +83,7 @@ export function metricDelta(value: number, previous: number | null, against: str
 
 // ---- the ten figures of the partner report ----------------------------------------------------------------------------------
 
-export type PartnerMetricId = "website_views" | "daily_first_visits" | "daily_visitors" | "social_reach" | "social_engagement" | "posts_published" | "new_ambassadors" | "new_partners" | "opportunities_published" | "projects_organised";
+export type PartnerMetricId = "website_views" | "daily_first_visits" | "daily_visitors" | "social_reach" | "social_engagement" | "posts_published" | "new_ambassadors" | "new_partners" | "opportunities_published" | "programs_organised";
 
 export interface PartnerMetric {
   id: PartnerMetricId;
@@ -92,20 +92,20 @@ export interface PartnerMetric {
   /** The previous month's value (pro-rated to the same day for the current month); null when there is no previous month. */
   previous: number | null;
   delta: Delta;
-  description: string;
 }
 
-const METRICS: { id: PartnerMetricId; label: string; description: string }[] = [
-  { id: "website_views", label: "Website views", description: "Pages opened across the Desk website" },
-  { id: "daily_first_visits", label: "Daily first visits (sum)", description: "Daily counts; returning people can appear again on another day" },
-  { id: "daily_visitors", label: "Daily visitors (sum)", description: "Visitor-days, not unique monthly people; cached page loads may be missed" },
-  { id: "social_reach", label: "Social reach", description: "People reached across our channels" },
-  { id: "social_engagement", label: "Social engagement", description: "Likes, shares, comments and saves" },
-  { id: "posts_published", label: "Posts published", description: "Across all social channels" },
-  { id: "new_ambassadors", label: "New ambassadors", description: "Young people who joined the network" },
-  { id: "new_partners", label: "New partners", description: "Organisations that came on board" },
-  { id: "opportunities_published", label: "Opportunities published", description: "Scholarships, grants and roles shared publicly" },
-  { id: "projects_organised", label: "Projects organised", description: "Trainings, workshops and projects GOD ran" },
+// Labels match the Overview's KPI names. The cards show the label, the figure and the change — nothing else (November 2026 review).
+const METRICS: { id: PartnerMetricId; label: string }[] = [
+  { id: "website_views", label: "Website views" },
+  { id: "daily_first_visits", label: "Daily first visits (sum)" },
+  { id: "daily_visitors", label: "Daily visitors (sum)" },
+  { id: "social_reach", label: "Social reach" },
+  { id: "social_engagement", label: "Social engagement" },
+  { id: "posts_published", label: "Posts published" },
+  { id: "new_ambassadors", label: "New ambassadors" },
+  { id: "new_partners", label: "New partners" },
+  { id: "opportunities_published", label: "Opportunities published" },
+  { id: "programs_organised", label: "Programs organised" },
 ];
 
 /** A daily average of the website table, summed over the days the month has had: the whole month for a past one, the days gone for the current one. */
@@ -125,7 +125,7 @@ export function partnerFigure(id: PartnerMetricId, month: MonthKey, today: Date 
     posts_published: "posts_published",
     new_partners: "partners_onboarded",
     opportunities_published: "opportunities_published",
-    projects_organised: "programs_organised",
+    programs_organised: "programs_organised",
   };
   const key = kpi[id];
   if (key) return kpiValue(key, month, data);
