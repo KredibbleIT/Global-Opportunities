@@ -2994,7 +2994,7 @@ test.describe('KPI configuration', () => {
       expect(SCREENS).toContain(kpi.screen);
       expect(kpi.owners.length).toBeGreaterThan(0);
     }
-    expect(KPIS.programs_organised.note).toBe('Delivered programs this month');
+    expect(KPIS.programs_organised.note).toBe('Programs delivered');
   });
 
   test('role ownership follows the brief; the desk lead owns all ten; admin support owns none', () => {
