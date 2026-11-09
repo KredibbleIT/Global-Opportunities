@@ -14,7 +14,7 @@
  * Access (the "roles_permissions" screen): edit (super admin) can change the toggles; view (desk lead) sees everything
  * read-only, with the switches disabled and no save bar; with no access the Team page does not show this tab at all.
  */
-import { useState, useEffect, type FormEvent } from "react";
+import { useState, useEffect, useRef, type FormEvent } from "react";
 import { Lock } from "lucide-react";
 import { useRoles, VIEW_ONLY_TOOLTIP } from "@/components/access/RoleProvider";
 import { FIXED_PERMISSIONS, SCREENS } from "@/config/permissions";
@@ -38,6 +38,7 @@ const LEVEL_TEXT = { edit: "Edit", view: "View" } as const;
 export function RolesTab() {
   const [saved, setSaved] = useState<RoleGrants>(() => rolePermissionsStore.grants);
   const [draft, setDraft] = useState<RoleGrants>(() => rolePermissionsStore.grants);
+  const initialGrants = useRef<RoleGrants>(rolePermissionsStore.grants);
   const [saving, setSaving] = useState(false);
   // Matrix: show every role, or just one (less to read at once; the screen names stay in the sticky first column).
   const [matrixRole, setMatrixRole] = useState<string>("all");
@@ -54,7 +55,8 @@ export function RolesTab() {
         const liveToggles = payload.toggles as unknown as RoleGrants;
         rolePermissionsStore.load(liveToggles);
         setSaved(liveToggles);
-        setDraft(liveToggles);
+        // The live answer replaces the draft only if nobody has touched the switches yet: an edit made while it was loading is kept.
+        setDraft((current) => (JSON.stringify(current) === JSON.stringify(initialGrants.current) ? liveToggles : current));
       })
       .catch(() => {
         // Keeps default in-memory store grants on error or offline

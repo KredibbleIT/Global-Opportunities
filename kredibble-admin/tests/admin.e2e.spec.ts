@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { BRAND, BRAND_ADMIN_TITLE, BRAND_EMAIL_DOMAIN } from '../src/config/brand';
+import { BRAND, BRAND_EMAIL_DOMAIN } from '../src/config/brand';
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import path from 'path';
 import { isDevRoleSwitcherEnabled, parseDevRoles } from '../src/config/dev-roles';

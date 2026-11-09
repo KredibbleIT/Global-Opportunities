@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { mkdirSync } from 'fs';
 import path from 'path';
-import { defaultBaseUrl } from './mode';
+import { MOCK_RUN, defaultBaseUrl } from './mode';
 
 /**
  * Phone checks at 360px and 390px (batch 3): the month selector, the View report button, the sign-in form, the Partners board, and the
@@ -10,6 +10,9 @@ import { defaultBaseUrl } from './mode';
  */
 const BASE_URL = defaultBaseUrl();
 const SHOT_DIR = process.env.SHOT_DIR;
+
+// Mock-mode only (the pages need the sample data); the real-API run skips the whole file.
+test.skip(!MOCK_RUN, 'phone checks run on sample data: see npm run test:e2e:mock');
 const shot = async (page: Page, name: string) => {
   if (!SHOT_DIR) return;
   mkdirSync(SHOT_DIR, { recursive: true });

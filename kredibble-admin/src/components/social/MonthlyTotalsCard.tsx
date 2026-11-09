@@ -17,7 +17,6 @@
  * Props: totals (the result of socialMonth(), or null while loading), month (the selected month), isCurrent
  * Test ids: social-totals, total-posts, total-reach, total-engagement, platform-table, platform-row-<platform>, leading-platform.
  */
-import { BarChart3 } from "lucide-react";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { HighlightBarChart } from "@/components/ui/HighlightBarChart";
 import { MiniStat } from "@/components/ui/MiniStat";

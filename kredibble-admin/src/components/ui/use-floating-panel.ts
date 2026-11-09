@@ -46,6 +46,13 @@ const same = (a: FloatingPosition | null, b: FloatingPosition) =>
 
 export function useFloatingPanel({ open, anchorRef, panelRef, align = "start", matchWidth = false, minWidth = 192, maxHeight = 480, gap = 4, margin = 8 }: Options) {
   const [position, setPosition] = useState<FloatingPosition | null>(null);
+  // Forget the old place when the panel closes, so the next opening starts hidden until it has measured (state adjusted during render,
+  // not in an effect: the React-recommended way to reset state when a prop changes).
+  const [wasOpen, setWasOpen] = useState(open);
+  if (wasOpen !== open) {
+    setWasOpen(open);
+    if (!open) setPosition(null);
+  }
 
   const measure = useCallback(() => {
     const anchor = anchorRef.current?.getBoundingClientRect();
@@ -80,10 +87,7 @@ export function useFloatingPanel({ open, anchorRef, panelRef, align = "start", m
     measure();
   });
   useLayoutEffect(() => {
-    if (!open) {
-      setPosition(null);
-      return;
-    }
+    if (!open) return;
     window.addEventListener("resize", measure);
     window.addEventListener("scroll", measure, true);
     return () => {
