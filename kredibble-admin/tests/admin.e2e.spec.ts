@@ -47,6 +47,15 @@ const API_URL = process.env.E2E_API_URL || 'http://localhost:4000/api';
 // signed OUT opt out with test.use(SIGNED_OUT).
 const SIGNED_OUT = { storageState: { cookies: [], origins: [] } };
 
+// Verification: open the "E2E Verify Co" request. It is in Awaiting verification while pending, and in Reviewed requests once decided
+// (an earlier test may have approved it), so look in both sections (the tab counts show once the list has loaded).
+const openVerifyCo = async (page: import('@playwright/test').Page) => {
+  await expect(page.getByRole('tab', { name: /^Awaiting verification/ })).toContainText(/\d/);
+  const row = page.locator('main tbody tr').filter({ hasText: 'E2E Verify Co' });
+  if ((await row.count()) === 0) await page.getByRole('tab', { name: /^Reviewed requests/ }).click();
+  await row.getByRole('link').first().click();
+};
+
 // Programs: the count printed in a status filter radio ("Delivered 6" -> "6"). Delivered is only there, not in the summary.
 const statusCount = async (page: import('@playwright/test').Page, name: string) =>
   (await page.getByRole('radiogroup', { name: 'Filter by status' }).getByRole('radio', { name: new RegExp(`^${name}`) }).innerText()).replace(/\D+/g, '');
@@ -1103,9 +1112,10 @@ test.describe('Shared mock store', () => {
 
     await pill.click();
     await expect(page).toHaveURL(`${BASE_URL}/verification`);
-    await expect(page.locator('main tbody tr').filter({ hasText: 'Ashesi Ventures' })).toContainText('Approved');
-    await page.getByRole('radio', { name: /^Pending/ }).click();
+    // the approved request left Awaiting verification (the pending ones) and is now in Reviewed requests
     await expect(page.locator('main tbody tr')).toHaveCount(MOCK_COUNTS.pendingVerifications - 1);
+    await page.getByRole('tab', { name: /^Reviewed requests/ }).click();
+    await expect(page.locator('main tbody tr').filter({ hasText: 'Ashesi Ventures' })).toContainText('Approved');
   });
 
   test('the toast sits bottom-right, outside the header and its actions, and closes on its own', async ({ page }) => {
@@ -3653,7 +3663,7 @@ test.describe('Verification detail (real API)', () => {
 
   test('approving every document approves the company, after a reload and in the queue', async ({ page }) => {
     await page.goto(`${BASE_URL}/verification`, { timeout: 30_000 });
-    await page.locator('main tbody tr').filter({ hasText: 'E2E Verify Co' }).getByRole('link').first().click();
+    await openVerifyCo(page);
     await expect(page.getByTestId('page-title')).toHaveText('E2E Verify Co');
     await expect(page.getByText('Logistics · 11-50 · Tema')).toBeVisible();
     await expect(page.getByText('hr@verify.example.com')).toBeVisible();
@@ -3684,7 +3694,7 @@ test.describe('Verification detail (real API)', () => {
         : route.continue(),
     );
     await page.goto(`${BASE_URL}/verification`, { timeout: 30_000 });
-    await page.locator('main tbody tr').filter({ hasText: 'E2E Verify Co' }).getByRole('link').first().click();
+    await openVerifyCo(page);
     await expect(page.getByTestId('page-title')).toHaveText('E2E Verify Co');
     const logo = page.getByRole('listitem').filter({ hasText: 'E2E Company Logo' });
     const before = await logo.getByTestId('status-badge').innerText();
