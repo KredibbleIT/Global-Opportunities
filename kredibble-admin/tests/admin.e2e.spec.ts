@@ -7870,8 +7870,10 @@ test.describe('Database: the pre-step additions', () => {
       return badge.getBoundingClientRect().x - cell.getBoundingClientRect().x;
     });
     const pendingBadgeDX = await badgeDX(pending);
-    // (in the same view: the first page of All has pending rows and verified rows)
-    const done = page.getByTestId('table-row').filter({ hasNot: page.getByTestId('verify-button') }).filter({ has: page.getByTestId('status-badge').filter({ hasText: 'Verified' }) }).first();
+    // the first page of All shifts as the calendar moves (the seed scatters the records over the last three days),
+    // so the verified row is read in the Verified filter instead; the column is table-fixed, so its geometry is identical
+    await page.getByRole('radio', { name: /^Verified \d/ }).click();
+    const done = page.getByTestId('table-row').filter({ has: page.getByTestId('status-badge').filter({ hasText: 'Verified' }) }).first();
     await expect(done).toBeVisible();
     // the column keeps its width on every row: read all Verified cells in one frame, so a layout
     // shift between reads cannot falsify the comparison (the column is table-fixed, content-independent)
@@ -9081,12 +9083,14 @@ test.describe('Social: phones and the platform table and chart', () => {
     });
   }
 
-  test('seven platforms with posts: horizontal bars (not the vertical chart) from 1440px down, the leader in orange, nothing overlapping', async ({ page }) => {
+  test('platforms with posts: horizontal bars (not the vertical chart) from 1440px down, the leader in orange, nothing overlapping', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto(`${BASE_URL}/social`, { timeout: 30_000 });
     await expect(page.getByTestId('platform-table')).toBeVisible();
     await logAll(page);
-    await expect(page.getByTestId('platform-table').locator('tbody tr')).toHaveCount(8);
+    // the seeded platforms this month depend on the date: assert the union of the seed and logAll
+    const expectedRows = new Set([...socialMonth(currentMonth()).platforms.map((row) => row.platform), ...['instagram', 'tiktok', 'youtube', 'whatsapp', 'other']]).size;
+    await expect(page.getByTestId('platform-table').locator('tbody tr')).toHaveCount(expectedRows);
     await expect(page.getByTestId('platform-bars')).toBeVisible();
     await expect(page.getByRole('group', { name: /Reach by platform/ })).toHaveCount(0); // not the vertical chart
     const fills = await page.getByTestId('platform-bars').locator('li').evaluateAll((items) => items.map((li) => ({ leader: li.getAttribute('data-leading'), bg: getComputedStyle(li.querySelector('span[aria-hidden] > span')!).backgroundColor })));
@@ -9113,42 +9117,45 @@ test.describe('Social: phones and the platform table and chart', () => {
     const beforePosts = await stat(page, 'total-posts');
     const beforeReach = await stat(page, 'total-reach');
     const beforeEngagement = await stat(page, 'total-engagement');
-    const beforeWhatsappRow = page.getByTestId('platform-row-whatsapp');
-    const beforeWhatsappReach = num(await beforeWhatsappRow.locator('td').nth(1).textContent() ?? '');
-    const beforeWhatsappEngagement = num(await beforeWhatsappRow.locator('td').nth(2).textContent() ?? '');
+    // pick a platform that already has a row this month (the seeded month varies with the calendar)
+    const target = socialMonth(currentMonth()).platforms[0];
+    const targetLabel = POST_PLATFORM_LABELS[target.platform];
+    const beforeTargetRow = page.getByTestId(`platform-row-${target.platform}`);
+    const beforeTargetReach = num(await beforeTargetRow.locator('td').nth(1).textContent() ?? '');
+    const beforeTargetEngagement = num(await beforeTargetRow.locator('td').nth(2).textContent() ?? '');
     const card = page.getByRole('region', { name: 'Log a post' });
     await card.getByRole('combobox', { name: 'Platform' }).click();
-    await page.getByRole('option', { name: 'WhatsApp', exact: true }).click();
+    await page.getByRole('option', { name: targetLabel, exact: true }).click();
     await card.getByRole('textbox', { name: 'Post title' }).fill('Snapshot post');
     await card.getByRole('textbox', { name: 'Post URL' }).fill('https://example.org/snapshot');
     await card.getByRole('textbox', { name: 'Reach' }).fill('321');
     await card.getByRole('textbox', { name: 'Engagement' }).fill('21');
     await card.getByRole('button', { name: 'Log post' }).click();
-    await expect(page.getByTestId('toast').filter({ hasText: 'A WhatsApp post was logged' })).toBeVisible();
+    await expect(page.getByTestId('toast').filter({ hasText: `A ${targetLabel} post was logged` })).toBeVisible();
     // Wait for the reactive stats to catch up (DOM may lag slightly behind the toast)
     await expect.poll(() => stat(page, 'total-posts')).toBe(beforePosts + 1);
     await expect.poll(() => stat(page, 'total-reach')).toBe(beforeReach + 321);
     await expect.poll(() => stat(page, 'total-engagement')).toBe(beforeEngagement + 21);
     // ONE snapshot of the page, taken once the toast is there: everything has already changed
-    const snapshot = await page.evaluate(() => {
+    const snapshot = await page.evaluate((key: string) => {
       const num = (id: string) => Number((document.querySelector(`[data-testid="${id}"] .ministat-value`)?.textContent ?? '').replace(/\D+/g, ''));
       return {
         posts: num('total-posts'),
         reach: num('total-reach'),
         engagement: num('total-engagement'),
-        whatsapp: (document.querySelector('[data-testid="platform-row-whatsapp"]')?.textContent ?? '').replace(/\s+/g, ' '),
+        target: (document.querySelector(`[data-testid="platform-row-${key}"]`)?.textContent ?? '').replace(/\s+/g, ' '),
         firstRow: (document.querySelector('[data-testid="table-row"]')?.textContent ?? '').replace(/\s+/g, ' '),
         toast: !!document.querySelector('[data-testid="toast"]'),
       };
-    });
+    }, target.platform);
     expect(snapshot.toast).toBe(true);
     expect(snapshot.posts).toBe(beforePosts + 1);
     expect(snapshot.reach).toBe(beforeReach + 321);
     expect(snapshot.engagement).toBe(beforeEngagement + 21);
-    // The logged platform may already have seeded posts (WhatsApp joins the seed mid-month): expect deltas, not fresh figures.
-    expect(snapshot.whatsapp).toContain('WhatsApp');
-    expect(num(await beforeWhatsappRow.locator('td').nth(1).textContent() ?? '')).toBe(beforeWhatsappReach + 321);
-    expect(num(await beforeWhatsappRow.locator('td').nth(2).textContent() ?? '')).toBe(beforeWhatsappEngagement + 21);
+    // The logged platform already has seeded posts this month: expect deltas, not fresh figures.
+    expect(snapshot.target).toContain(targetLabel);
+    expect(num(await beforeTargetRow.locator('td').nth(1).textContent() ?? '')).toBe(beforeTargetReach + 321);
+    expect(num(await beforeTargetRow.locator('td').nth(2).textContent() ?? '')).toBe(beforeTargetEngagement + 21);
     expect(snapshot.firstRow).toContain('Snapshot post');
   });
 });
@@ -10571,7 +10578,10 @@ test.describe('Settings: Integrations', () => {
     await expect(result).toHaveAttribute('role', 'status'); // announced
     await expect(button).not.toHaveAttribute('aria-busy', 'true');
     expect(requests.filter((line) => line.includes('CANARY'))).toEqual([]);
-    expect(requests.filter((line) => /^(POST|PUT|PATCH) /.test(line))).toEqual([]); // nothing was sent anywhere
+    // nothing was sent anywhere. The one exception is the app's own session refresh (an empty-bodied POST to /auth/admin/refresh), which fires on
+    // its own schedule when the saved sign-in ages during a long CI run; it carries no credential (the CANARY check above holds for every request).
+    const isSessionRefresh = (line: string) => /^POST \S+\/auth\/admin\/refresh $/.test(line);
+    expect(requests.filter((line) => /^(POST|PUT|PATCH) /.test(line) && !isSessionRefresh(line))).toEqual([]);
   });
 
   test('Google Analytics has its own credential, separate from WordPress; the site address and property ID save as plain settings', async ({ page }) => {
