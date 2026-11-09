@@ -22,6 +22,7 @@ import { ROLES, type Role } from "@/config/roles";
 import { EDITABLE_ROLES, PERMISSIONS, rolePermissionsStore, type EditableRole, type PermissionKey, type RoleGrants } from "@/lib/role-permissions";
 import { getRolesPermissions, updateRolesPermissions } from "@/lib/api";
 import { Card } from "@/components/ui/Card";
+import { Select } from "@/components/ui/form/Select";
 import { StickyActionBar } from "@/components/ui/form/StickyActionBar";
 import { Switch } from "@/components/ui/form/Switch";
 import { useUnsavedGuard } from "@/components/ui/form/use-unsaved-guard";
@@ -38,6 +39,9 @@ export function RolesTab() {
   const [saved, setSaved] = useState<RoleGrants>(() => rolePermissionsStore.grants);
   const [draft, setDraft] = useState<RoleGrants>(() => rolePermissionsStore.grants);
   const [saving, setSaving] = useState(false);
+  // Matrix: show every role, or just one (less to read at once; the screen names stay in the sticky first column).
+  const [matrixRole, setMatrixRole] = useState<string>("all");
+  const shownRoles = matrixRole === "all" ? FIXED_ROLES : FIXED_ROLES.filter((role) => role === matrixRole);
   const toast = useToast();
   const { can } = useRoles();
   const canEdit = can("roles_permissions", "edit");
@@ -143,6 +147,15 @@ export function RolesTab() {
       <Card as="section" ariaLabel="Permissions of the other roles" className="mt-4">
         <h2 className="card-title">Every other role</h2>
         <p className="caption mb-3 mt-1">These rows are fixed. Edit = can change, View = can read, a dash = no access.</p>
+        <div className="mb-3 max-w-xs">
+          <Select
+            value={matrixRole}
+            onChange={setMatrixRole}
+            ariaLabel="Show the permissions of"
+            sheetTitle="Show the permissions of"
+            options={[{ value: "all", label: "All roles" }, ...FIXED_ROLES.map((role) => ({ value: role as string, label: ROLES[role as Role].label }))]}
+          />
+        </div>
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-left" aria-label="What the other roles can do on each screen (read only)">
             <thead>
@@ -150,8 +163,8 @@ export function RolesTab() {
                 <th scope="col" className="caption sticky left-0 bg-surface py-2 pr-3 font-semibold">
                   Screen
                 </th>
-                {FIXED_ROLES.map((role) => (
-                  <th key={role} scope="col" className="caption px-2 py-2 text-center font-semibold" data-testid={`matrix-role-${role}`}>
+                {shownRoles.map((role) => (
+                  <th key={role} scope="col" className="caption px-3 py-2 text-center font-semibold" data-testid={`matrix-role-${role}`}>
                     {ROLES[role as Role].label}
                   </th>
                 ))}
@@ -159,15 +172,15 @@ export function RolesTab() {
             </thead>
             <tbody>
               {SCREENS.map((screen) => (
-                <tr key={screen} className="border-t border-line">
-                  <th scope="row" className="caption sticky left-0 whitespace-nowrap bg-surface py-1.5 pr-3 font-normal text-ink">
+                <tr key={screen} className="border-t border-line hover:bg-surface-2">
+                  <th scope="row" className="caption sticky left-0 z-10 whitespace-nowrap bg-surface py-2 pr-4 font-normal text-ink">
                     {screenLabel(screen)}
                   </th>
-                  {FIXED_ROLES.map((role) => {
+                  {shownRoles.map((role) => {
                     const level = FIXED_PERMISSIONS[role][screen];
                     return (
-                      <td key={role} data-level={level ?? "none"} className="caption px-2 py-1.5 text-center tabular-nums">
-                        {level ? <span className={level === "edit" ? "font-semibold text-ink" : "text-muted"}>{LEVEL_TEXT[level]}</span> : <span aria-label="No access">—</span>}
+                      <td key={role} data-level={level ?? "none"} className="caption px-3 py-2 text-center tabular-nums">
+                        {level ? <span className={level === "edit" ? "badge-text rounded-pill bg-purple-50 px-2 py-0.5 text-purple-700" : "text-muted"}>{LEVEL_TEXT[level]}</span> : <span aria-label="No access">—</span>}
                       </td>
                     );
                   })}

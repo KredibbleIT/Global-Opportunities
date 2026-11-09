@@ -3,15 +3,15 @@
 /**
  * RecordsPaceCard: the card at the top of Database. Two halves side by side from 1024px, stacked below:
  *
- *   Verified this month                          [ Behind ]      Records by source
- *   9 of 15 verified    Pace 11  Target 15                       [██████ ███ ██ █ ██]   a mini segmented bar
+ *   Verified this month                          [ At risk ]     Records by source
+ *   9 of 15 verified                       [██████ ███ ██ █ ██]   a mini segmented bar
  *     pace 11          <- tick label                             ● Organic 25  ● Ambassador referral 24 ...
- *   9 verified > [ far behind ][ behind ][   on pace   ]
- *    Far behind   Behind   On pace
+ *   9 verified > [ off track ][ at risk ][  on track  ]
+ *    Off track    At risk   On track
  *
  * The numbers and the status are NOT worked out here: they come from recordsPace() (services/database.ts), which uses
  * kpiValue, kpiTarget and kpiStatus, the same functions as the Overview. The gauge is the shared ZoneGauge: a role="meter"
- * whose text value reads "9 of 15 verified, pro-rated pace 11, behind", a marker for the verified count and a tick where the
+ * whose text value reads "9 of 15 verified, pro-rated pace 11, at risk", a marker for the verified count and a tick where the
  * pro-rated pace is. The status is a badge in words as well as colour. The bar of sources is decorative; its legend carries
  * every number and percentage.
  *
@@ -30,9 +30,11 @@ import { ZoneGauge, type GaugeZone } from "@/components/ui/ZoneGauge";
 import { cn } from "@/lib/cn";
 import { RECORD_SOURCES, RECORD_SOURCE_LABELS } from "@/lib/mock-entities";
 import { type PaceStatus, type RecordsPace, type SourceCount } from "@/lib/services/database";
+import { KPI_STATUS_LABELS } from "@/lib/status-map";
 
 const ZONE_TONE: Record<PaceStatus, GaugeZone["tone"]> = { far_behind: "danger", behind: "warning", on_pace: "success" };
-const ZONE_LABEL: Record<PaceStatus, string> = { far_behind: "Far behind", behind: "Behind", on_pace: "On pace" };
+// The same three words as every KPI status (status-map KPI_STATUS_LABELS).
+const ZONE_LABEL: Record<PaceStatus, string> = { far_behind: KPI_STATUS_LABELS.red, behind: KPI_STATUS_LABELS.amber, on_pace: KPI_STATUS_LABELS.green };
 
 /** One style for each source: the bar segment and its legend dot always match. */
 const SOURCE_STYLES: Record<(typeof RECORD_SOURCES)[number], string> = {
@@ -144,16 +146,7 @@ export function RecordsPaceCard({ pace, sources, error, onRetry }: RecordsPaceCa
               <p data-testid="pace-headline" className="font-display text-xl font-extrabold leading-6.5 text-ink">
                 {pace.verified} of {pace.target} verified
               </p>
-              <dl className="flex items-baseline gap-4">
-                <div className="flex items-baseline gap-1.5">
-                  <dt className="caption">Pace</dt>
-                  <dd data-testid="pace-figure" className="font-display text-base font-bold leading-6 tabular-nums text-ink">{pace.paceRounded}</dd>
-                </div>
-                <div className="flex items-baseline gap-1.5">
-                  <dt className="caption">Target</dt>
-                  <dd data-testid="pace-target" className="font-display text-base font-bold leading-6 tabular-nums text-ink">{pace.target}</dd>
-                </div>
-              </dl>
+              {/* The target is already in the headline ("9 of 15") and the pace on the gauge tick ("pace 11"): no second copy here. */}
             </div>
             <ZoneGauge
               zones={zones}

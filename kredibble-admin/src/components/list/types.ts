@@ -35,6 +35,8 @@ export type Column<T> = ColumnBase &
         type: "primary";
         title: (row: T) => string;
         subtitle?: (row: T) => string | undefined;
+        /** 2 lets a long title wrap to two lines (full text in a tooltip) instead of one cut line. Events, Grants, report targets, articles. */
+        titleLines?: 1 | 2;
         /** Leading 36px tile: an icon tile, or a thumbnail when `imageSrc` returns a URL. */
         leading?: (row: T) => { icon: LucideIcon; imageSrc?: string; /** "brand" = the orange entity tile (Programs, Opportunities); default is the purple structure tile. */ tone?: "accent" | "brand" } | { avatarName: string; imageSrc?: string };
       }
@@ -59,4 +61,6 @@ export interface EmptyCopy {
   icon: LucideIcon;
   title: string;
   description?: string;
+  /** The next step for this empty state (a button). Defaults: "Clear filters" when filtered and the page gives onClearFilters. */
+  action?: ReactNode;
 }

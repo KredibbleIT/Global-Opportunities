@@ -3,7 +3,8 @@
 /**
  * Leaderboard (/leaderboard): a READ-ONLY ranked table of the ambassadors for the month chosen in the shared MonthSelect.
  *
- * - Columns: Rank, Name, Country, Campus, Tier, Shares logged, Distinct referred clicks, Verified signups attributed.
+ * - Columns: Rank, Name, Country, Campus, Tier, Shares, Referred clicks, Verified signups. The short headers are defined in plain text
+ *   under the table (DEFINITIONS), so the definitions are readable by everyone, keyboard and screen reader users included.
  * - Order: verified signups, then referred clicks, then shares logged (highest first); a full tie is broken by name.
  * - The top three have purple-tinted rank badges; the rank is always a number in text, so the badge is never the only signal.
  * - NO edit actions at all: the only control on the page is the month select. A row links to the ambassador only when the
@@ -29,6 +30,13 @@ import { loadLeaderboard, subscribeNetwork, type LeaderboardRow } from "@/lib/se
 import { useListData } from "@/lib/use-list-data";
 import { useMonth } from "@/lib/use-month";
 
+/** What each short header counts. Shown as text under the table (always visible, so nothing depends on hover). */
+const DEFINITIONS: { term: string; meaning: string }[] = [
+  { term: "Shares", meaning: "times the ambassador logged sharing a listing." },
+  { term: "Referred clicks", meaning: "different people who opened a listing through the ambassador's referral link." },
+  { term: "Verified signups", meaning: "people who signed up through the referral code and whose account was verified." },
+];
+
 /** The rank as a number in a badge: purple-tinted for the top three, plain for the rest. */
 function RankBadge({ rank }: { rank: number }) {
   return (
@@ -52,9 +60,9 @@ const COLUMNS: Column<LeaderboardRow>[] = [
   { key: "country", header: "Country", type: "text", width: "11%", value: (r) => r.ambassador.country },
   { key: "campus", header: "Campus", type: "text", width: "14%", value: (r) => r.ambassador.campus },
   { key: "tier", header: "Tier", type: "pill", width: "14%", label: (r) => AMBASSADOR_TIER_SHORT_LABELS[r.ambassador.tier], tooltip: (r) => AMBASSADOR_TIER_LABELS[r.ambassador.tier] },
-  { key: "shares", header: "Shares logged", type: "number", width: "10%", value: (r) => r.shares },
-  { key: "clicks", header: "Distinct referred clicks", type: "number", width: "11%", value: (r) => r.clicks },
-  { key: "signups", header: "Verified signups attributed", type: "number", width: "10%", value: (r) => r.signups },
+  { key: "shares", header: "Shares", type: "number", width: "10%", value: (r) => r.shares },
+  { key: "clicks", header: "Referred clicks", type: "number", width: "11%", value: (r) => r.clicks },
+  { key: "signups", header: "Verified signups", type: "number", width: "10%", value: (r) => r.signups },
 ];
 
 /** The compact card for phones: rank, avatar, name and tier on one row, then the place, then the three figures with their labels. */
@@ -124,6 +132,14 @@ export default function LeaderboardPage() {
         emptyNoData={{ icon: Trophy, title: "No ambassadors to rank", description: "Ambassadors who have joined appear here with their numbers for the month." }}
         emptyNoResults={{ icon: Trophy, title: "Nobody to show" }}
       />
+      <dl data-testid="leaderboard-definitions" aria-label="How the columns are counted" className="caption grid gap-1">
+        {DEFINITIONS.map((item) => (
+          <div key={item.term} className="flex flex-wrap gap-x-1.5">
+            <dt className="font-semibold text-ink">{item.term}:</dt>
+            <dd>{item.meaning}</dd>
+          </div>
+        ))}
+      </dl>
     </ListPage>
   );
 }

@@ -85,15 +85,10 @@ export function MonthlyTotalsCard({ totals, month, isCurrent }: { totals: Social
         </div>
       </div>
 
-      {t && t.platforms.length === 0 && (
-        <p data-testid="no-posts" className="body-sm flex items-center gap-2 text-muted">
-          <BarChart3 size={16} strokeWidth={1.75} aria-hidden="true" />
-          No posts logged for {formatMonth(month)}.
-        </p>
-      )}
-
+      {/* No "No posts logged" line here: the posts list below says it once. */}
       {t && t.platforms.length > 0 && (
-        <>
+        // Compact: the platform table and the reach chart side by side from 1024px (stacked below), not one under the other.
+        <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
           <div className="min-w-0">
             {phone ? (
               // Below 640px: stacked rows (no table to scroll sideways): the platform, then its three figures with their labels.
@@ -164,7 +159,7 @@ export function MonthlyTotalsCard({ totals, month, isCurrent }: { totals: Social
               )}
             </div>
           )}
-        </>
+        </div>
       )}
     </Card>
   );

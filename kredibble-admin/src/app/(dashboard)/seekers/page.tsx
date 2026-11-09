@@ -55,6 +55,7 @@ export default function SeekersDirectoryPage() {
         error={error}
         onRetry={retry}
         isFiltered={q !== ""}
+        onClearFilters={() => setQuery("")}
         resetKey={q}
         emptyNoData={{ icon: Users, title: "No seeker accounts yet", description: "Seekers appear here once they register." }}
         emptyNoResults={{ icon: Users, title: "No seekers match your search", description: "Check the spelling, or try a name, email, university or country." }}

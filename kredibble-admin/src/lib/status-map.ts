@@ -20,7 +20,7 @@
  *   vetting      unvetted = warning, vetted = success
  *   pipeline     healthy = success, thin = warning, critical = danger, unknown ("Not enough data") = neutral
  *   pace         on_pace = success, behind = warning, far_behind = danger (the Database verification pace, from kpiStatus). They read
- *                "On track / Behind / Off track" (KPI_STATUS_LABELS): the gauge ZONES have their own words.
+ *                "On track / At risk / Off track" (KPI_STATUS_LABELS), the same three words as every KPI status and the gauge zones.
  *
  * "Open" is the one word that means two things: an open opportunity or grant is
  * good (success) but an open REPORT is waiting on a person (warning). Pass
@@ -40,9 +40,9 @@ export interface StatusMeta {
 
 /**
  * THE words for a KPI status, used everywhere a target is judged: the Overview cards, the Database pace chip, the Settings example and
- * every aria text. (The Database gauge's three ZONES keep their own words, "Far behind / Behind / On pace".)
+ * every aria text, the Database gauge zones included: there is no other wording for a KPI verdict.
  */
-export const KPI_STATUS_LABELS = { green: "On track", amber: "Behind", red: "Off track" } as const;
+export const KPI_STATUS_LABELS = { green: "On track", amber: "At risk", red: "Off track" } as const;
 
 const STATUS_MAP: Record<string, StatusMeta> = {
   // success
@@ -52,8 +52,8 @@ const STATUS_MAP: Record<string, StatusMeta> = {
   approved: { tone: "success", label: "Approved" },
   upcoming: { tone: "success", label: "Upcoming" },
   delivered: { tone: "success", label: "Delivered" },
-  onboard: { tone: "success", label: "Onboard" },
-  renew: { tone: "success", label: "Renew" },
+  onboard: { tone: "success", label: "Onboarded" },
+  renew: { tone: "success", label: "Renewed" },
   vetted: { tone: "success", label: "Vetted" },
   healthy: { tone: "success", label: "Healthy" },
   on_pace: { tone: "success", label: KPI_STATUS_LABELS.green },
@@ -94,7 +94,7 @@ const STATUS_MAP: Record<string, StatusMeta> = {
   resolved: { tone: "neutral", label: "Resolved" },
   dismissed: { tone: "neutral", label: "Dismissed" },
   not_submitted: { tone: "neutral", label: "Not submitted" },
-  unknown: { tone: "neutral", label: "Not enough data" },
+  unknown: { tone: "neutral", label: "Awaiting data" },
 };
 
 const KIND_OVERRIDES: Record<StatusKind, Record<string, StatusMeta>> = {

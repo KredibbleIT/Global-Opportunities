@@ -77,7 +77,7 @@ export function StagesTab() {
   const resetToDefaults = () =>
     confirm({
       title: "Reset the stage names?",
-      description: "The six stages go back to their original names (Prospect, Outreach, Proposal, MOU, Onboard and Renew). The Partners board changes at once.",
+      description: "The six stages go back to their original names (Prospect, Outreach, Proposal, MOU, Onboarded and Renewed). The Partners board changes at once.",
       confirmLabel: "Reset to defaults",
       tone: "neutral",
       onConfirm: () => {

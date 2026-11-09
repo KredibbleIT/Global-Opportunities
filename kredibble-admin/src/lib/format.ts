@@ -2,7 +2,8 @@
  * Date formatting for the whole admin: ONE place, so a date never looks
  * different between the chart, tables, tooltips and activity feed.
  *
- * - formatDate(x)       -> "30 Sep 2026"  (full date: tables, tooltips, feeds)
+ * - formatDate(x)       -> "30 Sep 2026"  (full date: tables, tooltips, feeds, headings: no other date style exists in the app)
+ * - formatDateTime(x)   -> "30 Sep 2026, 2:05 PM"      formatTime(x) -> "2:05 PM"
  * - formatDate(x, "short") -> "Sep 30"    (compact axis labels)
  *
  * Month names are written out here instead of using toLocaleDateString,
@@ -35,6 +36,15 @@ export function formatDate(input: string | Date | null | undefined, style: DateS
 export const stripEmoji = (text: string): string =>
   text.replace(/\p{Extended_Pictographic}️?/gu, "").replace(/\s{2,}/g, " ").trim();
 
+/** "2:05 PM": the ONE time-of-day format (12-hour clock with AM/PM, like formatDateTime). */
+export function formatTime(input: string | Date | null | undefined): string {
+  if (input === null || input === undefined || input === "" || input === "undefined") return NO_DATE;
+  const date = input instanceof Date ? input : new Date(input);
+  if (Number.isNaN(date.getTime())) return String(input);
+  const hours = date.getHours();
+  return `${hours % 12 || 12}:${String(date.getMinutes()).padStart(2, "0")} ${hours < 12 ? "AM" : "PM"}`;
+}
+
 /**
  * "3 Oct 2026, 2:05 PM": the ONE format for every date-time in the admin (12-hour clock with AM/PM,
  * month names written out like formatDate). Accepts a Date or any string new Date() can parse.
@@ -66,3 +76,18 @@ export function formatMonth(month: string): string {
   if (!match || Number(match[2]) < 1 || Number(match[2]) > 12) return month;
   return `${MONTH_NAMES[Number(match[2]) - 1]} ${match[1]}`;
 }
+
+/**
+ * A channel's follower figure for display: a measured 0 when the source says zero ("0", "0 followers", 0), the figure as given
+ * ("200 followers", or 1,200 for a number) when there is one, and "Unavailable" when the source has no figure (never a blank cell).
+ */
+export function formatFollowers(value: string | number | null | undefined): string {
+  if (value === null || value === undefined) return "Unavailable";
+  if (typeof value === "number") return Number.isFinite(value) ? value.toLocaleString("en-US") : "Unavailable";
+  const text = value.trim();
+  if (text === "") return "Unavailable";
+  return /^0(\s|$)/.test(text) ? "0" : text;
+}
+
+/** An amount with its explicit currency code and thousands separators: formatMoney(5000, "USD") is "USD 5,000" (never a bare "$"). */
+export const formatMoney = (amount: number, currency: string): string => `${currency} ${amount.toLocaleString("en-US")}`;

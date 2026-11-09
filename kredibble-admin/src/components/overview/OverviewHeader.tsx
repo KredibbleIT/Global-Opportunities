@@ -2,7 +2,7 @@
 
 /**
  * OverviewHeader: a time-of-day greeting with the person's first name, a short
- * subtitle, the month selector and the orange primary "View report" button. "View report" opens the Partner report of the SELECTED month
+ * subtitle and the orange primary "View report" button. (The month selector now sits beside the "Team performance" heading on the page.) "View report" opens the Partner report of the SELECTED month
  * (/monthly-report/partner?month=...) and is not rendered for a role that cannot view the Monthly report.
  *
  * Greeting: "Good morning, Ama." before 12:00, "Good afternoon" before 18:00,
@@ -19,7 +19,6 @@ import { ArrowRight } from "lucide-react";
 import { getAdminUser } from "@/lib/api";
 import { buttonClasses } from "@/components/ui/Button";
 import { useRoles } from "@/components/access/RoleProvider";
-import { MonthSelect } from "@/components/ui/MonthSelect";
 import { useMonth } from "@/lib/use-month";
 
 const greetingFor = (hour: number) => (hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening");
@@ -40,8 +39,6 @@ export function OverviewHeader() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <MonthSelect />
-
         {can("monthly_report", "view") && (
           <Link href={`/monthly-report/partner?month=${month}`} className={buttonClasses("primary")}>
             View report

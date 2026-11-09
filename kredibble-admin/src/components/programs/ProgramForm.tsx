@@ -30,7 +30,7 @@ import { useAsync } from "@/lib/use-async";
 import { Card } from "@/components/ui/Card";
 import { ChipsInput } from "@/components/ui/form/ChipsInput";
 import { Field } from "@/components/ui/form/Field";
-import { FormSection } from "@/components/ui/form/FormSection";
+import { FieldRow, FormSection } from "@/components/ui/form/FormSection";
 import { DateTimeField } from "@/components/ui/form/DateTimeField";
 import { Input } from "@/components/ui/form/Input";
 import { Select, type SelectOption } from "@/components/ui/form/Select";
@@ -216,12 +216,14 @@ export function ProgramForm({ program }: { program?: Program }) {
               <Field label="Linked partner" optional helper="The partner this program is run with, if any.">
                 <Select options={partnerOptions} value={form.partnerId} onChange={(value) => set("partnerId", value)} sheetTitle="Linked partner" />
               </Field>
-              <Field label="Participants now" error={show("participants") ? errors.participants : undefined}>
-                <Input type="number" inputMode="numeric" min={0} value={form.participants} onChange={(e) => set("participants", e.target.value)} onBlur={() => touch("participants")} />
-              </Field>
-              <Field label="Participant target" error={show("target") ? errors.target : undefined} helper="At least 1.">
-                <Input type="number" inputMode="numeric" min={1} value={form.target} onChange={(e) => set("target", e.target.value)} onBlur={() => touch("target")} placeholder="e.g. 60" />
-              </Field>
+              <FieldRow>
+                <Field label="Participants now" error={show("participants") ? errors.participants : undefined}>
+                  <Input type="number" inputMode="numeric" min={0} value={form.participants} onChange={(e) => set("participants", e.target.value)} onBlur={() => touch("participants")} />
+                </Field>
+                <Field label="Participant target" error={show("target") ? errors.target : undefined} helper="At least 1.">
+                  <Input type="number" inputMode="numeric" min={1} value={form.target} onChange={(e) => set("target", e.target.value)} onBlur={() => touch("target")} placeholder="e.g. 60" />
+                </Field>
+              </FieldRow>
               <Field label="Facilitators" optional helper="Type a name and press Enter to add it.">
                 <ChipsInput value={form.facilitators} onChange={(next) => set("facilitators", next)} chipsLabel="Added facilitators" placeholder="e.g. Kwabena Tetteh" />
               </Field>
@@ -236,8 +238,10 @@ export function ProgramForm({ program }: { program?: Program }) {
               <Field label="Location" optional helper="A city, a venue or a link.">
                 <Input value={form.location} onChange={(e) => set("location", e.target.value)} placeholder="e.g. Accra" autoComplete="off" />
               </Field>
-              <DateTimeField label="Start date and time" value={form.startAt} onChange={(value) => set("startAt", value)} onBlur={() => touch("startAt")} error={show("startAt") ? errors.startAt : undefined} />
-              <DateTimeField label="End date and time" value={form.endAt} onChange={(value) => set("endAt", value)} onBlur={() => touch("endAt")} minTimeAfter={form.startAt || undefined} error={show("endAt") ? errors.endAt : undefined} />
+              <FieldRow>
+                <DateTimeField label="Start date and time" value={form.startAt} onChange={(value) => set("startAt", value)} onBlur={() => touch("startAt")} error={show("startAt") ? errors.startAt : undefined} />
+                <DateTimeField label="End date and time" value={form.endAt} onChange={(value) => set("endAt", value)} onBlur={() => touch("endAt")} minTimeAfter={form.startAt || undefined} error={show("endAt") ? errors.endAt : undefined} />
+              </FieldRow>
             </FormSection>
           </Card>
 

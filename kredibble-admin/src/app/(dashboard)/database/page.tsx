@@ -27,10 +27,10 @@ import { useVerifyRecord } from "@/components/database/use-verify-record";
 import { VerifyButton } from "@/components/database/VerifyButton";
 import { DataTable } from "@/components/list/DataTable";
 import { ListPage } from "@/components/list/ListPage";
-import { TableToolbar } from "@/components/list/TableToolbar";
+import { FilterSelect, TableToolbar } from "@/components/list/TableToolbar";
 import type { Column } from "@/components/list/types";
 import { Avatar } from "@/components/ui/Avatar";
-import { Select, type SelectOption } from "@/components/ui/form/Select";
+import { type SelectOption } from "@/components/ui/form/Select";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TruncatedText } from "@/components/ui/TruncatedText";
 import { formatDate } from "@/lib/format";
@@ -128,7 +128,9 @@ export default function DatabasePage() {
       (!term || r.name.toLowerCase().includes(term) || r.email.toLowerCase().includes(term) || r.institution.toLowerCase().includes(term)),
   );
   const visible = verification === ALL ? scoped : scoped.filter((r) => (verification === "verified" ? r.verified : !r.verified));
-  const known = all !== null;
+  // Counts on the tabs only when there is something to count: "All 0, Verified 0, Pending 0" would repeat the same zero three times
+  // (the table's empty message already says there is nothing).
+  const known = all !== null && scoped.length > 0;
   const options = [
     { value: "all" as VerificationFilter, label: "All", count: known ? scoped.length : undefined },
     { value: "verified" as VerificationFilter, label: "Verified", count: known ? scoped.filter((r) => r.verified).length : undefined },
@@ -148,12 +150,13 @@ export default function DatabasePage() {
             search={{ value: search, onChange: setSearch, placeholder: "Search by name, email or institution", label: "Search records" }}
             filters={{ options, value: verification, onChange: setVerification, label: "Filter by verification" }}
           >
-            <Select options={sourceOptions} value={source} onChange={setSource} ariaLabel="Filter by source" sheetTitle="Source" className="w-fit" />
+            <FilterSelect options={sourceOptions} value={source} onChange={setSource} ariaLabel="Filter by source" sheetTitle="Source" />
           </TableToolbar>
         </div>
       }
     >
       <DataTable
+        onClearFilters={() => { setVerification(ALL); setSource(ALL); setSearch(""); }}
         label="Records"
         columns={columns}
         rows={visible}

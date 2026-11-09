@@ -156,7 +156,7 @@ export interface RecordsPace {
   paceRounded: number;
   /** From kpiStatus: the pro-rated pace judged against the thresholds. */
   status: PaceStatus;
-  /** The meter's text value: "9 of 15 verified, pro-rated pace 11, behind". */
+  /** The meter's text value: "9 of 15 verified, pro-rated pace 11, at risk". */
   text: string;
   /** What the three zones mean, from the thresholds in the store: the tooltip of the zone words. */
   hint: string;
@@ -186,7 +186,7 @@ export function recordsPace(today: Date = new Date(), data = storeData(), thresh
   const paceRounded = Math.round(pace);
   const status = PACE_STATUS[kpiStatus(verified, target, dayOfMonth, daysInMonth, thresholds)];
   // The bar runs from 0 to twice the pro-rated pace (or further, when more has been verified), so every zone is wide enough for
-  // its word: far behind is below amber x pace, behind is up to green x pace, and on pace is from there.
+  // its word: off track is below amber x pace, at risk is up to green x pace, and on track is from there.
   const scale = Math.max(Math.ceil(pace * 2), 1);
   const redEnd = Math.min(100, ((thresholds.amber * pace) / scale) * 100);
   const amberEnd = Math.min(100, ((thresholds.green * pace) / scale) * 100);
@@ -198,7 +198,7 @@ export function recordsPace(today: Date = new Date(), data = storeData(), thresh
     paceRounded,
     status,
     text: `${verified} of ${target} verified, pro-rated pace ${paceRounded}, ${PACE_WORDS[status]}`,
-    hint: `Far behind: below ${percent(thresholds.amber)} of the pro-rated pace. Behind: ${percent(thresholds.amber)} to ${percent(thresholds.green)}. On pace: ${percent(thresholds.green)} and above.`,
+    hint: `${KPI_STATUS_LABELS.red}: below ${percent(thresholds.amber)} of the pro-rated pace. ${KPI_STATUS_LABELS.amber}: ${percent(thresholds.amber)} to ${percent(thresholds.green)}. ${KPI_STATUS_LABELS.green}: ${percent(thresholds.green)} and above.`,
     gauge: {
       max: Math.max(scale, verified),
       zones: [

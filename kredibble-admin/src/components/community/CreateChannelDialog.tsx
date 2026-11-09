@@ -69,7 +69,7 @@ export function CreateChannelDialog({ open, onClose, onCreated }: Props) {
           <p className="caption mt-1">Private channels are invite-only: only people you add can read and chat.</p>
         </div>
         <Field label="Name" error={nameError ?? undefined}>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Kredibble Ambassadors" maxLength={80} autoFocus />
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Global Opportunity Desk Ambassadors" maxLength={80} autoFocus />
         </Field>
         <Field label="Description" optional>
           <Textarea value={bio} onChange={(e) => setBio(e.target.value)} rows={3} maxLength={500} />

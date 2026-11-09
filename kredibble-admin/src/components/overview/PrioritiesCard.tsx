@@ -4,9 +4,9 @@
  * PrioritiesCard: the three KPIs furthest behind their pace, each as a bar toward the monthly target. "See all" expands the list to
  * all ten (worst first) and "Show fewer" folds it back.
  *
- * "Behind" is measured against the pace: the share of the target the month has earned so far (day 10 of 30 = a third). A KPI
- * with no target is left out (nothing to be behind). The bar's fill and the status words are colour-coded (red / amber / green);
- * colour is never the only signal: the status word and the percent are always printed.
+ * The status is measured against the pace: the share of the target the month has earned so far (day 10 of 30 = a third). A KPI
+ * with no target is left out (nothing to be behind). Each row shows the solid StatusChip (On track / At risk / Off track), the
+ * percent beside it, and the bar BELOW the chip; colour is never the only signal: the status word and the percent are always printed.
  *
  * Props:
  * - cards: the ten KpiCardData, or null when unavailable
@@ -21,11 +21,11 @@ import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { TruncatedText } from "@/components/ui/TruncatedText";
 import { furthestBehind, paceAttainment, rankByPace } from "@/lib/services/dashboard";
 import { formatAttainment } from "@/lib/scorecard";
 import type { KpiCardData } from "@/lib/services/dashboard-types";
-import { cn } from "@/lib/cn";
-import { CARD_STATUS_WORDS, STATUS_TEXT, TargetBar } from "@/components/kpi/KpiStatus";
+import { StatusChip, TargetBar } from "@/components/kpi/KpiStatus";
 import { NotAvailableYet } from "./NotAvailableYet";
 import { UnavailableNote } from "./UnavailableNote";
 
@@ -70,20 +70,25 @@ export function PrioritiesCard({ cards, loading, isPast, notConnected = false, c
             const definition = KPIS[card.key];
             return (
               <li key={card.key} data-testid="priority-row" data-kpi={card.key}>
-                <div className="mb-2 flex items-baseline justify-between gap-3 body-sm">
+                <div className="flex items-baseline justify-between gap-3 body-sm">
                   <span className="min-w-0 font-medium text-ink">{definition.label}</span>
                   <span className="shrink-0 font-bold tabular-nums text-ink">
                     {format(card.value ?? 0)} <span className="font-normal text-muted">of {format(card.target ?? 0)}</span>
                   </span>
                 </div>
+                {/* What the KPI counts (kpis.ts note), up to two lines with the full text in a tooltip. */}
+                <TruncatedText text={definition.note} lines={2} className="caption mb-2" />
+                {/* The verdict as a solid badge, its share of the pace beside it, and the bar BELOW the badge (the share of the monthly target). */}
+                <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <StatusChip status={card.status} />
+                  {paceAttainment(card) !== null && (
+                    <p className="caption">
+                      <span className="font-semibold text-ink">{formatAttainment(paceAttainment(card)).text}</span>
+                      {` ${isPast ? "of the target" : "of where it should be today"}`}
+                    </p>
+                  )}
+                </div>
                 <TargetBar card={card} label={definition.label} showPace={!isPast} />
-                <p className="caption mt-1.5">
-                  <span data-status={card.status ?? undefined} className={cn("font-semibold", card.status ? STATUS_TEXT[card.status] : "text-neutral")}>
-                    {card.status ? CARD_STATUS_WORDS[card.status] : "No target"}
-                    {paceAttainment(card) !== null ? ` · ${formatAttainment(paceAttainment(card)).text}` : ""}
-                  </span>
-                  {paceAttainment(card) !== null ? ` ${isPast ? "of the target" : "of where it should be today"}` : ""}
-                </p>
               </li>
             );
           })}

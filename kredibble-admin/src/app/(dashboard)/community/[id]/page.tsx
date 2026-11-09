@@ -11,7 +11,8 @@
  */
 import { useCallback } from "react";
 import { useParams } from "next/navigation";
-import { Ban, Hash, RotateCcw, Trash2 } from "lucide-react";
+import { useState } from "react";
+import { Ban, Pencil, RotateCcw, Trash2 } from "lucide-react";
 import { useBreadcrumbLabel } from "@/lib/breadcrumb-label";
 import { channels } from "@/lib/mock-channels";
 import { useDetailData } from "@/lib/use-detail-data";
@@ -30,6 +31,10 @@ import { RealChannelPage } from "@/components/community/RealChannelPage";
 import { isMockMode } from "@/lib/services/mock-mode";
 import { deleteCommunityChannelPost, updateCommunityChannel } from "@/lib/api";
 import { useToast } from "@/components/ui/Toast";
+import { formatDate, formatFollowers } from "@/lib/format";
+import { saveChannelEdit } from "@/lib/services/channels";
+import { useRoles } from "@/components/access/RoleProvider";
+import { EditChannelDialog } from "@/components/community/EditChannelDialog";
 
 function MockChannelReviewPage() {
   const { id } = useParams<{ id: string }>();
@@ -37,6 +42,8 @@ function MockChannelReviewPage() {
   const { status, record: channel, setRecord, error, retry } = useDetailData(load, { collection: "channels" });
   const toast = useToast();
   const { confirm, dialog } = useConfirmDialog();
+  const { can } = useRoles();
+  const [editing, setEditing] = useState(false);
 
   useBreadcrumbLabel(status === "loading" ? undefined : channel ? channel.name : "Not found");
 
@@ -53,7 +60,7 @@ function MockChannelReviewPage() {
       title: "Remove this post?",
       description: (
         <>
-          The post by <strong className="text-ink">{post.authorName}</strong> ({post.date}) will be removed from{" "}
+          The post by <strong className="text-ink">{post.authorName}</strong> ({formatDate(post.date)}) will be removed from{" "}
           <strong className="text-ink">{channel.name}</strong>.
         </>
       ),
@@ -73,8 +80,7 @@ function MockChannelReviewPage() {
       title: "Remove this channel?",
       description: (
         <>
-          <strong className="text-ink">{channel.name}</strong> (owned by {channel.owner}, {channel.followers} followers) will be marked
-          as Removed. You can restore it later.
+          <strong className="text-ink">{channel.name}</strong> (owned by {channel.owner}) will be marked as Removed. You can restore it later.
         </>
       ),
       confirmLabel: "Remove channel",
@@ -100,16 +106,23 @@ function MockChannelReviewPage() {
       <DetailPage
         header={
           <DetailHeader
-            leading={{ icon: Hash }}
+            leading={{ name: channel.name, imageSrc: channel.avatar }}
             title={channel.name}
             badges={<StatusBadge status={channel.status} />}
-            meta={`${channel.owner} · ${channel.followers} followers`}
+            meta={channel.category}
             actions={
-              isRemoved && (
-                <Button variant="secondary" icon={RotateCcw} onClick={restoreChannel}>
-                  Restore channel
-                </Button>
-              )
+              <>
+                {can("channels", "edit") && (
+                  <Button variant="secondary" icon={Pencil} onClick={() => setEditing(true)} data-testid="edit-channel-open">
+                    Edit channel
+                  </Button>
+                )}
+                {isRemoved && (
+                  <Button variant="secondary" icon={RotateCcw} onClick={restoreChannel}>
+                    Restore channel
+                  </Button>
+                )}
+              </>
             }
           />
         }
@@ -127,7 +140,7 @@ function MockChannelReviewPage() {
                     <div className="mb-2 flex items-start justify-between gap-4">
                       <div className="min-w-0">
                         <p className="body-sm font-semibold text-ink">{post.authorName}</p>
-                        <p className="caption">{post.date}</p>
+                        <p className="caption">{formatDate(post.date)}</p>
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
                         {post.flagged && <StatusBadge status="flagged" />}
@@ -146,8 +159,10 @@ function MockChannelReviewPage() {
             <InfoCard title="Details">
               <KeyValueList
                 items={[
+                  { label: "Category", value: channel.category },
+                  { label: "Description", value: channel.bio },
                   { label: "Owner", value: channel.owner },
-                  { label: "Followers", value: channel.followers },
+                  { label: "Followers", value: formatFollowers(channel.followers) },
                 ]}
               />
             </InfoCard>
@@ -167,6 +182,23 @@ function MockChannelReviewPage() {
         }
       />
       {dialog}
+      {editing && (
+        <EditChannelDialog
+          channel={channel}
+          categories={channels.map((c) => c.category)}
+          allowImage
+          onClose={() => setEditing(false)}
+          onSave={async (values) => {
+            const result = await saveChannelEdit(channel.id, values);
+            if (result.ok) {
+              setRecord((prev) => ({ ...prev, ...values }));
+              toast.success(`${values.name} was updated.`);
+              setEditing(false);
+            }
+            return result;
+          }}
+        />
+      )}
     </>
   );
 }

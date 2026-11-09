@@ -8,7 +8,7 @@ DOC ADD-ON (applies to every doc prompt)
   system (Field, Input, Select, DatePicker, DateTimeField, Switch, FileDrop, FormSection, StickyActionBar, ConfirmDialog, Toast),
   Tabs, SegmentedControl, MonthSelect with useMonth, StatusBadge through status-map.ts, TruncatedText, MiniStat, ZoneGauge, the
   icon-only 40px button with a Tooltip (text label on phones), and the bottom-sheet pattern on phones.
-- Status vocabulary: On track, Behind, Off track. Targets come from kpiTarget(key, data, month); thresholds from the dated
+- Status vocabulary: On track, At risk, Off track (solid white-label badges: green, dark amber, red; a ProgressBar below the badge shows the share of the target). Targets come from kpiTarget(key, data, month); thresholds from the dated
   thresholds for that month. Never read the default constants. Past months are read-only snapshots.
 - Never truncate a number. Long text clamps to a line or two with the full text in the Tooltip. No unexplained empty space.
 - Five entities stay visibly separate: orange for Opportunities and Programs, purple for Partners and Network, neutral otherwise.

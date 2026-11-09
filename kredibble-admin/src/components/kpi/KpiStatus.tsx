@@ -1,22 +1,26 @@
 /**
  * KPI status UI: the one visual vocabulary for "how far is this number from where it should be".
  *
- * StatusChip: a pill with a dot plus the status word (never colour alone) — used by the Team report and the Scorecard.
- * TargetBar: the progress-to-target bar with a thin tick where the month's pace is — used by Priorities and the Scorecard rows. The Overview's Priorities panel shows the same judgement as coloured text (see STATUS_TEXT below and PrioritiesCard).
- * CARD_STATUS_WORDS: the words on the chip (On track / Behind / Off track), from lib/status-map.
+ * StatusChip: the SOLID StatusBadge (red "Off track", dark amber "At risk", green "On track", white label): the verdict in words,
+ * never colour alone. Used by the Team report, the Scorecard and the Priorities panel.
+ * TargetBar: the progress-to-target bar (ui/ProgressBar) with a thin tick where the month's pace is. It sits BELOW the chip and shows
+ * the share of the monthly target. Used by Priorities, the Team report and the Scorecard rows.
+ * CARD_STATUS_WORDS: the words on the chip (On track / At risk / Off track), from lib/status-map.
  */
-import { cn } from "@/lib/cn";
+import { ProgressBar, type ProgressTone } from "@/components/ui/ProgressBar";
+import { StatusBadge } from "@/components/ui/StatusBadge";
 import type { KpiStatus } from "@/lib/kpi";
 import type { KpiCardData } from "@/lib/services/dashboard-types";
 import { KPI_STATUS_LABELS } from "@/lib/status-map";
 
-/** The words on the chip: the one vocabulary of status-map.ts (On track, Behind, Off track). */
+/** The words on the chip: the one vocabulary of status-map.ts (On track, At risk, Off track). */
 export const CARD_STATUS_WORDS: Record<KpiStatus, string> = KPI_STATUS_LABELS;
 
-const CHIP: Record<KpiStatus, { pill: string; dot: string; bar: string }> = {
-  green: { pill: "bg-success-soft text-success", dot: "bg-success-dot", bar: "bg-success-dot" },
-  amber: { pill: "bg-warning-soft text-warning", dot: "bg-warning-dot", bar: "bg-warning-dot" },
-  red: { pill: "bg-danger-soft text-danger", dot: "bg-danger-dot", bar: "bg-danger-dot" },
+/** KPI status -> the StatusBadge tone and the ProgressBar tone. */
+const TONE: Record<KpiStatus, { badge: "success" | "warning" | "danger"; bar: ProgressTone }> = {
+  green: { badge: "success", bar: "success" },
+  amber: { badge: "warning", bar: "warning" },
+  red: { badge: "danger", bar: "danger" },
 };
 
 /** The status word as colour-coded text (never colour alone: the word is always printed). */
@@ -34,38 +38,22 @@ export function StatusChip({ status }: { status: KpiStatus | null }) {
       </span>
     );
   }
-  const styles = CHIP[status];
-  return (
-    <span data-testid="kpi-status" data-status={status} className={cn("inline-flex h-6 items-center gap-1.5 rounded-pill px-2.5 text-xs font-semibold", styles.pill)}>
-      <span aria-hidden="true" className={cn("size-1.5 rounded-full", styles.dot)} />
-      {CARD_STATUS_WORDS[status]}
-    </span>
-  );
+  return <StatusBadge status={status} tone={TONE[status].badge} label={CARD_STATUS_WORDS[status]} variant="solid" testId="kpi-status" dataStatus={status} className="h-6 px-2.5 py-0" />;
 }
 
 /** The progress-to-target bar: the fill is the share of the target reached (capped at the full bar), the tick is the month's pace. */
 export function TargetBar({ card, label, showPace }: { card: KpiCardData; label: string; showPace: boolean }) {
-  const reached = card.attainment === null ? 0 : Math.min(1, Math.max(0, card.attainment));
-  const status = card.status;
+  const percent = card.attainment === null ? null : Math.round(card.attainment * 100);
+  const pace = showPace && card.prorated !== false && card.pace !== null && card.target ? Math.min(1, card.pace) : null;
   return (
-    <div
-      role="progressbar"
-      aria-label={`${label}: progress to target`}
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={card.attainment === null ? undefined : Math.round(card.attainment * 100)}
-      aria-valuetext={card.attainment === null ? "No target" : `${Math.round(card.attainment * 100)}% of the target`}
-      className="relative h-1.5 w-full rounded-pill bg-track"
-    >
-      <div data-testid="kpi-bar-fill" className={cn("h-full rounded-pill", status ? CHIP[status].bar : "bg-neutral-dot")} style={{ width: `${reached * 100}%` }} />
-      {showPace && card.prorated !== false && card.pace !== null && card.target ? (
-        <span
-          data-testid="kpi-pace-tick"
-          aria-hidden="true"
-          className="absolute -top-0.5 h-2.5 w-0.5 -translate-x-1/2 rounded-full bg-ink"
-          style={{ left: `${Math.min(1, card.pace) * 100}%` }}
-        />
-      ) : null}
-    </div>
+    <ProgressBar
+      value={card.attainment}
+      tone={card.status ? TONE[card.status].bar : "neutral"}
+      label={`${label}: progress to target`}
+      valueText={percent === null ? "No target" : `${percent}% of the target`}
+      tick={pace}
+      fillTestId="kpi-bar-fill"
+      tickTestId="kpi-pace-tick"
+    />
   );
 }

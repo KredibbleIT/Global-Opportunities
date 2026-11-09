@@ -87,12 +87,21 @@ export function Dialog({ title, description, onClose, children, footer, size = "
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape" && dismissable) {
+        // An open dropdown (Select trigger, or a Menu panel) takes the Esc itself: it closes first, the dialog stays.
+        const target = event.target as HTMLElement | null;
+        // A popover that is itself a dialog inside this one (the date picker's calendar) closes on its own Esc as well.
+        const inner = target?.closest('[role="dialog"]');
+        if (inner && inner !== panelRef.current) return;
+        if ((target?.getAttribute("aria-haspopup") && target.getAttribute("aria-expanded") === "true") || target?.closest('[role="menu"], [role="listbox"]')) return;
         event.preventDefault();
         event.stopPropagation();
         closeRef.current();
         return;
       }
       if (event.key !== "Tab") return;
+      // Tab inside a popover that is a dialog of its own (the calendar, a phone sheet) belongs to that popover.
+      const nested = (event.target as HTMLElement | null)?.closest('[role="dialog"]');
+      if (nested && nested !== panelRef.current) return;
       const items = [...(panelRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])].filter((el) => el.offsetParent !== null);
       if (items.length === 0) {
         event.preventDefault();

@@ -8,9 +8,15 @@
  */
 import { useCallback, useState } from "react";
 import { useParams } from "next/navigation";
-import { Hash, Lock } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { getCommunityChannelById, type ChannelRecord } from "@/lib/api";
 import { useBreadcrumbLabel } from "@/lib/breadcrumb-label";
+import { formatDate, formatFollowers } from "@/lib/format";
+import { saveChannelEdit } from "@/lib/services/channels";
+import { useRoles } from "@/components/access/RoleProvider";
+import { EditChannelDialog } from "@/components/community/EditChannelDialog";
+import { Button } from "@/components/ui/Button";
+import { useToast } from "@/components/ui/Toast";
 import { useDetailData } from "@/lib/use-detail-data";
 import { ChannelChat } from "@/components/community/ChannelChat";
 import { ChannelMembers } from "@/components/community/ChannelMembers";
@@ -29,6 +35,9 @@ export function RealChannelPage() {
   const load = useCallback(() => getCommunityChannelById(id).catch((err: { status?: number }) => (err?.status === 404 ? undefined : Promise.reject(err))), [id]);
   const { status, record: channel, error, retry } = useDetailData<ChannelRecord>(load);
   const [tab, setTab] = useState<TabValue>("chat");
+  const [editing, setEditing] = useState(false);
+  const { can } = useRoles();
+  const toast = useToast();
 
   useBreadcrumbLabel(status === "loading" ? undefined : channel ? channel.name : "Not found");
 
@@ -41,10 +50,17 @@ export function RealChannelPage() {
   return (
     <div className="space-y-4">
       <DetailHeader
-        leading={{ icon: isPrivate ? Lock : Hash }}
+        leading={{ name: channel.name, imageSrc: channel.avatar }}
         title={channel.name}
         badges={<StatusBadge status={channel.status} />}
-        meta={`${isPrivate ? "Private, invite only" : "Public"} · ${channel.category}`}
+        // Visibility and category are shown once, in the Details card (not repeated here).
+        actions={
+          can("channels", "edit") && (
+            <Button variant="secondary" icon={Pencil} onClick={() => setEditing(true)} data-testid="edit-channel-open">
+              Edit channel
+            </Button>
+          )
+        }
       />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -72,12 +88,31 @@ export function RealChannelPage() {
                 { label: "Visibility", value: isPrivate ? "Private (invite only)" : "Public" },
                 { label: "Category", value: channel.category },
                 { label: "Description", value: channel.bio },
-                { label: "Created", value: new Date(channel.createdAt).toLocaleDateString() },
+                { label: "Owner", value: channel.owner },
+                { label: "Followers", value: formatFollowers(channel.followers) },
+                { label: "Created", value: formatDate(channel.createdAt) },
               ]}
             />
           </InfoCard>
         </div>
       </div>
+      {editing && (
+        <EditChannelDialog
+          channel={channel}
+          categories={[]}
+          allowImage={false}
+          onClose={() => setEditing(false)}
+          onSave={async (values) => {
+            const result = await saveChannelEdit(channel.id, values);
+            if (result.ok) {
+              toast.success(`${values.name} was updated.`);
+              setEditing(false);
+              retry();
+            }
+            return result;
+          }}
+        />
+      )}
     </div>
   );
 }

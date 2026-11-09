@@ -25,6 +25,8 @@
  * - rows: the rows to show (already searched / filtered by the page)
  * - getRowKey / getRowHref: stable key and detail link of a row (getRowHref is optional: without it rows are plain)
  * - label: accessible name of the table
+ * - onClearFilters: when given, the "no results" state offers a "Clear filters" button
+ * - Empty and loading states draw NO footer: "Showing 0 of 0" and the pager only exist when there are rows (zero is said once, in the message)
  * - isFiltered: true when a search or filter is active (selects the empty message)
  * - emptyNoData / emptyNoResults: copy for the two empty states
  * - loading / error / onRetry: load state (from useListData)
@@ -60,6 +62,7 @@ interface DataTableProps<T> {
   getRowHref?: (row: T) => string;
   label: string;
   isFiltered?: boolean;
+  onClearFilters?: () => void;
   emptyNoData: EmptyCopy;
   emptyNoResults: EmptyCopy;
   loading?: boolean;
@@ -88,6 +91,7 @@ interface DataTableProps<T> {
 // Narrowest a progress column may get: the 180px cell plus its 12px side padding.
 const PROGRESS_MIN_PX = 204;
 
+// A primary cell's title is one line unless the column says titleLines: 2; its subtitle (description) clamps to two lines. The full text is in the tooltip and on the detail page.
 export function DataTable<T>({
   columns,
   rows,
@@ -95,6 +99,7 @@ export function DataTable<T>({
   getRowHref,
   label,
   isFiltered = false,
+  onClearFilters,
   emptyNoData,
   emptyNoResults,
   loading = false,
@@ -274,17 +279,28 @@ export function DataTable<T>({
             }
           />
         )}
-        {message && <EmptyState icon={message.icon} title={message.title} description={message.description} />}
+        {message && (
+          <EmptyState
+            icon={message.icon}
+            title={message.title}
+            description={message.description}
+            action={
+              message.action ??
+              (isFiltered && onClearFilters ? (
+                <Button variant="secondary" onClick={onClearFilters}>
+                  Clear filters
+                </Button>
+              ) : undefined)
+            }
+          />
+        )}
       </div>
 
       {/* Footer: "Showing 1-5 of 5" and Previous / Next (disabled for a single page) */}
+      {showRows && (
       <footer className="mt-3 flex items-center justify-between gap-3 border-t border-line px-5 py-3">
         <p className="caption" aria-live="polite">
-          {showRows
-            ? `Showing ${start + 1}-${start + visibleRows.length} of ${rows.length}`
-            : loading
-              ? "Loading…"
-              : "Showing 0 of 0"}
+          {`Showing ${start + 1}-${start + visibleRows.length} of ${rows.length}`}
         </p>
         {/* Previous / Next only exist when there is more than one page; "Showing 1-5 of 5" always stays. */}
         {pageCount > 1 && (
@@ -308,6 +324,7 @@ export function DataTable<T>({
           </nav>
         )}
       </footer>
+      )}
     </Card>
   );
 }
@@ -358,6 +375,7 @@ function Cell<T>({ column, row, href, isBadgeColumn }: CellProps<T>) {
                 <TruncatedLink
                   href={href}
                   text={column.title(row)}
+                  lines={column.titleLines ?? 1}
                   className={cn(
                     wrapOnPhone,
                     "table-text rounded-inset font-semibold text-ink outline-none after:absolute after:inset-0 after:rounded-inset",
@@ -365,9 +383,9 @@ function Cell<T>({ column, row, href, isBadgeColumn }: CellProps<T>) {
                   )}
                 />
               ) : (
-                <TruncatedText text={column.title(row)} className={cn(wrapOnPhone, "table-text font-semibold text-ink")} />
+                <TruncatedText text={column.title(row)} lines={column.titleLines ?? 1} className={cn(wrapOnPhone, "table-text font-semibold text-ink")} />
               )}
-              {subtitle && <TruncatedText text={subtitle} className={cn("caption", wrapOnPhone)} />}
+              {subtitle && <TruncatedText text={subtitle} lines={2} className={cn("caption", wrapOnPhone)} />}
             </div>
           </div>
         </td>

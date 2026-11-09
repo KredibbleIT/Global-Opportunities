@@ -3,30 +3,31 @@
 /**
  * Social (/social): the posts the desk logs by hand (there is no live platform API). Needs view access on "social".
  *
- * - From 1024px two columns (stacked below), the two cards the same height (the content of the shorter one is spread out): LEFT the "Log a post" card (LogPostCard: Platform, Post title, Post URL, Reach,
- *   Engagement, Linked opportunity, Date posted), RIGHT "Monthly totals" (MonthlyTotalsCard: Posts, Reach and Engagement as
+ * - "Add post" (primary, beside the title) opens the "Log a post" form in a dialog (LogPostDialog: Platform, Post title, Post URL, Reach,
+ *   Engagement, Linked opportunity, Date posted). The page shows "Monthly totals" full width, compact (MonthlyTotalsCard: Posts, Reach and Engagement as
  *   compact MiniStats with their targets, a per-platform table and a bar chart with the leading platform in orange) for the month
  *   chosen in the shared MonthSelect.
  * - Below: the month's posts, newest first: Title (with an external-link icon, opens the post in a new tab), Platform, Date,
  *   Reach, Engagement and the linked opportunity (a link only for a role that can view the Opportunities Queue).
- * - Roles: Social Media Manager, Desk Lead and Super Admin edit (they get the Log card); the Communications Officer and any role
- *   that only views see the totals and the list, and NO Log card at all (it is not rendered, not disabled).
+ * - Roles: Social Media Manager, Desk Lead and Super Admin edit (they get the Add post button); the Communications Officer and any role
+ *   that only views see the totals and the list, and NO Add post button at all (it is not rendered, not disabled).
  * - Everything comes from dated posts: logging one changes the totals, the platform table, the chart, the list and the Posts
  *   published, Social reach and Social engagement KPIs in the same render. A post dated in an earlier month changes THAT month
  *   (switch the month to see it). A past month is read-only.
  * Real mode reads the month's posts and totals from the API (services/social.ts); logging a post waits for the server.
  * Mock mode shows the sample data, and the dev ?state=loading|empty|error switch works there.
  */
-import { useCallback, useMemo } from "react";
-import { ExternalLink, Share2 } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import { ExternalLink, Plus, Share2 } from "lucide-react";
 import { useRoles } from "@/components/access/RoleProvider";
 import { RequireAccess } from "@/components/access/RequireAccess";
 import { DataTable } from "@/components/list/DataTable";
 import { ListPage } from "@/components/list/ListPage";
 import type { Column } from "@/components/list/types";
-import { LogPostCard } from "@/components/social/LogPostCard";
+import { LogPostDialog } from "@/components/social/LogPostDialog";
 import { MonthlyTotalsCard } from "@/components/social/MonthlyTotalsCard";
 import { PlatformBadge } from "@/components/social/PlatformBadge";
+import { Button } from "@/components/ui/Button";
 import { TruncatedLink, TruncatedText } from "@/components/ui/TruncatedText";
 import { formatDate, formatMonth } from "@/lib/format";
 import { useMockCollection, useMockStoreVersion } from "@/lib/mock-store";
@@ -52,6 +53,7 @@ function SocialContent() {
   const posts = useMockCollection("socialPosts");
   const storeVersion = useMockStoreVersion();
   const canEdit = can("social", "edit");
+  const [adding, setAdding] = useState(false);
   const linkOpportunity = can("opportunities_queue", "view");
 
   // Real mode shows what the server sent, and its totals (asked again each time the list loads). Mock mode works on the live
@@ -109,18 +111,17 @@ function SocialContent() {
     <ListPage
       title="Social"
       subtitle="Log the desk's social media posts and see what they reached."
+      // The page's one primary action: logging a post happens in a dialog, so the totals are not stretched to the height of a form.
+      actions={
+        canEdit && (
+          <Button icon={Plus} onClick={() => setAdding(true)} data-testid="add-post">
+            Add post
+          </Button>
+        )
+      }
       toolbar={
         <div className="space-y-4">
-          <div className={canEdit ? "grid gap-4 lg:grid-cols-2 lg:items-stretch" : "grid gap-4"}>
-            {canEdit && (
-              <div className="flex min-w-0 flex-col">
-                <LogPostCard />
-              </div>
-            )}
-            <div className="flex min-w-0 flex-col">
-              <MonthlyTotalsCard totals={totals} month={month} isCurrent={isCurrent} />
-            </div>
-          </div>
+          <MonthlyTotalsCard totals={totals} month={month} isCurrent={isCurrent} />
           <h2 className="card-title">Posts in {formatMonth(month)}</h2>
         </div>
       }
@@ -137,6 +138,7 @@ function SocialContent() {
         emptyNoData={{ icon: Share2, title: `No posts logged for ${formatMonth(month)}`, description: "Posts you log appear here, newest first." }}
         emptyNoResults={{ icon: Share2, title: "No posts to show" }}
       />
+      {adding && <LogPostDialog onClose={() => setAdding(false)} />}
     </ListPage>
   );
 }

@@ -18,7 +18,7 @@ import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 const loadEvents = () => Promise.resolve(overlayRows("events", eventRecords));
 
 const COLUMNS: Column<EventRecord>[] = [
-  { key: "event", header: "Event", type: "primary", width: "28%", title: (r) => r.title, leading: () => ({ icon: CalendarDays }) },
+  { key: "event", header: "Event", type: "primary", width: "28%", title: (r) => r.title, titleLines: 2, leading: () => ({ icon: CalendarDays }) },
   { key: "hirer", header: "Hirer", type: "text", width: "17%", value: (r) => r.hirer },
   { key: "date", header: "Date", type: "text", width: "13%", value: (r) => r.dateTime.split(",")[0] },
   {

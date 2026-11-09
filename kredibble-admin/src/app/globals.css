@@ -54,6 +54,7 @@
   --color-warning: #8a5a00;
   --color-warning-soft: #fdf3d8;
   --color-warning-dot: #d99a00;
+  --color-warning-solid: #a16207; /* dark amber FILL behind white text (the solid status badge, the bar): 4.92:1 on white. Not orange: the single accent stays #fc5e24 */
   --color-danger: #b91c1c;
   --color-danger-soft: #fdecec;
   --color-danger-dot: #dc2626;
@@ -395,6 +396,23 @@
     radial-gradient(80% 40% at 50% 100%, rgb(252 94 36 / 0.3), transparent),
     linear-gradient(160deg, #140a22, #4a1c6b);
   color: var(--color-sb-text);
+}
+
+/* The sign-in left panel: the original look of dark-feature (violet-black to purple, one soft orange glow at the bottom edge) plus a
+   bigger orange glow rising from the bottom, centred behind the person cutout (SignInFigure) that fills the lower part of the panel.
+   The one accent is orange. */
+@utility signin-panel {
+  background:
+    radial-gradient(75% 60% at 58% 100%, rgb(252 94 36 / 0.55), transparent),
+    radial-gradient(80% 40% at 50% 100%, rgb(252 94 36 / 0.3), transparent),
+    linear-gradient(160deg, #140a22, #4a1c6b);
+  color: var(--color-sb-text);
+}
+
+/* A soft dark gradient behind the sign-in headline and subtext only (the bottom of the panel, transparent upwards), so the text keeps
+   4.5:1 or better over the figure's sweater. Same dark violet as the panel's gradient start. */
+@utility signin-scrim {
+  background: linear-gradient(to top, rgb(20 10 34 / 0.7), rgb(20 10 34 / 0.45) 55%, transparent);
 }
 
 /* Put on any dark surface so keyboard focus rings use the light-purple colour */

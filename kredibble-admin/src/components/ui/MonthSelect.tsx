@@ -8,6 +8,7 @@
  * It shows and changes the page's month through useMonth (src/lib/use-month.ts), which keeps the choice in the
  * URL as ?month=YYYY-MM. The default is the current month; a past month is a read-only snapshot.
  *
+ * The trigger is at least 256px wide so no month name ("September 2026") ever wraps.
  * Options: the current month and the five before it, newest first, as "October 2026". The current month
  * carries a small muted "Current" label. No props: every page that shows a month uses the same state.
  */
@@ -24,5 +25,5 @@ export function MonthSelect() {
     [months],
   );
 
-  return <Select className="w-fit" ariaLabel="Month" sheetTitle="Select month" icon={CalendarDays} options={options} value={month} onChange={setMonth} />;
+  return <Select className="w-fit min-w-64" ariaLabel="Month" sheetTitle="Select month" icon={CalendarDays} options={options} value={month} onChange={setMonth} />;
 }
