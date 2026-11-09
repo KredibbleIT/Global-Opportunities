@@ -30,7 +30,7 @@ import { useToast } from "@/components/ui/Toast";
 import { formatMonth } from "@/lib/format";
 import { useMockStoreVersion } from "@/lib/mock-store";
 import { lastCompleteMonth, reportTitle, type ReportView } from "@/lib/report";
-import { getPartnerReport, getTeamReport, recordReport } from "@/lib/services/report";
+import { getPartnerReport, getTeamReport, recordReport, reportSource } from "@/lib/services/report";
 import { useAsync } from "@/lib/use-async";
 import { useReportMonth } from "@/lib/use-report-month";
 import { PartnerReport } from "./PartnerReport";
@@ -54,6 +54,8 @@ export function ReportPage({ view }: { view: ReportView }) {
   const active = view === "partner" ? partner : team;
   const loading = active.isLoading;
   const issue = view === "partner" ? partner.data?.issue : team.data?.issue;
+  // Sample figures in either mode until the report reads the API: the paper says "Sample report", on screen and in the PDF.
+  const sample = reportSource() === "sample";
 
   // The title of the printed page (and the proposed file name): set before printing, put back after. The events cover Ctrl+P too.
   useEffect(() => {
@@ -119,7 +121,7 @@ export function ReportPage({ view }: { view: ReportView }) {
         )}
         {issue && !loading && <StatusBanner issue={issue} onRetry={active.reload} />}
       </div>
-      {view === "partner" ? <PartnerReport data={partner.data?.data ?? null} month={month} toDate={toDate} /> : <TeamReport data={team.data?.data ?? null} month={month} toDate={toDate} />}
+      {view === "partner" ? <PartnerReport data={partner.data?.data ?? null} month={month} toDate={toDate} sample={sample} /> : <TeamReport data={team.data?.data ?? null} month={month} toDate={toDate} sample={sample} />}
     </div>
   );
 }

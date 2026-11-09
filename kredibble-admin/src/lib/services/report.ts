@@ -49,6 +49,18 @@ export interface TeamReportResult {
   issue: ReportIssue | null;
 }
 
+/** Where the report's figures come from: "sample" (the in-memory sample store) or "live" (the API). */
+export type ReportSource = "sample" | "live";
+
+/**
+ * The source of the report's figures. Always "sample" today: no API serves the monthly figures yet, so BOTH modes build the report from the sample store
+ * (the Overview says so in real-API mode with "Monthly figures aren't connected to live data yet"). The paper then shows a "Sample report" badge and a
+ * sample footer, on screen and in the PDF. TODO(backend): return "live" once the report reads the API, and only then.
+ */
+export function reportSource(): ReportSource {
+  return "sample";
+}
+
 const FORCED = ["loading", "error", "empty"] as const;
 type Forced = (typeof FORCED)[number];
 const MOCK_DELAY_MS = 400;

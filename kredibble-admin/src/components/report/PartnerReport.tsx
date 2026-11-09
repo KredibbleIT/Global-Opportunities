@@ -12,7 +12,8 @@
  *
  * The figures come from lib/report.ts (the same functions as the Overview, the lists and Social). A month with no data shows the paper with zeros and a neutral note.
  *
- * Props: data (null while loading: a skeleton in the paper's shape), month, toDate (the current month: "Month to date")
+ * Props: data (null while loading: a skeleton in the paper's shape), month, toDate (the current month: "Month to date"), sample (sample figures: the
+ * paper shows "Sample report", on screen and in the PDF)
  */
 import { ArrowDown, ArrowUp, Minus } from "lucide-react";
 import { GroupedBarChart } from "@/components/ui/GroupedBarChart";
@@ -60,14 +61,14 @@ export function PartnerReportSkeleton() {
   );
 }
 
-export function PartnerReport({ data, month, toDate }: { data: PartnerReportData | null; month: MonthKey; toDate: boolean }) {
+export function PartnerReport({ data, month, toDate, sample }: { data: PartnerReportData | null; month: MonthKey; toDate: boolean; sample: boolean }) {
   if (!data) return <PartnerReportSkeleton />;
   const previous = previousMonthLabel(month);
   const empty = isEmptyMonth(data.metrics);
   // The one line under "Performance overview": what the percentages are compared with (an estimate for a month still running).
   const comparedWith = toDate ? `the same period last month (${previous}), estimated` : previous;
   return (
-    <ReportPaper testId="partner-report" title="Progress report" month={month} toDate={toDate}>
+    <ReportPaper testId="partner-report" title="Progress report" month={month} toDate={toDate} sample={sample}>
       {empty && (
         <p data-testid="report-empty" className="caption rounded-control bg-surface-2 px-3 py-2">
           No figures were recorded for {formatMonth(month)}.

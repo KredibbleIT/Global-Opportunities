@@ -12193,7 +12193,11 @@ test.describe('Monthly report: routes, access, the two templates and the coheren
       await expect(page.getByTestId(`metric-${id}`)).toContainText(label);
     }
     await expect(page.getByTestId('report-footer')).toHaveText(`Global Opportunity Desk · ${formatMonth(defaultMonth())}`);
-    await expect(paper.getByText("Figures from the Desk's own records.")).toBeVisible();
+    // sample figures: the paper says so beside the title and in the footer, never "the Desk's own records" (November 2026 review)
+    await expect(paper.getByTestId('sample-report-badge')).toHaveText('Sample report');
+    await expect(paper).toHaveAttribute('data-source', 'sample');
+    await expect(paper.getByTestId('report-source')).toHaveText("Sample figures for layout and review. Not the Desk's records.");
+    await expect(paper.getByText("Figures from the Desk's own records.")).toHaveCount(0);
     // the grid is 5 across on the paper
     const lefts = await paper.locator('[data-testid^="metric-"]:not([data-testid="metric-value"]):not([data-testid="metric-delta"])').evaluateAll((nodes) => new Set(nodes.map((node) => Math.round(node.getBoundingClientRect().left))).size);
     expect(lefts).toBe(5);
@@ -12596,6 +12600,21 @@ test.describe('Monthly report: real-API mode says it is sample data', () => {
     await expect(page.getByTestId('not-connected-notice')).toBeVisible();
     await expect(page.getByTestId('partner-report')).toBeVisible();
     await expect(page.getByTestId('download-pdf')).toBeEnabled();
+  });
+
+  test('both templates say "Sample report" on the paper, and it stays in print while the notice is hidden (Mock data off)', async ({ page }) => {
+    for (const view of ['partner', 'team'] as const) {
+      await page.goto(`${BASE_URL}/monthly-report/${view}`, { timeout: 30_000 });
+      const paper = page.getByTestId(`${view}-report`);
+      await expect(paper).toBeVisible();
+      await expect(paper.getByTestId('sample-report-badge')).toHaveText('Sample report');
+      await expect(paper.getByTestId('report-source')).toHaveText("Sample figures for layout and review. Not the Desk's records.");
+      await page.emulateMedia({ media: 'print' });
+      await expect(page.getByTestId('not-connected-notice')).toBeHidden(); // outside the paper: not in the PDF
+      await expect(paper.getByTestId('sample-report-badge')).toBeVisible(); // inside the paper: in the PDF
+      await expect(paper.getByTestId('report-source')).toBeVisible();
+      await page.emulateMedia({ media: 'screen' });
+    }
   });
 });
 
