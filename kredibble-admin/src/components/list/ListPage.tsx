@@ -26,10 +26,12 @@ interface ListPageProps {
   subtitle: string;
   action?: { label: string; href: string; icon?: LucideIcon };
   toolbar?: ReactNode;
+  /** Shown between the header and the toolbar: the "sample data" notice of a page that is not connected to the API yet (NotConnectedNotice). */
+  notice?: ReactNode;
   children: ReactNode;
 }
 
-export function ListPage({ title, subtitle, action, toolbar, children }: ListPageProps) {
+export function ListPage({ title, subtitle, action, toolbar, notice, children }: ListPageProps) {
   const ActionIcon = action?.icon;
 
   return (
@@ -47,6 +49,7 @@ export function ListPage({ title, subtitle, action, toolbar, children }: ListPag
         )}
       </header>
 
+      {notice}
       {toolbar}
       {children}
     </div>

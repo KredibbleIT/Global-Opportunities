@@ -11,11 +11,11 @@
  *   Team scoreboard: EXACTLY the Team scorecard for the month (the same component, not recalculated): the grace period ("Scores start on day 5"),
  *   "300%+", "Highest/Lowest" when everyone owns only on-target metrics, and people with no metrics under "No metrics assigned"
  *
- * Props: data (null while loading: a skeleton), month, toDate (the current month: "Month to date")
+ * Props: data (null while loading: a skeleton), month, toDate (the current month: "Month to date"), sample (sample figures: "Sample report" on the paper)
  */
 import { PipelineHealthCard } from "@/components/partners/PipelineHealthCard";
 import { RecordsPaceCard } from "@/components/database/RecordsPaceCard";
-import { StatusChip } from "@/components/overview/KpiGrid";
+import { StatusChip } from "@/components/kpi/KpiStatus";
 import { Scorecard } from "@/components/scorecard/Scorecard";
 import { MiniStat } from "@/components/ui/MiniStat";
 import { KPIS } from "@/config/kpis";
@@ -29,11 +29,11 @@ import { ReportPaper, ReportSection } from "./ReportPaper";
 
 const format = (value: number) => value.toLocaleString("en-US");
 
-export function TeamReport({ data, month, toDate }: { data: TeamReportData | null; month: MonthKey; toDate: boolean }) {
+export function TeamReport({ data, month, toDate, sample }: { data: TeamReportData | null; month: MonthKey; toDate: boolean; sample: boolean }) {
   if (!data) return <PartnerReportSkeleton />;
   const rate = data.network.activityRate;
   return (
-    <ReportPaper testId="team-report" title="Team report" month={month} toDate={toDate} note="Internal. Not for partners.">
+    <ReportPaper testId="team-report" title="Team report" month={month} toDate={toDate} sample={sample} note="Internal. Not for partners.">
       {data.kpis.every((card) => card.value === 0) && (
         <p data-testid="report-empty" className="caption rounded-control bg-surface-2 px-3 py-2">
           No figures were recorded for {formatMonth(month)}.

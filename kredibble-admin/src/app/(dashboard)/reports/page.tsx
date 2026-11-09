@@ -4,23 +4,24 @@
  * Reports Queue: trust & safety reports across posts, users, channels and postings.
  * Built on the shared list template; this file holds the column config, the status filter
  * (default: Open) and the data.
- * Data: mock reports (src/lib/mock-reports.ts), unchanged.
+ * Data: lib/services/reports.ts. Mock mode: the sample reports with this session's changes; real mode: GET /admin/reports, the same records the
+ * Overview's "Open reports" counts, so the two numbers agree.
  *
  * "Open" is a warning here (the report is waiting on a person), unlike an open opportunity;
  * that is the status badge's kind="report".
  */
 import { useState } from "react";
 import { Flag } from "lucide-react";
-import { reports, type Report } from "@/lib/mock-reports";
-import { overlayRows, subscribeMockStore } from "@/lib/mock-store";
+import type { Report } from "@/lib/mock-reports";
+import { subscribeMockStore } from "@/lib/mock-store";
+import { loadReportRows } from "@/lib/services/reports";
 import { useListData } from "@/lib/use-list-data";
 import { DataTable } from "@/components/list/DataTable";
 import { ListPage } from "@/components/list/ListPage";
 import { TableToolbar } from "@/components/list/TableToolbar";
 import type { Column } from "@/components/list/types";
 
-// Mock records with this session's changes (see mock-store.ts) laid over them.
-const loadReports = () => Promise.resolve(overlayRows("reports", reports));
+const loadReports = loadReportRows;
 
 type Filter = "all" | "open" | "resolved" | "dismissed";
 const FILTERS: { value: Filter; label: string }[] = [

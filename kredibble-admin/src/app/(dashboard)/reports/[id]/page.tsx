@@ -8,7 +8,8 @@
  * linked) the "View the channel this report is about" link.
  * Actions: Mark resolved (header) and Dismiss (header, with a confirm dialog because it closes the
  * report without action).
- * Data: mock reports (src/lib/mock-reports.ts), changed in LOCAL state only.
+ * Data: lib/services/reports.ts. Mock mode: the sample report, changed in local state only. Real mode: GET /admin/reports/:id, and Mark resolved /
+ * Dismiss save with PATCH /admin/reports/:id before the page changes (an error toast, and no change, when the save fails).
  *
  * "Open" is a warning on a report (it waits on a person): StatusBadge kind="report".
  */
@@ -18,7 +19,8 @@ import { useParams } from "next/navigation";
 import { CheckCircle2, Flag, Hash, XCircle } from "lucide-react";
 import { formatDate } from "@/lib/format";
 import { useBreadcrumbLabel } from "@/lib/breadcrumb-label";
-import { reports } from "@/lib/mock-reports";
+import type { ReportStatus } from "@/lib/mock-reports";
+import { loadReport, saveReportStatus } from "@/lib/services/reports";
 import { useDetailData } from "@/lib/use-detail-data";
 import { DetailHeader } from "@/components/detail/DetailHeader";
 import { DetailPage } from "@/components/detail/DetailPage";
@@ -35,7 +37,7 @@ const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1
 
 export default function ReportDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const load = useCallback(() => Promise.resolve(reports.find((r) => r.id === id)), [id]);
+  const load = useCallback(() => loadReport(id), [id]);
   const { status, record: report, setRecord, error, retry } = useDetailData(load, { collection: "reports" });
   const toast = useToast();
   const { confirm, dialog } = useConfirmDialog();
@@ -46,11 +48,18 @@ export default function ReportDetailPage() {
   if (status === "error") return <DetailError message={error ?? "Could not load this report."} onRetry={retry} />;
   if (!report) return <DetailNotFound noun="Report" listLabel="Reports Queue" listHref="/reports" />;
 
-  const resolve = () => {
-    // TODO(backend): persist this change
-    setRecord((prev) => ({ ...prev, status: "resolved" }));
-    toast.success(`The report about ${report.targetLabel} was resolved.`);
+  // Saves first (real mode), then changes the page; a failed save leaves the report as it was and says so.
+  const changeStatus = async (next: Exclude<ReportStatus, "open">, done: string) => {
+    try {
+      const saved = await saveReportStatus(report.id, next);
+      setRecord((prev) => ({ ...prev, status: saved }));
+      toast.success(`The report about ${report.targetLabel} was ${done}.`);
+    } catch (saveError) {
+      toast.error(saveError instanceof Error ? `The report could not be updated: ${saveError.message}` : "The report could not be updated.");
+    }
   };
+
+  const resolve = () => void changeStatus("resolved", "resolved");
 
   const dismiss = () =>
     confirm({
@@ -63,11 +72,7 @@ export default function ReportDetailPage() {
       ),
       confirmLabel: "Dismiss report",
       tone: "neutral",
-      onConfirm: () => {
-        // TODO(backend): persist this change
-        setRecord((prev) => ({ ...prev, status: "dismissed" }));
-        toast.success(`The report about ${report.targetLabel} was dismissed.`);
-      },
+      onConfirm: () => changeStatus("dismissed", "dismissed"),
     });
 
   return (

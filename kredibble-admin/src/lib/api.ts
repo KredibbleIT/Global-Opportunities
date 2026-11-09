@@ -907,6 +907,8 @@ export interface WebsiteMonthRecord {
   dailyFirstVisits: number;
   dailyVisitors: number;
   channels: WebsiteChannelRecord[];
+  /** App views, or null when app analytics are not tracked for the month (the report shows "No data"). */
+  appViews?: number | null;
   source?: "manual" | "ga4";
   updatedBy?: string;
   updatedByName?: string;

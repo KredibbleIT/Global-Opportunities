@@ -87,7 +87,7 @@ export const KPIS: Record<KpiKey, KpiDefinition> = {
     unitOne: "listing",
     owners: owned("opportunities_published"),
     kind: "count",
-    note: "Vetted listings published this month",
+    note: "Vetted listings published",
     screen: "opportunities_queue",
   },
   programs_organised: {
@@ -97,7 +97,7 @@ export const KPIS: Record<KpiKey, KpiDefinition> = {
     unitOne: "program",
     owners: owned("programs_organised"),
     kind: "count",
-    note: "Delivered programs this month",
+    note: "Programs delivered",
     screen: "programs",
   },
   active_ambassadors: {
@@ -107,7 +107,7 @@ export const KPIS: Record<KpiKey, KpiDefinition> = {
     unitOne: "ambassador",
     owners: owned("active_ambassadors"),
     kind: "running_total",
-    note: "Running total: judged against the full target",
+    note: "Total currently active",
     screen: "network",
   },
   partners_onboarded: {
@@ -117,7 +117,7 @@ export const KPIS: Record<KpiKey, KpiDefinition> = {
     unitOne: "partner",
     owners: owned("partners_onboarded"),
     kind: "count",
-    note: "Partners that moved to Onboard or Renew (a closed deal) this month",
+    note: "New and renewed partners",
     screen: "partners",
   },
   beneficiaries_verified: {
@@ -127,7 +127,7 @@ export const KPIS: Record<KpiKey, KpiDefinition> = {
     unitOne: "record",
     owners: owned("beneficiaries_verified"),
     kind: "count",
-    note: "Database records verified this month",
+    note: "Beneficiary records checked",
     screen: "database",
   },
   social_reach: {
@@ -137,7 +137,7 @@ export const KPIS: Record<KpiKey, KpiDefinition> = {
     unitOne: "person reached",
     owners: owned("social_reach"),
     kind: "count",
-    note: "Total reach of posts published this month",
+    note: "People who saw our posts",
     screen: "social",
   },
   social_engagement: {
@@ -147,7 +147,7 @@ export const KPIS: Record<KpiKey, KpiDefinition> = {
     unitOne: "interaction",
     owners: owned("social_engagement"),
     kind: "count",
-    note: "Likes, comments, shares and clicks on posts published this month",
+    note: "Likes, comments, shares and clicks",
     screen: "social",
   },
   posts_published: {
@@ -157,7 +157,7 @@ export const KPIS: Record<KpiKey, KpiDefinition> = {
     unitOne: "post",
     owners: owned("posts_published"),
     kind: "count",
-    note: "Social posts published this month",
+    note: "Social posts published",
     screen: "social",
   },
   website_views: {
@@ -167,7 +167,7 @@ export const KPIS: Record<KpiKey, KpiDefinition> = {
     unitOne: "view",
     owners: owned("website_views"),
     kind: "count",
-    note: "Page views on the website this month",
+    note: "Pages viewed, including repeat views",
     screen: "monthly_report",
   },
   monthly_reports: {
@@ -177,7 +177,7 @@ export const KPIS: Record<KpiKey, KpiDefinition> = {
     unitOne: "report",
     owners: owned("monthly_reports"),
     kind: "count",
-    note: "Monthly reports generated this month",
+    note: "Reports generated",
     screen: "monthly_report",
   },
 };

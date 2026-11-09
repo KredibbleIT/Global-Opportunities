@@ -4,17 +4,19 @@
  * PartnerReport: the report prepared for partners. AGGREGATE ONLY: no staff name, no person's figures, no ambassador name and no scoreboard anywhere in it.
  *
  *   Progress report · <month>   (orange-to-purple rule)
- *   Intro: what the report is and which month it is compared with
- *   Ten figures (5 by 2 on the paper, 2 across below 640px): label, value, change since the previous month, a one-line description
- *   Website audience: the last six months as highlight bars (the latest orange, a value on every bar, a hidden data table)
+ *   Performance overview: one line on what the percentages are compared with; ten figures in the Overview's card design (label, figure,
+ *   change since the previous month) — nothing else (November 2026 review)
+ *   Website and app views: "Monthly views by platform", two bars per month (Website, App) with a legend; "No data" where app analytics
+ *   are not tracked — never a zero bar
  *   Channel performance: Channel, Posts, Reach, Engagement (sorted by reach); hidden, with a neutral note, when the month has no post
  *
  * The figures come from lib/report.ts (the same functions as the Overview, the lists and Social). A month with no data shows the paper with zeros and a neutral note.
  *
- * Props: data (null while loading: a skeleton in the paper's shape), month, toDate (the current month: "Month to date")
+ * Props: data (null while loading: a skeleton in the paper's shape), month, toDate (the current month: "Month to date"), sample (sample figures: the
+ * paper shows "Sample report", on screen and in the PDF)
  */
 import { ArrowDown, ArrowUp, Minus } from "lucide-react";
-import { HighlightBarChart } from "@/components/ui/HighlightBarChart";
+import { GroupedBarChart } from "@/components/ui/GroupedBarChart";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { cn } from "@/lib/cn";
 import { formatMonth } from "@/lib/format";
@@ -29,7 +31,7 @@ const format = (value: number) => value.toLocaleString("en-US");
 function DeltaText({ delta }: { delta: Delta }) {
   const Icon = delta.kind === "up" ? ArrowUp : delta.kind === "down" ? ArrowDown : delta.kind === "flat" ? Minus : null;
   return (
-    <p data-testid="metric-delta" data-kind={delta.kind} className={cn("mt-1 flex items-start gap-1 text-xs font-semibold", delta.kind === "up" ? "text-success" : delta.kind === "down" ? "text-danger" : "text-muted")}>
+    <p data-testid="metric-delta" data-kind={delta.kind} className={cn("flex items-start gap-1 text-xs font-semibold leading-4", delta.kind === "up" ? "text-success" : delta.kind === "down" ? "text-danger" : "text-muted")}>
       {Icon && <Icon size={12} strokeWidth={2.25} aria-hidden="true" className="mt-0.5 shrink-0" />}
       <span>{delta.text}</span>
     </p>
@@ -45,7 +47,10 @@ export function PartnerReportSkeleton() {
         <Skeleton className="h-5 w-40" />
         <Skeleton className="h-1 w-full rounded-pill" />
       </div>
-      <Skeleton className="h-10 w-full" />
+      <div className="space-y-2">
+        <Skeleton className="h-5 w-48" />
+        <Skeleton className="h-4 w-80 max-w-full" />
+      </div>
       <div className="grid grid-cols-2 gap-3 min-[640px]:grid-cols-5">
         {Array.from({ length: 10 }, (_, i) => (
           <Skeleton key={i} className="h-28 rounded-control" />
@@ -56,41 +61,42 @@ export function PartnerReportSkeleton() {
   );
 }
 
-export function PartnerReport({ data, month, toDate }: { data: PartnerReportData | null; month: MonthKey; toDate: boolean }) {
+export function PartnerReport({ data, month, toDate, sample }: { data: PartnerReportData | null; month: MonthKey; toDate: boolean; sample: boolean }) {
   if (!data) return <PartnerReportSkeleton />;
   const previous = previousMonthLabel(month);
   const empty = isEmptyMonth(data.metrics);
+  // The one line under "Performance overview": what the percentages are compared with (an estimate for a month still running).
+  const comparedWith = toDate ? `the same period last month (${previous}), estimated` : previous;
   return (
-    <ReportPaper testId="partner-report" title="Progress report" month={month} toDate={toDate}>
-      <p data-testid="report-intro" className="body-sm text-ink">
-        A summary of the Desk&apos;s reach and growth this month, prepared for our partners.{" "}
-        {toDate ? `Figures so far this month are compared with the same period last month (${previous}), estimated.` : `Figures are compared with ${previous}.`}
-      </p>
+    <ReportPaper testId="partner-report" title="Progress report" month={month} toDate={toDate} sample={sample}>
       {empty && (
         <p data-testid="report-empty" className="caption rounded-control bg-surface-2 px-3 py-2">
           No figures were recorded for {formatMonth(month)}.
         </p>
       )}
-      <ReportSection title="The month in ten figures" testId="report-metrics">
+      <ReportSection title="Performance overview" subtitle={`Percentage changes are compared with ${comparedWith}.`} testId="report-metrics">
         <div className="grid grid-cols-2 gap-3 min-[640px]:grid-cols-5">
           {data.metrics.map((metric) => (
-            <div key={metric.id} data-testid={`metric-${metric.id}`} className="report-cell rounded-control bg-surface-2 p-3">
-              <p className="caption font-semibold text-ink">{metric.label}</p>
-              <p data-testid="metric-value" className="mt-1 font-display text-2xl font-bold leading-8 tabular-nums text-ink">
-                {format(metric.value)}
-              </p>
-              <DeltaText delta={metric.delta} />
-              <p className="caption mt-2">{metric.description}</p>
+            <div key={metric.id} data-testid={`metric-${metric.id}`} className="report-cell card-surface flex h-full flex-col overflow-hidden">
+              <div className="flex flex-1 flex-col gap-1 bg-surface-2 p-3">
+                <p className="kpi-label">{metric.label}</p>
+                <p data-testid="metric-value" className="ministat-value">
+                  {format(metric.value)}
+                </p>
+              </div>
+              <div className="bg-white p-3">
+                <DeltaText delta={metric.delta} />
+              </div>
             </div>
           ))}
         </div>
       </ReportSection>
-      <ReportSection title="Website audience" subtitle="Website views over the last six months" testId="report-audience">
+      <ReportSection title="Website and app views" subtitle="Monthly views by platform" testId="report-audience">
         {data.audience.length >= 2 ? (
-          <HighlightBarChart data={data.audience.map((point) => ({ label: point.label, tooltipLabel: point.tooltipLabel, value: point.value }))} ariaLabel={`Website views, last ${data.audience.length} months`} unit="views" />
+          <GroupedBarChart data={data.audience} ariaLabel={`Views by platform, last ${data.audience.length} months`} unit="views" />
         ) : (
           <p data-testid="audience-none" className="caption">
-            There are not enough months of website figures to chart yet.
+            There are not enough months of views figures to chart yet.
           </p>
         )}
       </ReportSection>

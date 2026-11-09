@@ -12,6 +12,7 @@ import { useListData } from "@/lib/use-list-data";
 import { DataTable } from "@/components/list/DataTable";
 import { ListPage } from "@/components/list/ListPage";
 import type { Column } from "@/components/list/types";
+import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 
 // Mock records with this session's changes (see mock-store.ts) laid over them.
 const loadGrants = () => Promise.resolve(overlayRows("grants", grantRecords));
@@ -35,7 +36,7 @@ export default function GrantsOpsPage() {
   const { rows, isLoading, error, retry } = useListData(loadGrants, { subscribe: subscribeMockStore });
 
   return (
-    <ListPage title="Grants" subtitle="Funding pool allocation and application review across all posted grants.">
+    <ListPage title="Grants" subtitle="Funding pool allocation and application review across all posted grants." notice={<NotConnectedNotice />}>
       <DataTable
         label="Grants"
         columns={COLUMNS}

@@ -31,6 +31,7 @@ import { MonthSelect } from "@/components/ui/MonthSelect";
 import { formatMonth } from "@/lib/format";
 import { useMonth } from "@/lib/use-month";
 import { SegmentedBar } from "@/components/ui/SegmentedBar";
+import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 
 const TYPE_LABELS: Record<OpportunityType, string> = {
   jobs: "Jobs",
@@ -76,6 +77,7 @@ export default function InsightsPage() {
         </div>
         <MonthSelect />
       </header>
+      <NotConnectedNotice />
       {!isCurrent && (
         <p className="caption" role="status">
           {formatMonth(month)}: the figures below are mock data and do not change by month yet.

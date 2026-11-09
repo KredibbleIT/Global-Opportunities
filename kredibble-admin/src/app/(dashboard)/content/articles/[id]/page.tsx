@@ -29,6 +29,7 @@ import { Textarea } from "@/components/ui/form/Textarea";
 import { focusFirstInvalid, useTouched } from "@/components/ui/form/use-touched";
 import { useUnsavedGuard } from "@/components/ui/form/use-unsaved-guard";
 import { useToast } from "@/components/ui/Toast";
+import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 
 const LIST_HREF = "/content/articles";
 
@@ -114,6 +115,7 @@ export default function ArticleEditorPage() {
           {isNew ? "Write a Career Resources article for seekers." : "Update this Career Resources article."}
         </p>
       </div>
+      <NotConnectedNotice className="mb-4" />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Main column: the writing */}

@@ -26,6 +26,7 @@ import { KeyValueList } from "@/components/ui/KeyValueList";
 import { MiniStat } from "@/components/ui/MiniStat";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useToast } from "@/components/ui/Toast";
+import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 
 export default function EventDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -75,6 +76,7 @@ export default function EventDetailPage() {
   return (
     <>
       <DetailPage
+        notice={<NotConnectedNotice />}
         header={
           <DetailHeader
             leading={{ icon: CalendarDays }}

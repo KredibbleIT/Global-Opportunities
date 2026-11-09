@@ -40,7 +40,7 @@ export const KPI_DEFINITIONS = [
     unitOne: 'listing',
     owners: ['opportunities_officer', 'desk_lead'],
     kind: 'count',
-    note: 'Vetted listings published this month',
+    note: 'Vetted listings published',
     screen: 'opportunities_queue',
   },
   {
@@ -51,7 +51,7 @@ export const KPI_DEFINITIONS = [
     unitOne: 'program',
     owners: ['training_officer', 'desk_lead'],
     kind: 'count',
-    note: 'Delivered programs this month',
+    note: 'Programs delivered',
     screen: 'programs',
   },
   {
@@ -62,7 +62,7 @@ export const KPI_DEFINITIONS = [
     unitOne: 'ambassador',
     owners: ['country_lead', 'desk_lead'],
     kind: 'running_total',
-    note: 'Running total: judged against the full target',
+    note: 'Total currently active',
     screen: 'network',
   },
   {
@@ -73,7 +73,7 @@ export const KPI_DEFINITIONS = [
     unitOne: 'partner',
     owners: ['partnerships_officer', 'desk_lead'],
     kind: 'count',
-    note: 'Partners that moved to Onboard or Renew (a closed deal) this month',
+    note: 'New and renewed partners',
     screen: 'partners',
   },
   {
@@ -84,7 +84,7 @@ export const KPI_DEFINITIONS = [
     unitOne: 'record',
     owners: ['database_officer', 'desk_lead'],
     kind: 'count',
-    note: 'Database records verified this month',
+    note: 'Beneficiary records checked',
     screen: 'database',
   },
   {
@@ -95,7 +95,7 @@ export const KPI_DEFINITIONS = [
     unitOne: 'person reached',
     owners: ['social_media_manager', 'desk_lead'],
     kind: 'count',
-    note: 'Total reach of posts published this month',
+    note: 'People who saw our posts',
     screen: 'social',
   },
   {
@@ -106,7 +106,7 @@ export const KPI_DEFINITIONS = [
     unitOne: 'interaction',
     owners: ['social_media_manager', 'desk_lead'],
     kind: 'count',
-    note: 'Likes, comments, shares and clicks on posts published this month',
+    note: 'Likes, comments, shares and clicks',
     screen: 'social',
   },
   {
@@ -117,7 +117,7 @@ export const KPI_DEFINITIONS = [
     unitOne: 'post',
     owners: ['social_media_manager', 'desk_lead'],
     kind: 'count',
-    note: 'Posts published across all platforms this month',
+    note: 'Social posts published',
     screen: 'social',
   },
   {
@@ -128,7 +128,7 @@ export const KPI_DEFINITIONS = [
     unitOne: 'view',
     owners: ['communications_officer', 'desk_lead'],
     kind: 'count',
-    note: 'Unique page views on the main site this month',
+    note: 'Pages viewed, including repeat views',
     screen: 'analytics',
   },
   {
@@ -139,7 +139,7 @@ export const KPI_DEFINITIONS = [
     unitOne: 'report',
     owners: ['communications_officer', 'desk_lead'],
     kind: 'count',
-    note: 'Reports generated in this calendar month',
+    note: 'Reports generated',
     screen: 'reports',
   },
 ];

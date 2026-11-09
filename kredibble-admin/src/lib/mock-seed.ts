@@ -694,6 +694,9 @@ export function buildSeed(today: Date = new Date()): Seed {
 
   // ---- Website audience: six months, with where the visits came from -----------------------------------------
   // Past months are complete; the CURRENT month is month-to-date (the month's pace x the share gone, with variation).
+  // App views are tracked from the THIRD month on (app analytics started then); the two oldest months carry null, which the
+  // report shows as "No data" — never as a zero bar.
+  const fullAppViews: (number | null)[] = [null, null, 2900, 4600, 6300, 6500]; // oldest -> current
   const channelShares: [string, number][] = [
     ["Organic search", 0.38],
     ["Direct", 0.24],
@@ -715,6 +718,7 @@ export function buildSeed(today: Date = new Date()): Seed {
       dailyFirstVisits: Math.round(views / days / 2.6),
       dailyVisitors: Math.round(views / days / 1.35),
       channels: channelViews,
+      appViews: ago === 0 ? (fullAppViews[i] === null ? null : Math.round((fullAppViews[i] as number) * share * (0.97 + rand() * 0.06))) : fullAppViews[i],
     };
   });
 
