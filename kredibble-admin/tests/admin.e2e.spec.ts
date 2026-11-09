@@ -1872,7 +1872,7 @@ const AUDIT_ROUTES: { path: string; mockOnly?: string }[] = [
   { path: '/opportunities' },
   { path: '/opportunities/opp-1', mockOnly: 'opp-1 is a mock record id' },
   { path: '/reports' },
-  { path: '/reports/report-1' },
+  { path: '/reports/report-1', mockOnly: 'report-1 is a mock record id (the real run opens the seeded report in "Reports Queue: the real API")' },
   { path: '/seekers' },
   { path: '/seekers/seeker-1', mockOnly: 'seeker-1 is a mock record id' },
   { path: '/hirers' },
