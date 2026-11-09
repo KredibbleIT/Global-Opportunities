@@ -27,6 +27,7 @@ import { KeyValueList } from "@/components/ui/KeyValueList";
 import { MiniStat } from "@/components/ui/MiniStat";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useToast } from "@/components/ui/Toast";
+import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 
 const money = (amount: number) => `$${amount.toLocaleString()}`;
 
@@ -79,6 +80,7 @@ export default function GrantDetailPage() {
   return (
     <>
       <DetailPage
+        notice={<NotConnectedNotice />}
         header={
           <DetailHeader
             leading={{ icon: HandCoins }}

@@ -5,7 +5,8 @@
  * models what the queue would consume once that exists.
  */
 
-export type ReportTargetType = 'post' | 'user' | 'opportunity' | 'channel';
+/** 'other': a report from the API whose target type the admin does not know yet (lib/services/reports.ts); the sample reports never use it. */
+export type ReportTargetType = 'post' | 'user' | 'opportunity' | 'channel' | 'other';
 export type ReportStatus = 'open' | 'resolved' | 'dismissed';
 
 export interface Report {

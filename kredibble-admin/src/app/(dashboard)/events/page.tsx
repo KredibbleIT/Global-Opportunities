@@ -12,6 +12,7 @@ import { useListData } from "@/lib/use-list-data";
 import { DataTable } from "@/components/list/DataTable";
 import { ListPage } from "@/components/list/ListPage";
 import type { Column } from "@/components/list/types";
+import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 
 // Mock records with this session's changes (see mock-store.ts) laid over them.
 const loadEvents = () => Promise.resolve(overlayRows("events", eventRecords));
@@ -35,7 +36,7 @@ export default function EventsPage() {
   const { rows, isLoading, error, retry } = useListData(loadEvents, { subscribe: subscribeMockStore });
 
   return (
-    <ListPage title="Events" subtitle="Capacity and attendance across all hirer-posted events.">
+    <ListPage title="Events" subtitle="Capacity and attendance across all hirer-posted events." notice={<NotConnectedNotice />}>
       <DataTable
         label="Events"
         columns={COLUMNS}

@@ -820,6 +820,7 @@ test.describe('List pages: template', () => {
   });
 
   test('status badges follow the one status map (Reports: Open is a warning, Resolved is neutral)', async ({ page }) => {
+    test.skip(!MOCK_RUN, 'the real-API seed has one open report and no resolved one; the sample reports have both');
     await page.goto(`${BASE_URL}/reports`);
     const openBadge = page.locator('main tbody tr').first().locator('span', { hasText: /^Open$/ });
     await expect(openBadge).toBeVisible();
@@ -5035,6 +5036,75 @@ test.describe('Not connected yet', () => {
     await page.goto(`${BASE_URL}/team`);
     await expect(page.getByTestId('page-title')).toHaveText('Team');
     await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
+  });
+
+  test('the screens that still show only sample data say so in the real run: Insights, Events, Grants and Career Resources, lists and records', async ({ page }) => {
+    test.skip(MOCK_RUN, 'the notice only shows outside mock mode');
+    for (const path of ['/analytics', '/events', '/events/event-1', '/grants', '/grants/grant-1', '/content/articles', '/content/articles/new']) {
+      await page.goto(`${BASE_URL}${path}`);
+      await expect(page.getByTestId('page-title').first(), path).toBeVisible();
+      await expect(page.getByTestId('not-connected-notice'), path).toBeVisible();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Reports Queue against the real API (task sheet GOD-T2). The admin review saw "3 open reports" on the queue (the sample list) while the Overview
+// counted 0 in the database. The queue now reads GET /admin/reports, so both count the same records. Serial: the second test resolves the seeded
+// report and reopens it, and the first one counts it.
+// ---------------------------------------------------------------------------
+test.describe('Reports Queue: the real API, the same count as the Overview', () => {
+  test.skip(MOCK_RUN, 'real API run only');
+  test.describe.configure({ mode: 'serial' });
+  type P = import('@playwright/test').Page;
+  const seededReportId = (page: P) =>
+    page.evaluate(async (api) => {
+      const response = await fetch(`${api}/admin/reports?limit=100`, { credentials: 'include' });
+      const body = (await response.json()) as { data: { id: string; targetLabel?: string }[] };
+      return body.data.find((report) => report.targetLabel === 'E2E Reported Post')!.id;
+    }, API_URL);
+  const setStatus = (page: P, id: string, status: string) =>
+    page.evaluate(
+      async ({ api, id, status }) => {
+        const response = await fetch(`${api}/admin/reports/${id}`, { method: 'PATCH', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+        return response.status;
+      },
+      { api: API_URL, id, status },
+    );
+
+  test('the queue lists the database reports, never the sample ones, and its open count is the Overview\'s "Open reports"', async ({ page }) => {
+    await page.goto(`${BASE_URL}/`);
+    const openLink = page.getByRole('region', { name: 'Needs your attention' }).getByRole('link', { name: /Open reports/ });
+    await expect(openLink).toContainText(/\d/);
+    const overviewOpen = Number(/(\d+)/.exec((await openLink.textContent()) ?? '')![1]);
+    expect(overviewOpen).toBeGreaterThan(0); // the e2e seed has one open report
+    await page.goto(`${BASE_URL}/reports`);
+    await expect(page.getByText('E2E Reported Post').first()).toBeVisible();
+    await expect(page.getByText(/Guaranteed Visa Sponsorship Jobs/)).toHaveCount(0); // a sample report
+    await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
+    await expect(page.locator('main tbody tr')).toHaveCount(overviewOpen); // the default filter is Open
+    await expect(page.getByText(`${overviewOpen} open report${overviewOpen === 1 ? '' : 's'} awaiting review`)).toBeVisible();
+  });
+
+  test('a report opens from the API, and Mark resolved is saved (it stays resolved after a reload); a sample id is "not found"', async ({ page }) => {
+    await page.goto(`${BASE_URL}/reports`);
+    const id = await seededReportId(page);
+    try {
+      await page.goto(`${BASE_URL}/reports/${id}`);
+      await expect(page.getByRole('heading', { name: 'E2E Reported Post' })).toBeVisible();
+      await expect(page.getByText('E2E report details')).toBeVisible();
+      const saved = page.waitForResponse((response) => response.url().endsWith(`/admin/reports/${id}`) && response.request().method() === 'PATCH');
+      await page.getByRole('button', { name: 'Mark resolved' }).click();
+      expect((await saved).ok()).toBe(true);
+      await expect(page.getByTestId('toast').filter({ hasText: 'was resolved' })).toBeVisible();
+      await page.reload();
+      await expect(page.getByRole('heading', { name: 'E2E Reported Post' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Mark resolved' })).toBeDisabled();
+    } finally {
+      expect(await setStatus(page, id, 'open')).toBe(200); // the seed is shared by the run
+    }
+    await page.goto(`${BASE_URL}/reports/report-1`);
+    await expect(page.getByText(/could not find|not found|no longer exists/i).first()).toBeVisible({ timeout: 15_000 });
   });
 });
 

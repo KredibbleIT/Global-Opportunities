@@ -22,12 +22,15 @@ interface DetailPageProps {
   main: ReactNode;
   side: ReactNode;
   danger?: ReactNode;
+  /** Shown under the header: the "sample data" notice of a record that does not come from the API yet (NotConnectedNotice). */
+  notice?: ReactNode;
 }
 
-export function DetailPage({ header, main, side, danger }: DetailPageProps) {
+export function DetailPage({ header, main, side, danger, notice }: DetailPageProps) {
   return (
     <div className="space-y-4">
       {header}
+      {notice}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* DOM order is main then side (the natural reading order); on small screens "order-first" shows the side column first. */}

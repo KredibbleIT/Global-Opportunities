@@ -11,6 +11,7 @@ import { useListData } from "@/lib/use-list-data";
 import { DataTable } from "@/components/list/DataTable";
 import { ListPage } from "@/components/list/ListPage";
 import type { Column } from "@/components/list/types";
+import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 
 const loadArticles = () => Promise.resolve(articles);
 
@@ -42,6 +43,7 @@ export default function ArticlesListPage() {
           : "Articles shown in the Career Resources section of the app."
       }
       action={{ label: "New Article", href: "/content/articles/new", icon: Plus }}
+      notice={<NotConnectedNotice />}
     >
       <DataTable
         label="Articles"
