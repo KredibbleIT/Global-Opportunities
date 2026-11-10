@@ -269,6 +269,24 @@ export const RECORD_SOURCE_LABELS: Record<RecordSource, string> = {
   import: "Bulk import",
 };
 
+/**
+ * How a record reached the Database (GOD-T3), separate from its source (how the person was acquired) and from verification:
+ * "app" when the person registered in the app (the API creates the record), "manual" when staff added it.
+ */
+export const RECORD_ORIGINS = ["app", "manual"] as const;
+export type RecordOrigin = (typeof RECORD_ORIGINS)[number];
+export const RECORD_ORIGIN_LABELS: Record<RecordOrigin, string> = {
+  app: "App registration",
+  manual: "Manual entry",
+};
+/** The plural words of the Database's Entry filter. */
+export const RECORD_ORIGIN_FILTER_LABELS: Record<RecordOrigin, string> = {
+  app: "App registrations",
+  manual: "Manual entries",
+};
+/** A record without an origin was added by staff (every record before GOD-T3 was). */
+export const recordOrigin = (record: { origin?: RecordOrigin }): RecordOrigin => record.origin ?? "manual";
+
 export interface DatabaseRecord {
   id: string;
   name: string;
@@ -282,8 +300,10 @@ export interface DatabaseRecord {
   verified: boolean;
   /** The day the record was added. */
   createdAt: string;
-  /** The staff member who added it. */
+  /** The staff member who added it (none for an app registration). */
   addedById?: string;
+  /** "app" or "manual" (missing = manual): see RECORD_ORIGINS. */
+  origin?: RecordOrigin;
   /** Set when verified. This decides the month it counts in. */
   verifiedAt?: string;
   /** Only for the source "ambassador" (a referral). */

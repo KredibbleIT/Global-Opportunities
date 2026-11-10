@@ -6,7 +6,7 @@
  *
  * Fields (all kept from the old page, with the same required rules):
  * - Title (required), Summary (required), Body (required; the same plain textarea as before)
- * - Publishing: Draft or Published
+ * - Publishing: one switch, "Visible to seekers", and one status word beside it (Published or Draft; GOD-T41)
  * - Details: Category (required), Read time (optional)
  * - Cover image (optional): was "Banner Image"
  *
@@ -138,8 +138,13 @@ export default function ArticleEditorPage() {
               placeholder="e.g. Practical tips for a resume that stands out"
             />
           </Field>
-          <Field label="Body" error={show("content") ? errors.content : undefined}>
-            {/* The same plain textarea as the old page; only its container changed. */}
+          {/* GOD-T41: the app shows the body as plain text with its line breaks (kredibble-app career-resources), so the field
+              says so, and the preview shows the body exactly as the app will. */}
+          <Field
+            label="Body"
+            helper="Plain text, shown as typed: a blank line starts a new paragraph, and lines such as 1. or • stay as written. No bold, links or headings."
+            error={show("content") ? errors.content : undefined}
+          >
             <Textarea
               rows={14}
               value={form.content}
@@ -148,6 +153,12 @@ export default function ArticleEditorPage() {
               placeholder="Full article body"
             />
           </Field>
+          {form.content.trim() && (
+            <details data-testid="body-preview" className="rounded-control border border-line px-3 py-2">
+              <summary className="caption cursor-pointer font-semibold text-ink">Preview as seekers will see it</summary>
+              <p className="input-text mt-2 whitespace-pre-line text-ink">{form.content}</p>
+            </details>
+          )}
         </Card>
 
         {/* Side column: publishing, details, cover image */}
@@ -157,9 +168,9 @@ export default function ArticleEditorPage() {
             <Switch
               checked={form.status === "published"}
               onChange={(checked) => set("status", checked ? "published" : "draft")}
-              label="Published"
+              label="Visible to seekers"
               statusText={form.status === "published" ? "Published" : "Draft"}
-              description="Visible to seekers when on. Saved as a draft when off."
+              description="On: published in the app. Off: kept as a draft."
             />
           </Card>
 

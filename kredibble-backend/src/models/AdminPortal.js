@@ -304,6 +304,12 @@ const beneficiarySchema = new mongoose.Schema({
   verifiedAt: { type: String, index: true },
   createdAtDate: { type: String, index: true },
   addedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  // GOD-T3: how the record reached the Database, separate from `source` (how the person was acquired) and from `verified`.
+  // 'app': created from a seeker's app registration (lib/app-beneficiaries.js, migration 003); 'manual': added by staff.
+  origin: { type: String, enum: ['app', 'manual'], default: 'manual', index: true },
+  // The app account the record belongs to (set for 'app' records, and when a manual record's email later registers).
+  // Account deletion and the data export find the record by it (lib/account-deletion.js).
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', sparse: true, index: true },
   wordpressSync: syncField(),
 }, { timestamps: true });
 

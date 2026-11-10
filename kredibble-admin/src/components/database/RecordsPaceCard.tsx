@@ -1,40 +1,38 @@
 "use client";
 
 /**
- * RecordsPaceCard: the card at the top of Database. Two halves side by side from 1024px, stacked below:
+ * RecordsPaceCard: the card at the top of Database. Two halves side by side from 1024px, top-aligned, stacked below:
  *
- *   Verified this month                          [ At risk ]     Records by source
- *   9 of 15 verified                       [██████ ███ ██ █ ██]   a mini segmented bar
- *     pace 11          <- tick label                             ● Organic 25  ● Ambassador referral 24 ...
- *   9 verified > [ off track ][ at risk ][  on track  ]
- *    Off track    At risk   On track
+ *   Verified this month                 [ Behind ]      Records by source
+ *   9 of 15 verified                                    [██████ ███ ██ █ ██]   a mini segmented bar
+ *   [██████████░░░░░░░░░░░]  one bar                     ● Organic 25  ● Ambassador referral 24 ...
+ *   Expected by today: 11    one caption
  *
- * The numbers and the status are NOT worked out here: they come from recordsPace() (services/database.ts), which uses
- * kpiValue, kpiTarget and kpiStatus, the same functions as the Overview. The gauge is the shared ZoneGauge: a role="meter"
- * whose text value reads "9 of 15 verified, pro-rated pace 11, at risk", a marker for the verified count and a tick where the
- * pro-rated pace is. The status is a badge in words as well as colour. The bar of sources is decorative; its legend carries
+ * (GOD-T17, admin review: one total, one progress bar and one "expected by today" caption; the repeated Pace and Target figures, the
+ * zone words and the pace tick are gone.) The numbers and the status are NOT worked out here: they come from recordsPace()
+ * (services/database.ts), which uses kpiValue, kpiTarget and kpiStatus, the same functions as the Overview. The bar is a role="meter"
+ * whose text value reads "9 of 15 verified, pro-rated pace 11, behind"; its fill is the share of the target (full once the target
+ * is met) in the colour of the status badge, which says the status in words. The bar of sources is decorative; its legend carries
  * every number and percentage.
  *
  * Props:
  * - pace: the result of recordsPace(), or null while the records load (a skeleton, never a 0)
  * - sources: the counts by source (all records, whatever the list's filters say), or null while loading
  * - error / onRetry: when the records could not be loaded
- * Test ids: records-pace, pace-status, pace-headline, pace-gauge, pace-marker, pace-marker-label, pace-tick, pace-tick-label,
- * pace-zone-labels, pace-capped and pace-arrow ("4.4× the pace" and an arrow when more is verified than the bar can show), source-bar, source-legend, source-legend-<source>.
+ * Test ids: records-pace, pace-status, pace-headline, pace-bar, pace-bar-fill, pace-expected, pace-no-target, source-bar, source-legend,
+ * source-legend-<source>.
  */
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { StatusBadge } from "@/components/ui/StatusBadge";
-import { ZoneGauge, type GaugeZone } from "@/components/ui/ZoneGauge";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { cn } from "@/lib/cn";
 import { RECORD_SOURCES, RECORD_SOURCE_LABELS } from "@/lib/mock-entities";
 import { type PaceStatus, type RecordsPace, type SourceCount } from "@/lib/services/database";
-import { KPI_STATUS_LABELS } from "@/lib/status-map";
 
-const ZONE_TONE: Record<PaceStatus, GaugeZone["tone"]> = { far_behind: "danger", behind: "warning", on_pace: "success" };
-// The same three words as every KPI status (status-map KPI_STATUS_LABELS).
-const ZONE_LABEL: Record<PaceStatus, string> = { far_behind: KPI_STATUS_LABELS.red, behind: KPI_STATUS_LABELS.amber, on_pace: KPI_STATUS_LABELS.green };
+/** The bar's fill follows the status badge (and the badge carries the words, so colour is never the only signal). */
+const BAR_TONE: Record<PaceStatus, string> = { far_behind: "bg-danger-dot", behind: "bg-warning-dot", on_pace: "bg-success-dot" };
 
 /** One style for each source: the bar segment and its legend dot always match. */
 const SOURCE_STYLES: Record<(typeof RECORD_SOURCES)[number], string> = {
@@ -56,7 +54,10 @@ function SourceBar({ sources }: { sources: SourceCount[] }) {
   const total = sources.reduce((sum, entry) => sum + entry.count, 0);
   return (
     <div>
-      <h3 className="font-display text-sm font-bold leading-5 text-ink">Records by source</h3>
+      {/* The same row height as "Verified this month" and its badge, so the two titles line up (GOD-T17). */}
+      <div className="flex min-h-7 items-center">
+        <h3 className="font-display text-sm font-bold leading-5 text-ink">Records by source</h3>
+      </div>
       {total === 0 ? (
         <p data-testid="source-empty" className="caption mt-2">Nothing to chart yet.</p>
       ) : (
@@ -130,44 +131,40 @@ export function RecordsPaceCard({ pace, sources, error, onRetry }: RecordsPaceCa
     );
   }
 
-  const zones: GaugeZone[] = pace.gauge.zones.map((zone) => ({ key: zone.key, label: ZONE_LABEL[zone.key], tone: ZONE_TONE[zone.key], percent: zone.percent, testId: `pace-zone-${zone.key}` }));
   return (
     <Card as="section" ariaLabel="Verification pace" padding="sm" className="grid gap-x-8 gap-y-4 py-3 lg:grid-cols-2" testId="records-pace">
       <div className="space-y-1.5">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex min-h-7 items-center justify-between gap-2">
           <h2 className="font-display text-sm font-bold leading-5 text-ink">Verified this month</h2>
-          <span data-testid="pace-status">
-            <StatusBadge status={pace.status} />
-          </span>
+          {/* The thresholds behind the status ("Off track: below 70% of the pro-rated pace...") on hover and focus. */}
+          <Tooltip label={pace.hint}>
+            <span data-testid="pace-status" tabIndex={0} className="rounded-pill focus-visible:outline-2 focus-visible:outline-offset-2">
+              <StatusBadge status={pace.status} />
+            </span>
+          </Tooltip>
         </div>
         {pace.target > 0 ? (
           <>
-            <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
-              <p data-testid="pace-headline" className="font-display text-xl font-extrabold leading-6.5 text-ink">
-                {pace.verified} of {pace.target} verified
-              </p>
-              {/* The target is already in the headline ("9 of 15") and the pace on the gauge tick ("pace 11"): no second copy here. */}
+            <p data-testid="pace-headline" className="font-display text-xl font-extrabold leading-6.5 text-ink">
+              {pace.verified} of {pace.target} verified
+            </p>
+            {/* GOD-T17: one bar (the share of the month's target verified so far) and one caption. The status badge above says
+                whether that is on pace; the pace and target are not repeated as separate figures. */}
+            <div
+              role="meter"
+              aria-label="Records verified this month"
+              aria-valuemin={0}
+              aria-valuemax={pace.target}
+              aria-valuenow={pace.verified}
+              aria-valuetext={pace.text}
+              data-testid="pace-bar"
+              className="h-2 overflow-hidden rounded-pill bg-surface-2"
+            >
+              <div data-testid="pace-bar-fill" className={cn("h-full rounded-pill", BAR_TONE[pace.status])} style={{ width: `${Math.min(100, (pace.verified / pace.target) * 100)}%` }} />
             </div>
-            <ZoneGauge
-              zones={zones}
-              meter={{ label: "Records verified this month against the pro-rated pace", min: 0, max: pace.gauge.max, now: pace.verified, text: pace.text }}
-              markerAt={pace.gauge.markerAt}
-              markerLabel={`${pace.verified} verified`}
-              capped={pace.gauge.capped ? { text: `${pace.gauge.capped}× the pace` } : undefined}
-              hint={pace.hint}
-              tickAt={pace.gauge.paceAt}
-              tickLabel={`pace ${pace.paceRounded}`}
-              testIds={{
-                gauge: "pace-gauge",
-                marker: "pace-marker",
-                markerLabel: "pace-marker-label",
-                tick: "pace-tick",
-                tickLabel: "pace-tick-label",
-                capped: "pace-capped",
-                arrow: "pace-arrow",
-                labels: "pace-zone-labels",
-              }}
-            />
+            <p data-testid="pace-expected" className="caption tabular-nums">
+              Expected by today: {pace.paceRounded}
+            </p>
           </>
         ) : (
           <p data-testid="pace-no-target" className="body-sm text-muted">

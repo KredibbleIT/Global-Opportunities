@@ -14,6 +14,7 @@ import { useCallback, useState } from "react";
 import { useParams } from "next/navigation";
 import { CalendarDays, XCircle } from "lucide-react";
 import { useBreadcrumbLabel } from "@/lib/breadcrumb-label";
+import { eventStatus } from "@/lib/event-status";
 import { eventRecords } from "@/lib/mock-events";
 import { useDetailData } from "@/lib/use-detail-data";
 import { DangerZone } from "@/components/detail/DangerZone";
@@ -81,7 +82,7 @@ export default function EventDetailPage() {
           <DetailHeader
             leading={{ icon: CalendarDays }}
             title={event.title}
-            badges={<StatusBadge status={event.status} />}
+            badges={<StatusBadge status={eventStatus(event)} />}
             // The one concise summary: when and where. The hirer is in the side panel; the figures are in the Attendance card.
             meta={`${event.dateTime} · ${event.location}`}
           />

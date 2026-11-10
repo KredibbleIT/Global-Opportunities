@@ -5,7 +5,7 @@ import {
 import { SeekerProfile, HirerAccount } from '../models/Profiles.js';
 import { Applicant, Event, EventAttendee, CompanyVerification, VerificationDoc, Opportunity, GrantApplication } from '../models/Platform.js';
 import { Channel, ChannelPost, CommunityMembership } from '../models/Community.js';
-import { Testimonial } from '../models/AdminPortal.js';
+import { Testimonial, Beneficiary } from '../models/AdminPortal.js';
 import { deleteUserMedia } from './cloudinary.js';
 import { env } from '../config/env.js';
 import logger from './logger.js';
@@ -53,6 +53,8 @@ export async function userDataFilters(user) {
     // only set hirerId, to the User id.
     opportunities: { $or: [{ createdBy: userId }, { hirerId: { $in: companyIds } }] },
     sessions: { userId },
+    // GOD-T3: the admin Database record of the account (an app registration, or a staff record its email was linked to).
+    beneficiaries: { userId },
   };
 }
 
@@ -99,6 +101,7 @@ export async function purgeUserData(user, { deleteMedia = deleteUserMedia } = {}
     SavedItem.deleteMany(where.savedItems),
     CommunityMembership.deleteMany(where.channelMemberships),
     RefreshToken.deleteMany(where.sessions),
+    Beneficiary.deleteMany(where.beneficiaries),
     StaffMember.deleteMany({ userId }),
     PasswordResetCode.deleteMany({ userId }),
     EmailVerificationCode.deleteMany({ email }),

@@ -4,9 +4,9 @@
  *
  * Props:
  * - crumbs: breadcrumb labels in order; the last one is the current page
- * Footer link targets live in config/brand.ts (FOOTER_LINKS).
+ * Footer link targets live in config/brand.ts (footerLinks): external pages, opened in a new tab.
  */
-import { FOOTER_LINKS } from "@/config/brand";
+import { footerLinks } from "@/config/brand";
 
 export function PageFooter({ crumbs }: { crumbs: string[] }) {
   return (
@@ -25,10 +25,11 @@ export function PageFooter({ crumbs }: { crumbs: string[] }) {
         </ol>
       </nav>
       <ul className="flex items-center gap-5">
-        {FOOTER_LINKS.map((link) => (
+        {footerLinks().map((link) => (
           <li key={link.label}>
-            <a href={link.href} className="rounded-pill hover:text-ink">
+            <a href={link.href} target="_blank" rel="noopener noreferrer" className="rounded-pill hover:text-ink">
               {link.label}
+              <span className="sr-only"> (opens in a new tab)</span>
             </a>
           </li>
         ))}

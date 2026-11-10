@@ -110,10 +110,25 @@ export function AmbassadorBulkActions({ allRows, filteredRows, selectedIds, filt
     return result;
   };
 
+  // GOD-T35: every option is disabled when it has nobody to export, and says why ("Export all" used to stay enabled with an empty
+  // network and download a header-only file). An empty network explains all three the same way.
+  const emptyNetwork = allRows.length === 0;
   const exportItems = [
-    { label: "Export filtered results", icon: Download, onSelect: () => openExport("filtered"), disabled: filteredRows.length === 0 },
-    { label: selectedIds.size > 0 ? `Export selected (${selectedIds.size})` : "Export selected", icon: Download, onSelect: () => openExport("selected"), disabled: selectedIds.size === 0 },
-    { label: "Export all", icon: Download, onSelect: () => openExport("all") },
+    {
+      label: "Export filtered results",
+      icon: Download,
+      onSelect: () => openExport("filtered"),
+      disabled: filteredRows.length === 0,
+      hint: emptyNetwork ? "The network is empty." : filteredRows.length === 0 ? "No ambassadors match the filters." : undefined,
+    },
+    {
+      label: selectedIds.size > 0 ? `Export selected (${selectedIds.size})` : "Export selected",
+      icon: Download,
+      onSelect: () => openExport("selected"),
+      disabled: selectedIds.size === 0,
+      hint: emptyNetwork ? "The network is empty." : selectedIds.size === 0 ? "Tick ambassadors in the list first." : undefined,
+    },
+    { label: "Export all", icon: Download, onSelect: () => openExport("all"), disabled: emptyNetwork, hint: emptyNetwork ? "The network is empty." : undefined },
   ];
 
   return (

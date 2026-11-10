@@ -52,18 +52,23 @@ export function NotificationComposer() {
       ),
       confirmLabel: "Send notification",
       tone: "neutral",
-      onConfirm: () => {
-        // TODO(backend): persist this change (send the broadcast). The in-memory store stands in for now.
-        notificationBroadcastStore.send(sent.title, sent.message, sent.audience);
-        toast.success(`The notification was sent to ${audienceLabel}.`);
-        setTitle("");
-        setMessage("");
+      onConfirm: async () => {
+        // Live mode: POST /admin/notifications (which also pushes it to phones). A failure keeps the text and says so (GOD-T45).
+        try {
+          await notificationBroadcastStore.send(sent.title, sent.message, sent.audience);
+          toast.success(`The notification was sent to ${audienceLabel}.`);
+          setTitle("");
+          setMessage("");
+        } catch (error) {
+          toast.error(error instanceof Error ? `The notification was not sent: ${error.message}` : "The notification was not sent.");
+        }
       },
     });
   };
 
   return (
-    <div className="space-y-4">
+    // GOD-T45: Compose and its Preview side by side from 1024px (stacked below), History lives in its own section under them.
+    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
       <Card>
         <CardHeader title="Compose" />
         <form onSubmit={submit} noValidate className="space-y-4">

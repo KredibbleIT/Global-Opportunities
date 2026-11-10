@@ -15,7 +15,7 @@
  * "New listing" (primary) needs EDIT access on listings_curate: Opportunities Officer, Desk Lead, Super Admin. Everyone
  * else who can open the page (a Moderator, for instance) reviews hirer postings and sees no such button.
  *
- * In real-API mode a muted note under the header says curated listings are only kept in memory for now (mock mode
+ * Curated listings are saved on the server in real-API mode (GOD-T31), so the old "kept in memory" note is gone (mock mode
  * shows nothing).
  *
  * Data: loadOpportunityRows() (services/opportunities.ts) merges the hirer postings (mock, or every page of
@@ -24,7 +24,6 @@
 import { useMemo, useState } from "react";
 import { Briefcase, Plus } from "lucide-react";
 import { useRoles } from "@/components/access/RoleProvider";
-import { isMockMode } from "@/lib/services/mock-mode";
 import { formatDate } from "@/lib/format";
 import { opportunityTypeMeta } from "@/lib/opportunity-types";
 import { loadOpportunityRows, type OpportunityRow, type OpportunitySource } from "@/lib/services/opportunities";
@@ -124,12 +123,6 @@ export default function OpportunitiesQueuePage() {
       action={can("listings_curate", "edit") ? { label: "New listing", href: "/opportunities/new", icon: Plus } : undefined}
       toolbar={
         <div className="space-y-3">
-          {/* Mock-mode values are constants, so reading them during render is safe (no hydration mismatch). */}
-          {!isMockMode() && (
-            <p data-testid="curated-memory-note" className="caption">
-              Curated listings are saved in memory until the backend supports them.
-            </p>
-          )}
           <TableToolbar filters={{ options, value: tab, onChange: setTab, label: "Filter by type" }}>
             <SegmentedControl options={SOURCES} value={source} onChange={setSource} ariaLabel="Filter by source" />
             <FilterSelect options={countryOptions} value={country} onChange={setCountry} ariaLabel="Filter by country" sheetTitle="Country" />

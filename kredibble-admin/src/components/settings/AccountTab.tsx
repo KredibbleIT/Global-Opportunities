@@ -9,7 +9,9 @@
  *   typed and are emptied when the change is made: nothing stores them, nothing logs them, no toast repeats them.
  * - Notification preferences: switches.
  * - Sign out.
- * Saves are mocks: they update the store (the name) or this screen's memory (the preferences), show a toast and carry a TODO(backend).
+ * GOD-T47: real mode shows the signed-in account as the server knows it (never the sample Super Admin) and every save waits for the server:
+ * a refusal (for example a wrong current password) is said in words and nothing changes. A changed password ends every session, so the
+ * person is signed out and signs in again with the new one. Mock mode saves to the store and this screen's memory only.
  * Leaving with unsaved changes asks first (the shared guard), and the shell asks before a tab switch.
  */
 import { useMemo, useRef, useState, type FormEvent } from "react";
@@ -31,6 +33,7 @@ import { useToast } from "@/components/ui/Toast";
 import { clearAdminSession, logoutAdmin } from "@/lib/api";
 import { ROLES } from "@/config/roles";
 import { cn } from "@/lib/cn";
+import { isMockMode } from "@/lib/services/mock-mode";
 import {
   NOTIFICATION_PREFERENCES,
   STRENGTH_HINTS,
@@ -40,6 +43,7 @@ import {
   saveNotificationPreferences,
   saveProfileName,
   validatePasswordChange,
+  changePassword as changePasswordOnServer,
   type NotificationKey,
 } from "@/lib/services/settings";
 
@@ -72,11 +76,15 @@ export function AccountTab() {
   const strength = passwordStrength(password.next);
   const errors = validatePasswordChange(password);
 
-  const saveProfile = (event: FormEvent) => {
+  const saveProfile = async (event: FormEvent) => {
     event.preventDefault();
     if (nameError || !profile) return;
-    // TODO(backend): persist this change
-    saveProfileName(profile.id, name);
+    try {
+      await saveProfileName(profile.id, name);
+    } catch (error) {
+      toast.error(`Your profile was not saved: ${error instanceof Error ? error.message : "Please try again."}`);
+      return;
+    }
     setSavedName(name.trim());
     setName(name.trim());
     toast.success("Your profile was saved.");
@@ -90,19 +98,35 @@ export function AccountTab() {
       return;
     }
     setSavingPassword(true);
-    // TODO(backend): send the change to the server (the three values are used there and nowhere else)
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    // The values are emptied the moment the change is made: they are not kept, shown or logged.
+    const { current, next } = password;
+    // The values are emptied the moment they are sent: they are not kept, shown or logged.
     setPassword({ current: "", next: "", confirm: "" });
     passwordTouched.reset();
+    try {
+      await changePasswordOnServer(current, next);
+    } catch (error) {
+      setSavingPassword(false);
+      toast.error(`Your password was not changed: ${error instanceof Error ? error.message : "Please try again."}`);
+      return;
+    }
     setSavingPassword(false);
+    if (!isMockMode()) {
+      // The server ended every session with the old password: sign in again with the new one.
+      toast.success("Your password was changed. Sign in again with your new password.");
+      await signOut();
+      return;
+    }
     toast.success("Your password was changed.");
   };
 
-  const savePreferences = (event: FormEvent) => {
+  const savePreferences = async (event: FormEvent) => {
     event.preventDefault();
-    // TODO(backend): persist this change
-    saveNotificationPreferences(prefs);
+    try {
+      await saveNotificationPreferences(prefs);
+    } catch (error) {
+      toast.error(`Your notification preferences were not saved: ${error instanceof Error ? error.message : "Please try again."}`);
+      return;
+    }
     setSavedPrefs({ ...prefs });
     toast.success("Your notification preferences were saved.");
   };
@@ -127,7 +151,8 @@ export function AccountTab() {
             <Input value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" />
           </Field>
           <Field label="Photo" optional helper="A picture of you. It is only previewed here: nothing is uploaded yet.">
-            <div className="max-w-sm">
+            {/* GOD-T47: a small preview (it was a card-wide picture); FileDrop keeps its own controls */}
+            <div className="max-w-[12rem]">
               <FileDrop value={photo} onChange={setPhoto} alt="Your photo" emptyLabel="Click to upload or drag a photo here" />
             </div>
           </Field>

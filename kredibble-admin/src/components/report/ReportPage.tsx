@@ -116,7 +116,7 @@ export function ReportPage({ view }: { view: ReportView }) {
         <Tabs ariaLabel="Report templates" idPrefix="report" value={view} onChange={() => undefined} tabs={tabs} links={links} />
         {toDate && (
           <p data-testid="to-date-note" className="caption">
-            Month to date: the figures are for the days so far and are compared with the same period last month, estimated. Past months are read-only.
+            Month to date: the figures are for the days so far and are compared with the same days last month (the website figures are estimated). Past months are read-only.
           </p>
         )}
         {issue && !loading && <StatusBanner issue={issue} onRetry={active.reload} />}

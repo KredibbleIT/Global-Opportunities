@@ -10,7 +10,8 @@
  *   MOU        [ MOU              ]
  *   Onboard    [ Onboard          ]  [lock] Counts as closed (cannot be changed)
  *   Renew      [ Renew            ]  [lock] Counts as closed (cannot be changed)
- *   [ 2 changes ]                              [ Reset ] [ Save ]       [ Reset to defaults ]
+ *   [ 2 changes ]                    [ Discard changes ] [ Save ]       [ Reset to defaults ]
+ *   (GOD-T47: the two resets are named for what they do, and the 24-character rule is said once in the subtitle, not on every row)
  *
  * - Only the six DISPLAY words change; the keys (prospect ... renew) are fixed, and so is what counts as closed: Onboard and Renew show a
  *   lock and say so (their name can still be changed).
@@ -64,10 +65,14 @@ export function StagesTab() {
       return;
     }
     setSaving(true);
-    // TODO(backend): persist this change
-    await new Promise((resolve) => setTimeout(resolve, 300));
     const trimmed = Object.fromEntries(PARTNER_STAGES.map((stage) => [stage, labels[stage].trim()])) as Record<PartnerStage, string>;
-    saveStageLabels(trimmed);
+    try {
+      await saveStageLabels(trimmed);
+    } catch (error) {
+      setSaving(false);
+      toast.error(`The stage names were not saved: ${error instanceof Error ? error.message : "Please try again."}`);
+      return;
+    }
     setLabels(trimmed);
     resetTouched();
     setSaving(false);
@@ -80,9 +85,13 @@ export function StagesTab() {
       description: "The six stages go back to their original names (Prospect, Outreach, Proposal, MOU, Onboarded and Renewed). The Partners board changes at once.",
       confirmLabel: "Reset to defaults",
       tone: "neutral",
-      onConfirm: () => {
-        // TODO(backend): persist this change
-        resetStageLabels();
+      onConfirm: async () => {
+        try {
+          await resetStageLabels();
+        } catch (error) {
+          toast.error(`The stage names were not reset: ${error instanceof Error ? error.message : "Please try again."}`);
+          return;
+        }
         setLabels({ ...PARTNER_STAGE_LABELS });
         resetTouched();
         toast.success("The stage names were reset to their defaults.");
@@ -95,7 +104,7 @@ export function StagesTab() {
         <Card as="section" ariaLabel="Pipeline stages">
           <CardHeader
             title="Pipeline stages"
-            subtitle="The words used for the six stages of a partner deal, on the Partners board and everywhere a stage is shown."
+            subtitle={`The words used for the six stages of a partner deal, on the Partners board and everywhere a stage is shown. Each name: up to ${STAGE_LABEL_MAX} characters. "Reset to defaults" puts the original six names back; "Discard changes" only undoes what you typed.`}
             action={
               <Button type="button" variant="secondary" icon={RotateCcw} onClick={resetToDefaults}>
                 Reset to defaults
@@ -108,7 +117,7 @@ export function StagesTab() {
               return (
                 <li key={stage} data-testid={`stage-row-${stage}`} className="grid gap-x-4 gap-y-2 py-3 first:pt-0 last:pb-0 sm:grid-cols-[minmax(0,0.6fr)_minmax(0,1.2fr)_minmax(0,1.2fr)] sm:items-start">
                   <p className="table-text pt-2.5 font-semibold text-ink">{PARTNER_STAGE_LABELS[stage]}</p>
-                  <Field label={`Name of the ${PARTNER_STAGE_LABELS[stage]} stage`} hideLabel error={show(`s-${stage}`) || labels[stage] !== saved[stage] ? errors[stage] : undefined} helper={`Up to ${STAGE_LABEL_MAX} characters.`}>
+                  <Field label={`Name of the ${PARTNER_STAGE_LABELS[stage]} stage`} hideLabel error={show(`s-${stage}`) || labels[stage] !== saved[stage] ? errors[stage] : undefined}>
                     <Input
                       value={labels[stage]}
                       onChange={(event) => setLabels((current) => ({ ...current, [stage]: event.target.value }))}
@@ -130,7 +139,7 @@ export function StagesTab() {
           </ul>
         </Card>
       </div>
-      <StickyActionBar dirty={dirty} saving={saving} saveLabel="Save" cancelLabel="Reset" status={pluralize(changed.length, "change")} saveDisabled={!dirty} maxWidth="60rem" onCancel={reset} />
+      <StickyActionBar dirty={dirty} saving={saving} saveLabel="Save" cancelLabel="Discard changes" status={pluralize(changed.length, "change")} saveDisabled={!dirty} maxWidth="60rem" onCancel={reset} />
       {guard.dialog}
       {dialog}
     </form>

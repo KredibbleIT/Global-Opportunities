@@ -101,6 +101,13 @@ export default function HirerDetailPage() {
               </div>
             </InfoCard>
 
+            {hirer.verification === "not_submitted" && (
+              <InfoCard title="Verification">
+                <p data-testid="verification-not-submitted" className="input-text text-ink">
+                  This company has not submitted verification documents yet, so there is nothing to review.
+                </p>
+              </InfoCard>
+            )}
             {hirer.linkedVerificationId && (
               <InfoCard title="Verification">
                 <p className="input-text text-ink">

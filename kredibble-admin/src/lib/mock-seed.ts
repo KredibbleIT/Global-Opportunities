@@ -530,6 +530,9 @@ export function buildSeed(today: Date = new Date()): Seed {
     const viaAmbassador = source === "ambassador";
     const name = fullName(index, 11);
     const createdAt = verifiedAgo === null ? dayIn(index % 3, fraction) : addDays(dayIn(verifiedAgo, fraction), -(fixedGap ?? between(2, 9)));
+    // GOD-T3: every other organic record registered in the app (no staff member added it). No random draw, so the rest of the
+    // seed is unchanged.
+    const fromApp = source === "organic" && index % 2 === 1;
     databaseRecords.push({
       id: `rec-${String(index + 1).padStart(3, "0")}`,
       name,
@@ -537,7 +540,8 @@ export function buildSeed(today: Date = new Date()): Seed {
       phone: `${DIAL_CODE[campus.country] ?? "+233"} 20 555 ${String(1000 + index * 7).slice(-4)}`,
       country: campus.country,
       institution: campus.name,
-      addedById: recordStaff[index % recordStaff.length]?.id,
+      addedById: fromApp ? undefined : recordStaff[index % recordStaff.length]?.id,
+      origin: fromApp ? "app" : "manual",
       source,
       verified: verifiedAgo !== null,
       createdAt,

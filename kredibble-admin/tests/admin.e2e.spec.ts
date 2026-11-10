@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { BRAND, BRAND_EMAIL_DOMAIN } from '../src/config/brand';
+import { BRAND, BRAND_EMAIL_DOMAIN, footerLinks } from '../src/config/brand';
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import path from 'path';
 import { isDevRoleSwitcherEnabled, parseDevRoles } from '../src/config/dev-roles';
@@ -23,7 +23,7 @@ import {
 import { logPost, platformRows, socialMonth, validatePost, validatePostUrl } from '../src/lib/services/social';
 import { ACTIONS_BY_STATUS, ACTION_RESULT, applyTestimonialAction, publicPreview, sortTestimonials, testimonialCounts } from '../src/lib/services/testimonials';
 import { DUPLICATE_MESSAGES, createRecord, findDuplicate, normalizeEmail, normalizePhone, pendingRecordCount, recordLinkAccess, recordsPace, sourceBreakdown, undoVerify, verifyRecord } from '../src/lib/services/database';
-import { AMBASSADOR_STATUSES, AMBASSADOR_TIERS, AMBASSADOR_TIER_LABELS, LISTING_TYPES, PARTNER_STAGES, PARTNER_STAGE_LABELS, isPartnerClosed, partnerClosedAt, PROGRAM_STATUSES, PROGRAM_TYPES, POST_PLATFORM_LABELS, RECORD_SOURCES, RECORD_SOURCE_LABELS, SOCIAL_PLATFORMS, SOCIAL_POST_PLATFORMS, TESTIMONIAL_STATUSES } from '../src/lib/mock-entities';
+import { AMBASSADOR_STATUSES, AMBASSADOR_TIERS, AMBASSADOR_TIER_LABELS, LISTING_TYPES, PARTNER_STAGES, PARTNER_STAGE_LABELS, isPartnerClosed, partnerClosedAt, PROGRAM_STATUSES, PROGRAM_TYPES, POST_PLATFORM_LABELS, RECORD_SOURCES, RECORD_SOURCE_LABELS, recordOrigin, SOCIAL_PLATFORMS, SOCIAL_POST_PLATFORMS, TESTIMONIAL_STATUSES } from '../src/lib/mock-entities';
 import { DEFAULT_TARGETS, DEFAULT_THRESHOLDS, buildSeed } from '../src/lib/mock-seed';
 import { getMockCollection, getPartnerStageLabels, setMockCollection, setPartnerStageLabels } from '../src/lib/mock-store';
 import { getStatusMeta } from '../src/lib/status-map';
@@ -33,11 +33,12 @@ import { MOCK_RUN, defaultBaseUrl } from './mode';
 import { MOCK_COUNTS } from '../src/lib/services/mock-counts';
 import { kpiMonthProgress } from '../src/lib/kpi';
 import { kpiUnit, pluralize, pluralWord } from '../src/lib/plural';
-import { metricDelta, partnerMetrics, lastCompleteMonth, isMonthToDate, earliestMonth, reportToday, reportTitle } from '../src/lib/report';
+import { metricDelta, partnerMetrics, lastCompleteMonth, isMonthToDate, earliestMonth, reportToday, reportTitle, recordsUpTo, comparisonLine, DAILY_FIGURES_DEFINITION } from '../src/lib/report';
 import { recordReport } from '../src/lib/services/report';
 import { buildKpiCards } from '../src/lib/services/dashboard';
 import { highlightLabels } from '../src/lib/scorecard';
 import { SCORE_FROM_DAY } from '../src/config/scorecard';
+import { eventDayEndsAt, eventStatus } from '../src/lib/event-status';
 import { formatAttainment, isTooEarly, metricResult, compositeSeries, composite, compositeStatus, highlightOf, metricAttainment, ownedMetrics, scorecardFor, strengths, teamScorecards, teamSummary } from '../src/lib/scorecard';
 
 const BASE_URL = defaultBaseUrl();
@@ -1190,6 +1191,18 @@ test.describe('Progress cells never truncate', () => {
 test.describe('Forms: article editor', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
+  test('GOD-T41: the body says it is plain text, and the preview shows it as seekers will (line breaks kept)', async ({ page }) => {
+    await page.goto(`${BASE_URL}/content/articles/new`, { timeout: 30_000 });
+    await expect(page.getByText('Plain text, shown as typed', { exact: false })).toBeVisible();
+    await expect(page.getByTestId('body-preview')).toHaveCount(0); // nothing to preview yet
+    await page.getByLabel('Body').fill('First paragraph.\n\n1. A point\n2. Another');
+    const preview = page.getByTestId('body-preview');
+    await preview.locator('summary').click();
+    const text = preview.locator('p');
+    await expect(text).toHaveText('First paragraph.\n\n1. A point\n2. Another', { useInnerText: true });
+    expect(await text.evaluate((el) => getComputedStyle(el).whiteSpace)).toBe('pre-line');
+  });
+
   test('errors show after blur and on submit, then a valid save shows a toast and returns to the list', async ({ page }) => {
     await page.goto(`${BASE_URL}/content/articles/new`, { timeout: 30_000 });
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('New article');
@@ -1226,7 +1239,7 @@ test.describe('Forms: article editor', () => {
   test('Read time is optional; the Publishing switch changes the save label', async ({ page }) => {
     await page.goto(`${BASE_URL}/content/articles/new`, { timeout: 30_000 });
     await expect(page.getByText('Optional').first()).toBeVisible();
-    const published = page.getByRole('switch', { name: 'Published' });
+    const published = page.getByRole('switch', { name: 'Visible to seekers' }); // GOD-T41: one status word, beside the switch
     await published.click();
     await expect(published).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByRole('button', { name: 'Publish article' })).toBeVisible();
@@ -1378,7 +1391,7 @@ test.describe('Reference data', () => {
     await expect(page.getByText('"test university" is already in this list.')).toBeVisible();
     await expect(page.getByText('22 items')).toBeVisible();
 
-    // Search appears for lists over 12 items and filters the chips.
+    // The search filters the chips.
     const search = page.getByRole('searchbox', { name: 'Search universities' });
     await search.fill('Ghana');
     await expect(page.getByRole('list', { name: 'Universities' }).getByRole('listitem')).toHaveCount(1);
@@ -1390,7 +1403,27 @@ test.describe('Reference data', () => {
     await expect(tabs.getByRole('tab', { name: /^Universities/ })).toContainText('21');
   });
 
-  test('every list uses its own singular in the placeholder; short lists have no search', async ({ page }) => {
+  test('GOD-T42: with Mock data off the lists come from the server (no sample-data notice); a failed load says so with Try again, and a failed save puts the list back', async ({ page }) => {
+    test.skip(MOCK_RUN, 'real API only');
+    await page.goto(`${BASE_URL}/reference-data`, { timeout: 30_000 });
+    await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: /^Universities/ })).toContainText(/\d/);
+    // a failed save: the chip goes away again and an error toast explains
+    await page.route('**/admin/reference-data/seeker/**', (route) => (route.request().method() === 'PUT' ? route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ success: false, message: 'E2E save failure' }) }) : route.continue()));
+    const add = page.getByRole('textbox', { name: 'Add a new university' });
+    await add.fill('E2E Never Saved University');
+    await add.press('Enter');
+    await expect(page.getByTestId('toast').filter({ hasText: 'The list could not be saved' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Remove E2E Never Saved University' })).toHaveCount(0);
+    // a failed load
+    await page.route('**/admin/reference-data', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ success: false, message: 'E2E load failure' }) }));
+    await page.reload();
+    await expect(page.getByText('Could not load the reference lists')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
+    await expect(page.getByText('Ashesi University')).toHaveCount(0); // never the sample lists
+  });
+
+  test('every list uses its own singular in the placeholder; every list has a search (GOD-T42)', async ({ page }) => {
     await page.goto(`${BASE_URL}/reference-data?tab=hirer`, { timeout: 30_000 });
     await expect(page.getByRole('radio', { name: 'Hirers' })).toBeChecked();
     const expected: [RegExp, string][] = [
@@ -1401,7 +1434,7 @@ test.describe('Reference data', () => {
     for (const [tab, placeholder] of expected) {
       await page.getByRole('tab', { name: tab }).click();
       await expect(page.getByPlaceholder(placeholder)).toBeVisible();
-      await expect(page.getByRole('searchbox')).toHaveCount(0); // 10 items or fewer
+      await expect(page.getByRole('searchbox')).toHaveCount(1); // GOD-T42: short lists too, so the page works the same everywhere
     }
     await page.getByRole('radio', { name: 'Grants' }).click();
     await expect(page).toHaveURL(`${BASE_URL}/reference-data?tab=grants`);
@@ -1412,14 +1445,19 @@ test.describe('Reference data', () => {
 });
 
 test.describe('Notifications', () => {
-  test('1024px and up: composer and history side by side; below: Compose and History tabs', async ({ page }) => {
+  test('1024px and up: Compose and Preview side by side, History in its own section below; below 1024px: Compose and History tabs (GOD-T45)', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(`${BASE_URL}/notifications`, { timeout: 30_000 });
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Notifications');
-    const compose = await page.getByRole('heading', { name: 'Compose' }).boundingBox();
-    const history = await page.getByRole('heading', { name: 'History' }).boundingBox();
-    expect(history!.x).toBeGreaterThan(compose!.x + 300); // second column
-    expect(Math.abs(history!.y - compose!.y)).toBeLessThan(40); // same row
+    await expect(page.getByTestId('not-connected-notice')).toHaveCount(0); // connected in the real run; sample on purpose in mock mode
+    const compose = (await page.getByRole('heading', { name: 'Compose' }).boundingBox())!;
+    const preview = (await page.getByRole('heading', { name: 'Preview' }).boundingBox())!;
+    const history = (await page.getByRole('heading', { name: 'History' }).boundingBox())!;
+    expect(preview.x).toBeGreaterThan(compose.x + 300); // the preview is beside what it previews
+    expect(Math.abs(preview.y - compose.y)).toBeLessThan(4);
+    const composeCard = (await page.getByRole('heading', { name: 'Compose' }).locator('xpath=ancestor::div[contains(@class,"card-surface")][1]').boundingBox())!;
+    expect(history.y).toBeGreaterThan(composeCard.y + composeCard.height); // below, in its own section
+    expect(Math.abs(history.x - compose.x)).toBeLessThan(4);
     await expect(page.getByRole('tablist', { name: 'Notifications sections' })).toBeHidden();
 
     await page.setViewportSize({ width: 900, height: 900 });
@@ -1430,6 +1468,32 @@ test.describe('Notifications', () => {
     await expect(page).toHaveURL(`${BASE_URL}/notifications?tab=history`);
     await expect(page.getByRole('heading', { name: 'History' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Compose' })).toBeHidden();
+  });
+
+  test('GOD-T45 (real API): a broadcast is saved on the server (it is in the history after a reload), and a failed send says so and keeps the text', async ({ page }) => {
+    test.skip(MOCK_RUN, 'real API only');
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const title = `E2E broadcast ${Date.now()}`;
+    await page.goto(`${BASE_URL}/notifications`, { timeout: 30_000 });
+    await expect(page.getByText(`Welcome to ${BRAND.name}`)).toHaveCount(0); // never the sample history
+    await page.getByLabel('Title').fill(title);
+    await page.getByRole('textbox', { name: 'Message' }).fill('Saved on the server.');
+    const saved = page.waitForResponse((response) => response.url().endsWith('/admin/notifications') && response.request().method() === 'POST');
+    await page.getByRole('button', { name: 'Send notification' }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Send notification' }).click();
+    expect((await saved).status()).toBe(201);
+    await expect(page.getByText('The notification was sent to Everyone.')).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole('region', { name: 'History' }).getByText(title)).toBeVisible();
+    // a failed send
+    await page.route('**/admin/notifications', (route) => (route.request().method() === 'POST' ? route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ success: false, message: 'E2E send failure' }) }) : route.continue()));
+    await page.getByLabel('Title').fill('Never sent');
+    await page.getByRole('textbox', { name: 'Message' }).fill('This one fails.');
+    await page.getByRole('button', { name: 'Send notification' }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Send notification' }).click();
+    await expect(page.getByTestId('toast').filter({ hasText: 'The notification was not sent' })).toBeVisible();
+    await expect(page.getByLabel('Title')).toHaveValue('Never sent'); // the text is kept
+    await expect(page.getByRole('region', { name: 'History' }).getByText('Never sent')).toHaveCount(0);
   });
 
   test('Send is disabled until filled, confirms the audience, then toasts, clears and adds to the top of history', async ({ page }) => {
@@ -1606,9 +1670,15 @@ test.describe('Tabs: no scrollbar, nothing overflows', () => {
 
   test('keyboard still moves between tabs', async ({ page }) => {
     await page.goto(`${BASE_URL}/team`, { timeout: 30_000 });
-    await page.getByRole('tab', { name: 'Members' }).focus();
-    await page.keyboard.press('ArrowRight');
-    await expect(page.getByRole('tab', { name: 'Roles & permissions' })).toHaveAttribute('aria-selected', 'true');
+    const members = page.getByRole('tab', { name: 'Members' });
+    await expect(members).toHaveAttribute('aria-selected', 'true');
+    // (a key pressed before the page is interactive is lost: focus, then press, until the selection moves)
+    await expect(async () => {
+      await members.focus();
+      await expect(members).toBeFocused();
+      await page.keyboard.press('ArrowRight');
+      await expect(page.getByRole('tab', { name: 'Roles & permissions' })).toHaveAttribute('aria-selected', 'true', { timeout: 1_000 });
+    }).toPass({ timeout: 15_000 });
   });
 });
 
@@ -1687,14 +1757,30 @@ test.describe('Mock copy uses the brand', () => {
 test.describe('Forms: wording and layout fixes', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
+  test('GOD-T41: Career Resources has a search and a status filter whose counts follow the search; one draft is singular', async ({ page }) => {
+    await page.goto(`${BASE_URL}/content/articles`, { timeout: 30_000 });
+    await expect(page.getByTestId('table-row').first()).toBeVisible();
+    const radio = (name: string) => page.getByRole('radiogroup', { name: 'Filter by status' }).getByRole('radio', { name: new RegExp(`^${name}`) });
+    await expect(radio('All')).toContainText('4');
+    await expect(radio('Published')).toContainText('3');
+    await expect(radio('Draft')).toContainText('1');
+    await expect(page.getByText('1 draft not yet published.', { exact: false })).toBeVisible();
+    await radio('Draft').click();
+    await expect(page.getByTestId('table-row')).toHaveCount(1);
+    await radio('All').click();
+    await page.getByRole('searchbox', { name: 'Search articles' }).fill('zzz-nothing');
+    await expect(page.getByText('No articles match')).toBeVisible();
+  });
+
   test('article: Published switch label and helper; Summary placeholder differs from its helper', async ({ page }) => {
     await page.goto(`${BASE_URL}/content/articles/new`, { timeout: 30_000 });
-    const published = page.getByRole('switch', { name: 'Published' });
+    const published = page.getByRole('switch', { name: 'Visible to seekers' }); // GOD-T41: one status word, beside the switch
     await expect(published).toHaveAttribute('aria-checked', 'false');
-    await expect(page.getByText('Visible to seekers when on. Saved as a draft when off.')).toBeVisible();
+    await expect(page.getByText('On: published in the app. Off: kept as a draft.')).toBeVisible();
     await published.click();
     await expect(published).toHaveAttribute('aria-checked', 'true');
-    await expect(page.getByRole('switch', { name: 'Published' })).toBeVisible(); // the label never changes to "Draft"
+    await expect(page.getByRole('switch', { name: 'Visible to seekers' })).toBeVisible(); // the label never changes; only the status word does
+    await expect(page.getByTestId('switch-status')).toHaveText('Published');
     await expect(page.getByRole('button', { name: 'Publish article' })).toBeVisible();
     const summary = page.getByRole('textbox', { name: 'Summary' });
     await expect(summary).toHaveAttribute('placeholder', 'e.g. Practical tips for a resume that stands out');
@@ -1937,6 +2023,28 @@ const trackProblems = (page: import('@playwright/test').Page) => {
   return problems;
 };
 
+// GOD-T49: the review's coverage gaps included tablet widths (the phone passes run at 434, 390 and 360px). The main screens at 768px
+// (portrait tablet) and 1024px (landscape): a title, and nothing wider than the screen.
+const TABLET_ROUTES = ['/', '/analytics', '/monthly-report/partner', '/scorecard', '/opportunities', '/events', '/grants', '/programs', '/partners', '/network',
+  '/ambassador-applications', '/leaderboard', '/seekers', '/hirers', '/community', '/database', '/verification', '/reports', '/content/articles',
+  '/reference-data', '/social', '/testimonials', '/showcase', '/notifications', '/team', '/settings'];
+test.describe('Tablet widths (768 and 1024px): every main screen fits (GOD-T49)', () => {
+  for (const width of [768, 1024]) {
+    test(`${width}px: a title and no sideways scroll on the ${TABLET_ROUTES.length} main screens`, async ({ page }) => {
+      test.setTimeout(240_000);
+      await page.setViewportSize({ width, height: 1024 });
+      const problems: string[] = [];
+      for (const path of TABLET_ROUTES) {
+        await page.goto(`${BASE_URL}${path}`, { timeout: 30_000 });
+        await expect(page.getByTestId('page-title').first(), path).toBeVisible();
+        const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+        if (wide > 0) problems.push(`${path}: ${wide}px wider than the screen`);
+      }
+      expect(problems).toEqual([]);
+    });
+  }
+});
+
 test.describe('Smoke: every audited route renders its title with no console errors', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
   for (const { path, mockOnly } of AUDIT_ROUTES) {
@@ -2122,10 +2230,10 @@ test.describe('Touch targets and the skip link (desktop)', () => {
     await expect(page.locator('main#main-content')).toBeFocused();
   });
 
-  test('Published switch shows "Published" or "Draft" next to it', async ({ page }) => {
+  test('the Publishing switch shows "Published" or "Draft" next to it', async ({ page }) => {
     await page.goto(`${BASE_URL}/content/articles/new`, { timeout: 30_000 });
     await expect(page.getByTestId('switch-status')).toHaveText('Draft');
-    await page.getByRole('switch', { name: 'Published' }).click();
+    await page.getByRole('switch', { name: 'Visible to seekers' }).click(); // GOD-T41: the label stays; only the status word changes
     await expect(page.getByTestId('switch-status')).toHaveText('Published');
   });
 });
@@ -2395,10 +2503,10 @@ for (const width of [434, 390]) {
 
     test('Article editor: the Publishing switch and its status text share one centred row; the helper uses the full width', async ({ page }) => {
       await page.goto(`${BASE_URL}/content/articles/new`, { timeout: 30_000 });
-      const sw = (await page.getByRole('switch', { name: 'Published' }).boundingBox())!;
+      const sw = (await page.getByRole('switch', { name: 'Visible to seekers' }).boundingBox())!;
       const status = (await page.getByTestId('switch-status').boundingBox())!;
       expect(Math.abs(sw.y + sw.height / 2 - (status.y + status.height / 2))).toBeLessThanOrEqual(2);
-      const helper = page.getByText('Visible to seekers when on. Saved as a draft when off.');
+      const helper = page.getByText('On: published in the app. Off: kept as a draft.');
       const card = page.getByRole('heading', { name: 'Publishing' }).locator('xpath=ancestor::div[contains(@class,"card-surface")][1]');
       const helperBox = (await helper.boundingBox())!;
       const cardBox = (await card.boundingBox())!;
@@ -4017,7 +4125,10 @@ test.describe('Roles fix pass: Scorecard copy and the empty state', () => {
       await page.goto(`${BASE_URL}/scorecard`, { timeout: 30_000 });
       const card = page.getByRole('region', { name: 'My scorecard' });
       await expect(card).toContainText('No metrics are assigned to your role');
-      await expect(card).toContainText('A Desk Lead can assign metrics.');
+      await expect(card).toContainText('Metrics follow roles: a role that owns a metric gives you its target. A Desk Lead or Super Admin can change your roles on Team.');
+      // GOD-T30: the next step, for a role that can open Team (Super Admin); the others are told who to ask
+      if (role === 'super_admin') await expect(card.getByTestId('scorecard-manage-team')).toHaveAttribute('href', '/team');
+      if (role === 'moderator' || role === 'support') await expect(card.getByTestId('scorecard-manage-team')).toHaveCount(0);
       await expect(card).not.toContainText(/\b0\b/);
     });
   }
@@ -4227,7 +4338,7 @@ test.describe('Opportunities: the listing form', () => {
     await expect(publishButton(page)).toBeDisabled();
     await expect(page.getByRole('switch', { name: 'Referral code on apply' })).toBeVisible();
     // required fields carry no "Optional" tag; the optional ones do
-    await expect(page.getByText('Optional', { exact: true })).toHaveCount(7); // logo, cost, location, event date, duration, image, writer
+    await expect(page.getByText('Optional', { exact: true })).toHaveCount(6); // logo, cost, location, duration, image, writer (the event date shows for events only: GOD-T31)
     // the vetting card is visually distinct: a 2px warning-tinted border
     expect(await vetting.evaluate((el) => getComputedStyle(el).borderTopWidth)).toBe('2px');
   });
@@ -4582,12 +4693,38 @@ test.describe('Opportunities Queue: memory note', () => {
     await expect(page.getByTestId('curated-memory-note')).toHaveCount(0);
   });
 
-  test('real-API run: the muted note says curated listings are kept in memory, and no sample listing is listed', async ({ page }) => {
-    test.skip(MOCK_RUN, 'the note only shows outside mock mode');
-    await page.goto(`${BASE_URL}/opportunities`, { timeout: 30_000 });
-    await expect(page.locator('main tbody tr').first()).toBeVisible();
-    await expect(page.getByText('Graduate Software Engineer')).toHaveCount(0); // a seeded sample listing never shows next to real postings
-    await expect(page.getByTestId('curated-memory-note')).toHaveText('Curated listings are saved in memory until the backend supports them.');
+  test('real-API run (GOD-T31): a curated listing is saved on the server: after a reload it is still listed as curated and opens as one; no sample listing, no memory note', async ({ page }) => {
+    test.skip(MOCK_RUN, 'real API only');
+    test.setTimeout(90_000);
+    const title = `E2E curated ${Date.now()}`;
+    await page.goto(`${BASE_URL}/opportunities/new`, { timeout: 30_000 });
+    await page.getByTestId('sidebar-toggle').waitFor();
+    await page.getByLabel('Title', { exact: true }).fill(title);
+    await page.getByLabel('Description', { exact: true }).fill('A listing saved on the server by a test.');
+    await page.getByLabel('Offering organisation').fill('Test Organisation');
+    await page.getByRole('combobox', { name: 'Opportunity type' }).click();
+    await page.getByRole('option', { name: 'Fellowship' }).click();
+    await page.getByRole('combobox', { name: 'Country' }).click();
+    await page.getByRole('option', { name: 'Ghana' }).click();
+    await page.getByLabel('Application deadline').fill('2099-12-31');
+    await page.getByLabel('Official application link').fill('https://example.org/apply');
+    const saved = page.waitForResponse((response) => response.url().endsWith('/admin/opportunities') && response.request().method() === 'POST');
+    await page.getByRole('button', { name: 'Save draft' }).click();
+    expect((await saved).status()).toBe(201);
+    await expect(page).toHaveURL(/\/opportunities\/[0-9a-f]{24}$/, { timeout: 15_000 }); // the server's id, not a temporary one
+    const id = /([0-9a-f]{24})$/.exec(page.url())![1];
+    try {
+      await page.goto(`${BASE_URL}/opportunities`, { timeout: 30_000 });
+      await expect(page.getByTestId('curated-memory-note')).toHaveCount(0);
+      await expect(page.getByText('Graduate Software Engineer')).toHaveCount(0); // a seeded sample listing never shows next to real postings
+      await expect(page.locator('main tbody tr').filter({ hasText: title })).toHaveCount(1);
+      // a fresh load of its page (nothing in this tab's memory) opens the curated listing, not the hirer review
+      await page.goto(`${BASE_URL}/opportunities/${id}`, { timeout: 30_000 });
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText(title);
+      await expect(page.getByRole('button', { name: 'Approve' })).toHaveCount(0);
+    } finally {
+      await page.evaluate(async ({ api, id }) => { await fetch(`${api}/admin/opportunities/${id}`, { method: 'DELETE', credentials: 'include' }); }, { api: API_URL, id });
+    }
   });
 });
 
@@ -5062,9 +5199,9 @@ test.describe('Not connected yet', () => {
     await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
   });
 
-  test('the screens that still show only sample data say so in the real run: Insights, Events, Grants and Career Resources, lists and records', async ({ page }) => {
+  test('the screens that still show only sample data say so in the real run: Events, Grants and Career Resources, lists and records', async ({ page }) => {
     test.skip(MOCK_RUN, 'the notice only shows outside mock mode');
-    for (const path of ['/analytics', '/events', '/events/event-1', '/grants', '/grants/grant-1', '/content/articles', '/content/articles/new']) {
+    for (const path of ['/events', '/events/event-1', '/grants', '/grants/grant-1', '/content/articles', '/content/articles/new']) {
       await page.goto(`${BASE_URL}${path}`);
       await expect(page.getByTestId('page-title').first(), path).toBeVisible();
       await expect(page.getByTestId('not-connected-notice'), path).toBeVisible();
@@ -5108,6 +5245,21 @@ test.describe('Reports Queue: the real API, the same count as the Overview', () 
     await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
     await expect(page.locator('main tbody tr')).toHaveCount(overviewOpen); // the default filter is Open
     await expect(page.getByText(`${overviewOpen} open report${overviewOpen === 1 ? '' : 's'} awaiting review`)).toBeVisible();
+  });
+
+  test('GOD-T29: Insights reads the same records: its open reports equal the Overview\'s, no sample-data notice, and the seeded report reason is charted', async ({ page }) => {
+    await page.goto(`${BASE_URL}/`);
+    const openLink = page.getByRole('region', { name: 'Needs your attention' }).getByRole('link', { name: /Open reports/ });
+    await expect(openLink).toContainText(/\d/);
+    const overviewOpen = /(\d+)/.exec((await openLink.textContent()) ?? '')![1];
+    await page.goto(`${BASE_URL}/analytics`);
+    await expect(page.getByTestId('page-title')).toHaveText('Insights');
+    await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
+    const stat = page.locator('.stat-value').nth(1); // the second stat card: Open reports
+    await expect(stat).toHaveText(overviewOpen);
+    await expect(page.getByText(/Guaranteed Visa Sponsorship/)).toHaveCount(0);
+    // the one seeded reason: "Not enough variety to chart" names it
+    await expect(page.getByRole('region', { name: 'Reports by reason' })).toContainText('Scam / Fraud');
   });
 
   test('a report opens from the API, and Mark resolved is saved (it stays resolved after a reload); a sample id is "not found"', async ({ page }) => {
@@ -5275,6 +5427,25 @@ test.describe('Database, Social and Testimonials against the real API', () => {
     await page.getByRole('button', { name: 'Undo' }).click();
     await expect(page.getByText(`Verification of ${name} was undone.`)).toBeVisible({ timeout: 15_000 });
     await expect(row.getByRole('button', { name: new RegExp(`Verify ${name}`) })).toBeVisible({ timeout: 15_000 });
+  });
+
+  test('database (GOD-T3): a seeker who registers in the app is listed once, as an App registration, and the Entry filter finds them', async ({ page }) => {
+    const name = `App Seeker ${stamp}`;
+    const email = `app.seeker.${stamp}@example.org`;
+    const registered = await page.request.post(`${API_URL}/v1/auth/register`, { data: { name, email, password: 'Password123', role: 'seeker', country: 'Ghana' } });
+    expect(registered.status()).toBe(201);
+    await open(page, '/database');
+    await page.getByLabel('Search records').fill(name);
+    const row = page.locator('main tbody tr').filter({ hasText: name });
+    await expect(row).toHaveCount(1, { timeout: 15_000 });
+    await expect(row.locator('td[data-label="Added by and on"]')).toContainText('App registration');
+    await expect(row.locator('td[data-label="Source"]')).toContainText('Organic');
+    await page.getByRole('combobox', { name: 'Filter by entry' }).click();
+    await page.getByRole('option', { name: 'Manual entries' }).click();
+    await expect(row).toHaveCount(0);
+    await page.getByRole('combobox', { name: 'Filter by entry' }).click();
+    await page.getByRole('option', { name: 'App registrations' }).click();
+    await expect(row).toHaveCount(1);
   });
 
   test('social: a logged post is saved, listed this month and counted in the totals', async ({ page }) => {
@@ -6553,6 +6724,16 @@ test.describe('Network: the list', () => {
   test('?state=empty and ?state=error show their states; the tiles show "—" while loading', async ({ page }) => {
     await page.goto(`${BASE_URL}/network?state=empty`, { timeout: 30_000 });
     await expect(page.getByText('No ambassadors yet')).toBeVisible();
+    // GOD-T35: an empty network shows its 0 once, and every export option is disabled with the reason
+    await expect(page.getByTestId('network-size')).toContainText('Add or import ambassadors to start');
+    await expect(page.getByTestId('network-active').locator('.ministat-value')).toHaveText('—');
+    await page.getByRole('button', { name: /^Export/ }).click();
+    for (const name of ['Export filtered results', 'Export selected', 'Export all']) {
+      const item = page.getByRole('menuitem', { name: new RegExp(`^${name}`) });
+      await expect(item, name).toBeDisabled();
+      await expect(item, name).toContainText('The network is empty.');
+    }
+    await page.keyboard.press('Escape');
     await page.goto(`${BASE_URL}/network?state=error`);
     await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
     await page.goto(`${BASE_URL}/network?state=loading`);
@@ -7326,13 +7507,16 @@ test.describe('Database: the rules (no browser)', () => {
     }
   });
 
-  test('the seed: five sources, every email on @god.example and unique, phones unique, who added it resolves, a referral names an ambassador', () => {
+  test('the seed: five sources, every email on @god.example and unique, phones unique, who added a manual entry resolves (an app registration has nobody), a referral names an ambassador', () => {
     expect(new Set(seed.databaseRecords.map((r) => r.source))).toEqual(new Set(['organic', 'ambassador', 'event', 'partner', 'import']));
     expect(seed.databaseRecords.every((r) => r.email.endsWith(`@${BRAND_EMAIL_DOMAIN}`))).toBe(true);
     expect(new Set(seed.databaseRecords.map((r) => r.email)).size).toBe(seed.databaseRecords.length);
     expect(new Set(seed.databaseRecords.map((r) => normalizePhone(r.phone, r.country))).size).toBe(seed.databaseRecords.length);
     const staffIds = new Set(seed.staff.map((s) => s.id));
-    expect(seed.databaseRecords.every((r) => r.addedById && staffIds.has(r.addedById))).toBe(true);
+    // GOD-T3: both entry types are seeded; staff added the manual entries, nobody added an app registration
+    expect(new Set(seed.databaseRecords.map((r) => recordOrigin(r)))).toEqual(new Set(['app', 'manual']));
+    expect(seed.databaseRecords.filter((r) => recordOrigin(r) === 'manual').every((r) => r.addedById && staffIds.has(r.addedById))).toBe(true);
+    expect(seed.databaseRecords.filter((r) => recordOrigin(r) === 'app').every((r) => !r.addedById && r.source === 'organic')).toBe(true);
     for (const r of seed.databaseRecords) expect(Boolean(r.ambassadorId)).toBe(r.source === 'ambassador');
     // nobody in the seed is a duplicate of anybody else
     expect(seed.databaseRecords.filter((r) => findDuplicate(r, seed.databaseRecords, r.id))).toHaveLength(0);
@@ -7357,36 +7541,33 @@ test.describe('Database: the page', () => {
     await expect(page.getByTestId('table-row').first()).toBeVisible();
   };
 
-  test('the pace card: the meter, its text, the status in words, the marker, the pace tick and three labelled zones', async ({ page }) => {
+  test('the pace card (GOD-T17): the title and the status, "n of target verified", ONE bar and ONE "Expected by today" caption, no repeated pace or target', async ({ page }) => {
     await openList(page);
     const pace = recordsPace();
     const card = page.getByTestId('records-pace');
     const meter = card.getByRole('meter');
+    await expect(meter).toHaveCount(1);
     await expect(meter).toHaveAttribute('aria-valuemin', '0');
     await expect(meter).toHaveAttribute('aria-valuenow', String(pace.verified));
-    await expect(meter).toHaveAttribute('aria-valuemax', String(pace.gauge.max));
+    await expect(meter).toHaveAttribute('aria-valuemax', String(pace.target));
     await expect(meter).toHaveAttribute('aria-valuetext', pace.text);
+    await expect(card.getByRole('heading', { name: 'Verified this month' })).toBeVisible();
     await expect(page.getByTestId('pace-headline')).toHaveText(`${pace.verified} of ${pace.target} verified`);
     await expect(page.getByTestId('pace-status')).toHaveText({ on_pace: 'On track', behind: 'At risk', far_behind: 'Off track' }[pace.status]);
-    await expect(page.getByTestId('pace-zone-labels')).toHaveText('Off trackAt riskOn track');
-    await expect(page.getByTestId('pace-marker-label')).toHaveText(new RegExp(`^${pace.verified} verified`)); // (plus the chevron and "4.4x pace" when capped)
-    await expect(page.getByTestId('pace-tick-label')).toHaveText(`pace ${pace.paceRounded}`);
-    // more verified than the bar can show: the marker is pinned to the right end with a chevron and the multiple of the pace
-    if (pace.gauge.capped) {
-      await expect(page.getByTestId('pace-capped')).toHaveText(`${pace.gauge.capped}× the pace`);
-      await expect(page.getByTestId('pace-arrow')).toBeVisible();
-    } else {
-      await expect(page.getByTestId('pace-capped')).toHaveCount(0);
-      await expect(page.getByTestId('pace-arrow')).toHaveCount(0);
-    }
-    const bar = (await meter.boundingBox())!;
-    const centre = async (id: string) => {
-      const b = (await page.getByTestId(id).boundingBox())!;
-      return (b.x + b.width / 2 - bar.x) / bar.width;
-    };
-    expect(await centre('pace-tick')).toBeCloseTo(pace.gauge.paceAt / 100, 1);
-    expect(await centre('pace-marker')).toBeCloseTo(pace.gauge.markerAt / 100, 1);
-    expect(Math.round((await page.getByTestId('pace-marker').boundingBox())!.width)).toBe(12);
+    await expect(page.getByTestId('pace-expected')).toHaveText(`Expected by today: ${pace.paceRounded}`);
+    // the status badge is on the right of the title, on the same line
+    const title = (await card.getByRole('heading', { name: 'Verified this month' }).boundingBox())!;
+    const badge = (await page.getByTestId('pace-status').boundingBox())!;
+    expect(badge.x).toBeGreaterThan(title.x + title.width);
+    expect(Math.abs(badge.y + badge.height / 2 - (title.y + title.height / 2))).toBeLessThanOrEqual(4);
+    // nothing repeated: no separate pace or target figure, no zone words, no tick or marker labels
+    for (const id of ['pace-figure', 'pace-target', 'pace-zone-labels', 'pace-tick-label', 'pace-marker-label', 'pace-capped']) await expect(page.getByTestId(id), id).toHaveCount(0);
+    await expect(card).not.toContainText('Pace ');
+    await expect(card).not.toContainText('Target ');
+    // the fill is the share of the target verified so far (full once the target is met)
+    const bar = (await page.getByTestId('pace-bar').boundingBox())!;
+    const fill = (await page.getByTestId('pace-bar-fill').boundingBox())!;
+    expect(fill.width / bar.width).toBeCloseTo(Math.min(1, pace.verified / pace.target), 1);
   });
 
   test('records by source: a bar and a legend with a count and a percentage for each of the five sources', async ({ page }) => {
@@ -7401,7 +7582,7 @@ test.describe('Database: the page', () => {
     await openList(page);
     const headers = (await page.locator('main table thead th').allTextContents()).map((text) => text.trim()).filter((text) => text && text !== 'Open');
     expect(headers).toEqual(['Record', 'Country', 'Institution', 'Source', 'Linked', 'Verified', 'Added by and on']);
-    const record = pendingAll[0];
+    const record = pendingAll.find((r) => recordOrigin(r) === 'manual')!; // a staff entry: it has an added-by avatar
     await page.getByRole('searchbox', { name: 'Search records' }).fill(record.name);
     const row = page.getByTestId('table-row').first();
     await expect(row).toContainText(record.name);
@@ -7412,9 +7593,35 @@ test.describe('Database: the page', () => {
     await expect(row.getByTestId('status-badge').first()).toContainText('Pending');
     const staff = data.staff.find((s) => s.id === record.addedById)!;
     await expect(row.locator('td[data-label="Added by and on"]')).toContainText(staff.name);
+    await expect(row.locator('td[data-label="Added by and on"]')).toContainText('Manual entry');
     const avatar = row.locator('td[data-label="Added by and on"] span.size-6').first();
     expect(Math.round((await avatar.boundingBox())!.width)).toBe(24);
     expect(Math.round((await row.boundingBox())!.height)).toBe(56);
+  });
+
+  test('GOD-T3: an app registration says so instead of a staff name, and the Entry filter splits app registrations from manual entries', async ({ page }) => {
+    await openList(page);
+    const app = data.databaseRecords.find((r) => recordOrigin(r) === 'app')!;
+    await page.getByRole('searchbox', { name: 'Search records' }).fill(app.name);
+    const row = page.getByTestId('table-row').first();
+    await expect(row).toContainText(app.name);
+    const cell = row.locator('td[data-label="Added by and on"]');
+    await expect(cell).toContainText('App registration');
+    await expect(cell).not.toContainText('Manual entry');
+    await expect(cell.locator('span.size-6')).toHaveCount(0); // no staff avatar
+    await page.getByRole('searchbox', { name: 'Search records' }).fill('');
+    const appCount = data.databaseRecords.filter((r) => recordOrigin(r) === 'app').length;
+    expect(appCount).toBeGreaterThan(0);
+    await page.getByRole('combobox', { name: 'Filter by entry' }).click();
+    await page.getByRole('option', { name: 'App registrations' }).click();
+    expect(await tab(page, 'All')).toBe(String(appCount));
+    await page.getByRole('combobox', { name: 'Filter by entry' }).click();
+    await page.getByRole('option', { name: 'Manual entries' }).click();
+    expect(await tab(page, 'All')).toBe(String(data.databaseRecords.length - appCount));
+    // each record is in exactly one of the two: together they are All
+    await page.getByRole('combobox', { name: 'Filter by entry' }).click();
+    await page.getByRole('option', { name: 'All entries' }).click();
+    expect(await tab(page, 'All')).toBe(String(data.databaseRecords.length));
   });
 
   test('filters and counts: All, Verified and Pending count the records; the source and the search narrow the counts', async ({ page }) => {
@@ -7821,28 +8028,19 @@ test.describe('Database: the pre-step additions', () => {
   test.skip(!MOCK_RUN, 'the redesign screens run on sample data: see npm run test:e2e:mock');
   const data = buildSeed().collections;
 
-  test('the default view is not pinned past the scale: the marker is inside the bar and there is no capped text', async ({ page }) => {
-    await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto(`${BASE_URL}/database`, { timeout: 30_000 });
-    await expect(page.getByTestId('pace-gauge')).toBeVisible();
-    const pace = recordsPace();
-    expect(pace.gauge.capped).toBeNull();
-    expect(pace.verified).toBeLessThanOrEqual(Math.max(Math.ceil(pace.pace * 2), 1)); // inside the scale
-    await expect(page.getByTestId('pace-capped')).toHaveCount(0);
-    await expect(page.getByTestId('pace-arrow')).toHaveCount(0);
-    const bar = (await page.getByRole('meter').boundingBox())!;
-    const marker = (await page.getByTestId('pace-marker').boundingBox())!;
-    expect(marker.x + marker.width / 2).toBeLessThan(bar.x + bar.width - 2);
-    // the zone words are centred under their own zones, and the tooltip names the real thresholds
-    const zones = await Promise.all(['far_behind', 'behind', 'on_pace'].map(async (key) => (await page.getByTestId(`pace-zone-${key}`).boundingBox())!));
-    const words = page.getByTestId('pace-zone-labels').locator('span');
-    for (let i = 0; i < 3; i++) {
-      const w = (await words.nth(i).boundingBox())!;
-      expect(Math.abs(w.x + w.width / 2 - (zones[i].x + zones[i].width / 2))).toBeLessThanOrEqual(2);
+  test('the verification bar never draws past its track, and the two halves of the card are top-aligned, stacked on a phone (GOD-T17)', async ({ page }) => {
+    for (const width of [1440, 434]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.goto(`${BASE_URL}/database`, { timeout: 30_000 });
+      await expect(page.getByTestId('pace-bar')).toBeVisible();
+      const bar = (await page.getByTestId('pace-bar').boundingBox())!;
+      const fill = (await page.getByTestId('pace-bar-fill').boundingBox())!;
+      expect(fill.x + fill.width).toBeLessThanOrEqual(bar.x + bar.width + 0.5);
+      const verified = (await page.getByRole('heading', { name: 'Verified this month' }).boundingBox())!;
+      const sources = (await page.getByRole('heading', { name: 'Records by source' }).boundingBox())!;
+      if (width >= 1024) expect(Math.abs(verified.y - sources.y)).toBeLessThanOrEqual(2); // side by side, aligned
+      else expect(sources.y).toBeGreaterThan(verified.y + verified.height); // stacked
     }
-    await page.getByTestId('pace-zone-labels').hover();
-    await expect(page.getByRole('tooltip')).toHaveText(pace.hint);
-    expect(pace.hint).toBe('Off track: below 70% of the pro-rated pace. At risk: 70% to 95%. On track: 95% and above.');
   });
 
   test('the legend is a compact left-aligned row with a 16px gap that wraps where it must, each item on one line, no gaps over 24px', async ({ page }) => {
@@ -9001,16 +9199,14 @@ test.describe('ZoneGauge: the labels never overlap', () => {
     });
   }
 
-  test('the Database pace gauge uses the same rule', async ({ page }) => {
+  test('the Database verification card uses the same rule: its headline, bar and caption never overlap', async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 900 });
     await page.goto(`${BASE_URL}/database`, { timeout: 30_000 });
-    await expect(page.getByTestId('pace-gauge')).toBeVisible();
-    await expect(page.getByTestId('pace-marker-label')).toBeVisible();
-    await expect(page.getByTestId('pace-tick-label')).toBeVisible();
+    await expect(page.getByTestId('pace-bar')).toBeVisible();
+    await expect(page.getByTestId('pace-expected')).toBeVisible();
     await expect.poll(async () => {
-      const a = await page.getByTestId('pace-marker-label').boundingBox();
-      const b = await page.getByTestId('pace-tick-label').boundingBox();
-      return a && b ? overlap(a, b) : true;
+      const [a, b, c] = await Promise.all(['pace-headline', 'pace-bar', 'pace-expected'].map((id) => page.getByTestId(id).boundingBox()));
+      return a && b && c ? overlap(a, b) || overlap(b, c) || overlap(a, c) : true;
     }).toBe(false);
   });
 });
@@ -9809,6 +10005,10 @@ test.describe('DateTimeField: in the Listing form', () => {
 
   test('the event date and time is an optional group with a Date and a Time part, and no native date-time input is on the page', async ({ page }) => {
     await page.goto(`${BASE_URL}/opportunities/new`, { timeout: 30_000 });
+    // GOD-T31: the field is for events only, so it shows once the type is Event
+    await expect(page.getByRole('group', { name: 'Event date and time' })).toHaveCount(0);
+    await page.getByRole('combobox', { name: 'Opportunity type' }).click();
+    await page.getByRole('option', { name: 'Event' }).click();
     const group = page.getByRole('group', { name: 'Event date and time' });
     await expect(group).toBeVisible();
     await expect(group.getByText('Optional')).toBeVisible();
@@ -9936,7 +10136,7 @@ test.describe('Settings: the rules (no browser)', () => {
     expect(thresholdExample(95, 70, 20000, 4000, 15, 30)).toBe('With a target of 20,000, an output of 4,000 is Off track on the 15th of a 30-day month');
   });
 
-  test('saving a target adds history and never rewrites the past: last month keeps its target and its status, this month changes', () => {
+  test('saving a target adds history and never rewrites the past: last month keeps its target and its status, this month changes', async () => {
     const snapshot = getMockCollection('targetHistory');
     try {
       const now = currentMonth();
@@ -9946,7 +10146,7 @@ test.describe('Settings: the rules (no browser)', () => {
       const before = { last: kpiTarget(key, undefined, last), now: kpiTarget(key, undefined, now), lastStatus: kpiMonthStatus(key, last, today), nowStatus: kpiMonthStatus(key, now, today) };
       expect(before.last).toBe(15);
       expect(before.now).toBe(15);
-      expect(saveTargets([{ kpi: key, value: 5000 }], now)).toBe(1);
+      expect(await saveTargets([{ kpi: key, value: 5000 }], now)).toBe(1); // (async since GOD-T47; local-only outside a browser)
       expect(kpiTarget(key, undefined, last)).toBe(15); // the past keeps the target that applied then
       expect(kpiTarget(key, undefined, now)).toBe(5000);
       expect(kpiTarget(key)).toBe(5000); // (this month is the default)
@@ -9965,7 +10165,7 @@ test.describe('Settings: the rules (no browser)', () => {
       expect(kpiTarget(key, undefined, monthsBefore(now, -1))).toBe(9000);
       expect(kpiTarget(key, undefined, monthsBefore(now, -2))).toBe(9000);
       expect(getMockCollection('targets').find((t) => t.kpi === key)?.target).toBe(15); // the first target is never edited
-      expect(saveTargets([], now)).toBe(0);
+      expect(await saveTargets([], now)).toBe(0);
     } finally {
       setMockCollection('targetHistory', snapshot, { always: true });
     }
@@ -10399,7 +10599,7 @@ test.describe('Settings: Targets', () => {
     await goViaSidebar(page, 'People', 'Database');
     await expect(page.getByRole('meter')).toBeVisible();
     // the zone words' tooltip names the saved thresholds
-    await page.getByTestId('pace-zone-labels').hover();
+    await page.getByTestId('pace-status').hover(); // GOD-T17: the thresholds are the status badge's tooltip
     await expect(page.getByRole('tooltip')).toHaveText('Off track: below 100% of the pro-rated pace. At risk: 100% to 150%. On track: 150% and above.');
   });
 
@@ -10636,6 +10836,59 @@ test.describe('Settings: Integrations', () => {
   });
 });
 
+test.describe('Settings against the real API (GOD-T47)', () => {
+  test.skip(MOCK_RUN, 'real API only');
+  test.use({ viewport: { width: 1440, height: 900 } });
+  type P = import('@playwright/test').Page;
+  const fail = (page: P, pattern: string, method: string, message: string, status = 500) =>
+    // the server's error shape: { error: { message } } (lib/api.ts apiErrorFrom reads error.message)
+    page.route(pattern, (route) => (route.request().method() === method ? route.fulfill({ status, contentType: 'application/json', body: JSON.stringify({ error: { message } }) }) : route.continue()));
+
+  test('My account is the signed-in account (not the sample Super Admin), with no sample-data notice; a refused save and a wrong current password are said in words', async ({ page }) => {
+    await page.goto(`${BASE_URL}/settings`, { timeout: 30_000 });
+    await expect(page.getByTestId('account-email')).toHaveValue(getAdminCredentials().email);
+    await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
+    // a refused name change: an error, and the saved name stays
+    await fail(page, '**/admin/settings/account', 'PUT', 'E2E profile failure');
+    const name = page.getByRole('textbox', { name: 'Name' });
+    const before = await name.inputValue();
+    await name.fill(`${before} Changed`);
+    await page.getByRole('button', { name: 'Save profile' }).click();
+    await expect(page.getByTestId('toast').filter({ hasText: 'Your profile was not saved' })).toBeVisible();
+    await name.fill(before);
+    // a wrong current password (the server answers 400): no "changed" message, still signed in
+    await fail(page, '**/admin/settings/password', 'POST', 'Current password is incorrect', 400);
+    await page.getByLabel('Current password', { exact: true }).fill('not-the-password');
+    await page.getByLabel('New password', { exact: true }).fill('An0ther-good-one!');
+    await page.getByLabel('Confirm new password', { exact: true }).fill('An0ther-good-one!');
+    await page.getByRole('button', { name: 'Change password' }).click();
+    await expect(page.getByTestId('toast').filter({ hasText: 'Your password was not changed: Current password is incorrect' })).toBeVisible();
+    await expect(page).toHaveURL(`${BASE_URL}/settings`);
+  });
+
+  test('Targets show the server\'s targets, under named columns; a refused save keeps the fields and says so', async ({ page }) => {
+    await page.goto(`${BASE_URL}/settings/targets`, { timeout: 30_000 });
+    await expect(page.getByTestId('targets-columns')).toHaveText('MetricOwnersMonthly target');
+    const server = await page.evaluate(async (api) => {
+      const response = await fetch(`${api}/admin/targets`, { credentials: 'include' });
+      return ((await response.json()) as { data: { kpi: string; target?: number; value?: number }[] }).data;
+    }, API_URL);
+    const reach = server.find((row) => row.kpi === 'social_reach')!;
+    await expect(page.getByTestId('target-input-social_reach')).toHaveValue(String(reach.target ?? reach.value));
+    await fail(page, '**/admin/targets', 'POST', 'E2E targets failure');
+    await page.getByTestId('target-input-social_reach').fill('123456');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByTestId('toast').filter({ hasText: 'The changes were not saved' })).toBeVisible();
+    await expect(page.getByTestId('target-input-social_reach')).toHaveValue('123456'); // kept as typed
+  });
+
+  test('Integrations say what is true with Mock data off, and that the app has no analytics integration yet', async ({ page }) => {
+    await page.goto(`${BASE_URL}/settings/integrations`, { timeout: 30_000 });
+    await expect(page.getByTestId('credentials-note')).toHaveText('Credentials are stored on the server, encrypted, and never shown again: only their last four characters appear here.');
+    await expect(page.getByTestId('app-analytics-note')).toContainText('no integration is set up for the mobile app yet');
+  });
+});
+
 test.describe('Settings: phone (434px)', () => {
   test.skip(!MOCK_RUN, 'the redesign screens run on sample data: see npm run test:e2e:mock');
   test.use({ viewport: { width: 434, height: 900 } });
@@ -10869,7 +11122,7 @@ test.describe('Dated thresholds: in Settings and on the pages', () => {
     await expect(page.getByTestId('scheduled-thresholds')).toHaveText(`Changes to green 150%, amber 100% from ${formatMonth(next)}`);
     await expect(history(page).getByTestId('history-row').first()).toContainText(formatMonth(next));
     await goViaSidebar(page, 'People', 'Database');
-    await page.getByTestId('pace-zone-labels').hover();
+    await page.getByTestId('pace-status').hover(); // GOD-T17: the thresholds are the status badge's tooltip
     await expect(page.getByRole('tooltip')).toHaveText('Off track: below 70% of the pro-rated pace. At risk: 70% to 95%. On track: 95% and above.');
   });
 
@@ -10884,7 +11137,7 @@ test.describe('Dated thresholds: in Settings and on the pages', () => {
     await expect(rows).toHaveCount(2);
     for (const index of [0, 1]) await expect(rows.nth(index)).toContainText(formatMonth(currentMonth())); // the same month for both
     await goViaSidebar(page, 'People', 'Database');
-    await page.getByTestId('pace-zone-labels').hover();
+    await page.getByTestId('pace-status').hover(); // GOD-T17: the thresholds are the status badge's tooltip
     await expect(page.getByRole('tooltip')).toHaveText('Off track: below 100% of the pro-rated pace. At risk: 100% to 150%. On track: 150% and above.');
   });
 
@@ -11660,7 +11913,7 @@ test.describe('Scorecard: My scorecard and Team (mock mode)', () => {
     for (const role of ['moderator', 'support', 'admin_support', 'super_admin']) {
       await asRole(page, context, role);
       await expect(page.getByText('No metrics are assigned to your role'), role).toBeVisible();
-      await expect(page.getByText('A Desk Lead can assign metrics.'), role).toBeVisible();
+      await expect(page.getByText('Metrics follow roles: a role that owns a metric gives you its target. A Desk Lead or Super Admin can change your roles on Team.'), role).toBeVisible();
       await expect(page.getByTestId('score-ring'), role).toHaveCount(0);
       await expect(page.getByTestId('metric-row'), role).toHaveCount(0);
       await expect(page.getByTestId('composite-trend'), role).toHaveCount(0);
@@ -11828,6 +12081,7 @@ test.describe('Scorecard: My scorecard and Team (mock mode)', () => {
     await expect(page.getByTestId('scorecard-skeleton')).toBeVisible();
     await page.goto(`${BASE_URL}/scorecard?tab=team&state=empty`, { timeout: 30_000 });
     await expect(page.getByText('No one to score yet')).toBeVisible();
+    await expect(page.getByTestId('scorecard-manage-team')).toHaveAttribute('href', '/team'); // GOD-T30: a Desk Lead can open Team
     expect(problems).toEqual([]);
   });
 });
@@ -12166,6 +12420,9 @@ test.describe('Monthly report maths (no browser)', () => {
     expect(metricDelta(0, 0, 'August 2026')).toEqual({ kind: 'na', text: 'n/a', percent: null });
     expect(metricDelta(5, null, 'August 2026')).toEqual({ kind: 'none', text: '—', percent: null }); // no previous month
     expect(metricDelta(3, 2.4, 'the same period last month, estimated').text).toBe('+25% vs the same period last month, estimated'); // an estimate is a fraction
+    // GOD-T11: the partner report gives no "against": the change alone, the comparison is stated once above the cards
+    expect(metricDelta(112, 100)).toEqual({ kind: 'up', text: '+12%', percent: 12 });
+    expect(metricDelta(100, 100).text).toBe('0%');
   });
 
   test('months: the last complete month is the default; the current month is month to date; the first month on record has no previous one', () => {
@@ -12204,15 +12461,33 @@ test.describe('Monthly report maths (no browser)', () => {
     const views = normal.find((metric) => metric.id === 'website_views')!;
     const before = kpiValue('website_views', monthsBefore(may, 1), kpiData);
     expect(views.previous).toBe(before);
-    expect(views.delta).toEqual(metricDelta(views.value, before, formatMonth(monthsBefore(may, 1))));
+    expect(views.delta).toEqual(metricDelta(views.value, before));
+    expect(normal.every((metric) => !metric.estimated)).toBe(true); // a past month compares real figures
     // the first month on record: nothing to compare with
     const first = partnerMetrics(FIXED_MONTHS[0], FIXED_TODAY, reportData);
     expect(first.every((metric) => metric.previous === null && metric.delta.kind === 'none' && metric.delta.text === '—')).toBe(true);
-    // the current month (June 15 of 30; May has 31 days): May pro-rated to the 15th, and the words say it is an estimate
+    // the current month (June 15 of 30; May has 31 days). GOD-T12: what has dates is COUNTED up to May 15; only the website figures (monthly totals)
+    // are May pro-rated to the 15th, and only they are marked as estimates
     const toDate = partnerMetrics(june, FIXED_TODAY, reportData);
-    const reach = toDate.find((metric) => metric.id === 'social_reach')!;
-    expect(reach.previous).toBeCloseTo(kpiValue('social_reach', may, kpiData) * (15 / 31), 8);
-    expect(reach.delta.text.endsWith('vs the same period last month, estimated') || reach.delta.kind === 'na').toBe(true);
+    const byId = Object.fromEntries(toDate.map((metric) => [metric.id, metric]));
+    const mayTo15 = recordsUpTo(reportData, `${may}-15`);
+    expect(byId.social_reach.previous).toBe(kpiValue('social_reach', may, mayTo15));
+    expect(byId.posts_published.previous).toBe(kpiValue('posts_published', may, mayTo15));
+    expect(byId.opportunities_published.previous).toBe(kpiValue('opportunities_published', may, mayTo15));
+    expect(byId.programs_organised.previous).toBe(kpiValue('programs_organised', may, mayTo15));
+    expect(byId.new_partners.previous).toBe(kpiValue('partners_onboarded', may, mayTo15));
+    expect(byId.new_ambassadors.previous).toBe(mayTo15.ambassadors.filter((a) => a.status !== 'applicant' && a.joinedAt.startsWith(may)).length);
+    expect(byId.website_views.previous).toBeCloseTo(kpiValue('website_views', may, kpiData) * (15 / 31), 8);
+    expect(toDate.filter((metric) => metric.estimated).map((metric) => metric.id)).toEqual(['website_views', 'daily_first_visits', 'daily_visitors']);
+    for (const metric of toDate) expect(metric.delta.text, metric.id).toMatch(/^([+-]?\d+%|n\/a|—)$/);
+    // the counted figures are whole numbers: a small total is compared with what really happened, never with a fraction
+    for (const metric of toDate.filter((m) => !m.estimated)) expect(Number.isInteger(metric.previous), metric.id).toBe(true);
+  });
+
+  test('GOD-T12: the comparison line and the daily-figures definition', () => {
+    expect(comparisonLine(may, FIXED_TODAY)).toBe(`Percentage changes are compared with ${formatMonth(monthsBefore(may, 1))}.`);
+    expect(comparisonLine(june, FIXED_TODAY)).toBe(`${formatMonth(june)} to date · Compared with the same period in ${formatMonth(may)} (website figures estimated).`);
+    expect(DAILY_FIGURES_DEFINITION).toContain('counted each day and added up');
   });
 
   test('a zero previous value is "n/a", not a percentage (a month after an empty one)', () => {
@@ -12290,8 +12565,8 @@ test.describe('Monthly report: routes, access, the two templates and the coheren
     await expect(cells).toHaveCount(10);
     const expected: [string, string][] = [
       ['website_views', 'Website views'],
-      ['daily_first_visits', 'Daily first visits (sum)'],
-      ['daily_visitors', 'Daily visitors (sum)'],
+      ['daily_first_visits', 'Daily first visits'],
+      ['daily_visitors', 'Daily visitors'],
       ['social_reach', 'Social reach'],
       ['social_engagement', 'Social engagement'],
       ['posts_published', 'Posts published'],
@@ -12374,9 +12649,13 @@ test.describe('Monthly report: routes, access, the two templates and the coheren
     await expect(page).toHaveURL(new RegExp(`month=${currentMonth()}`));
     await expect(page.getByTestId('month-to-date')).toHaveText('Month to date');
     await expect(page.getByTestId('to-date-note')).toBeVisible();
-    await expect(page.getByTestId('partner-report').getByText('compared with the same period last month', { exact: false }).first()).toBeVisible();
-    const deltas = await page.getByTestId('metric-delta').allTextContents();
-    for (const text of deltas) expect(text === 'n/a' || text === '—' || text.endsWith('vs the same period last month, estimated'), text).toBe(true);
+    await expect(page.getByTestId('report-metrics').getByText(comparisonLine(currentMonth()), { exact: true })).toBeVisible();
+    // GOD-T11/T12: each card shows the change alone; "(est.)" only on the three website figures
+    for (const metric of partnerMetrics(currentMonth(), new Date())) {
+      const delta = page.getByTestId(`metric-${metric.id}`).getByTestId('metric-delta');
+      await expect(delta, metric.id).toHaveText(metric.estimated && metric.delta.percent !== null ? `${metric.delta.text} (est.)` : metric.delta.text);
+    }
+    await expect(page.getByTestId('daily-definition')).toHaveText(DAILY_FIGURES_DEFINITION);
     // back to the default month removes the parameter
     await page.getByRole('combobox', { name: 'Month' }).click();
     await page.getByRole('option', { name: new RegExp(formatMonth(defaultMonth())) }).click();
@@ -12662,6 +12941,26 @@ test.describe('Monthly report: Download PDF and printing (mock mode)', () => {
     }
   });
 
+  test('GOD-T22: what a partner reads in the PDF: the source label, the comparison period, the chart with its legend and the daily-figures note, for a complete month and for the month to date', async ({ page, context }) => {
+    for (const month of [defaultMonth(), currentMonth()]) {
+      await open(page, context, 'desk_lead', `/monthly-report/partner?month=${month}`);
+      await page.emulateMedia({ media: 'print' });
+      const paper = page.getByTestId('partner-report');
+      await expect(paper.getByTestId('sample-report-badge'), month).toBeVisible(); // sample figures say so in the PDF
+      await expect(paper.getByTestId('report-source'), month).toBeVisible();
+      await expect(paper.getByTestId('report-metrics').getByText(comparisonLine(month), { exact: true }), month).toBeVisible(); // the period, once
+      const legend = paper.getByTestId('platform-legend');
+      if (await paper.getByTestId('audience-none').count() === 0) {
+        await expect(legend, month).toBeVisible();
+        await expect(legend, month).toContainText('Website');
+        await expect(legend, month).toContainText('App');
+      }
+      await expect(paper.getByTestId('daily-definition'), month).toBeVisible();
+      await expect(page.getByTestId('download-pdf'), month).toBeHidden(); // controls never print
+      await page.emulateMedia({ media: 'screen' });
+    }
+  });
+
   test('print to PDF (Chromium): the partner report is exactly 1 page and the team report exactly 2 (the real counts are printed), and the scoreboard and the footer cannot be split or left alone', async ({ page, context, browserName }) => {
     test.skip(browserName !== 'chromium', 'page.pdf is Chromium only');
     const counts: Record<string, number> = {};
@@ -12732,6 +13031,78 @@ test.describe('Monthly report: real-API mode says it is sample data', () => {
 // ---------------------------------------------------------------------------------------------
 // Plurals: ONE helper for "1 share" / "2 shares" (lib/plural.ts), and the counts in the reports and on the cards use it.
 // ---------------------------------------------------------------------------------------------
+test.describe('Event status from the date (GOD-T7, no browser)', () => {
+  const at = (iso: string) => new Date(iso);
+  test('an event is upcoming until the end of its day in its own zone, then past; cancelled stays cancelled', () => {
+    const event = { status: 'upcoming' as const, dateTime: '2 Aug 2026, 6:00 PM GMT' };
+    expect(eventStatus(event, at('2026-08-02T12:00:00Z'))).toBe('upcoming'); // the afternoon before
+    expect(eventStatus(event, at('2026-08-02T23:59:59Z'))).toBe('upcoming'); // still the event's day
+    expect(eventStatus(event, at('2026-08-03T00:00:00Z'))).toBe('past');
+    expect(eventStatus(event, at('2026-11-05T09:00:00Z'))).toBe('past'); // the admin review's November visit
+    // a stored "past" is not trusted either: the date decides
+    expect(eventStatus({ status: 'past', dateTime: '20 Dec 2026, 10:00 AM GMT' }, at('2026-11-05T09:00:00Z'))).toBe('upcoming');
+    expect(eventStatus({ status: 'cancelled', dateTime: '20 Dec 2026, 10:00 AM GMT' }, at('2026-11-05T09:00:00Z'))).toBe('cancelled');
+  });
+
+  test('the zone moves the end of the day; ISO dates from the API work; an unreadable date keeps the stored status', () => {
+    // GMT+1: the day ends at 23:00 UTC
+    expect(eventDayEndsAt('2 Aug 2026, 6:00 PM GMT+1')).toBe(Date.UTC(2026, 7, 2, 23));
+    expect(eventDayEndsAt('2 Aug 2026, 6:00 PM UTC-05:00')).toBe(Date.UTC(2026, 7, 3, 5));
+    expect(eventDayEndsAt('2 August 2026')).toBe(Date.UTC(2026, 7, 3));
+    expect(eventDayEndsAt('2026-11-01T10:00')).toBe(Date.UTC(2026, 10, 2));
+    expect(eventDayEndsAt('2026-11-01T10:00:00.000Z')).toBe(Date.UTC(2026, 10, 2));
+    expect(eventDayEndsAt('2026-11-01T10:00+02:00')).toBe(Date.UTC(2026, 10, 1, 22));
+    expect(eventDayEndsAt('sometime soon')).toBeNull();
+    expect(eventDayEndsAt('2 Foo 2026')).toBeNull();
+    expect(eventStatus({ status: 'upcoming', dateTime: 'TBC' }, at('2030-01-01T00:00:00Z'))).toBe('upcoming');
+  });
+});
+
+test.describe('Footer links (GOD-T20)', () => {
+  test('Terms and Privacy open the published pages in a new tab; no link points at "#"; Help is absent until NEXT_PUBLIC_HELP_URL is set', async ({ page }) => {
+    await page.goto(`${BASE_URL}/`, { timeout: 30_000 });
+    const footer = page.locator('main footer').last();
+    await expect(footer.getByRole('link', { name: /^Terms/ })).toHaveAttribute('href', 'https://globalopportunitydesk.com/terms-of-service/');
+    await expect(footer.getByRole('link', { name: /^Privacy/ })).toHaveAttribute('href', 'https://globalopportunitydesk.com/privacy-policy/');
+    for (const link of await footer.getByRole('link').all()) {
+      await expect(link).toHaveAttribute('target', '_blank');
+      await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+      expect(await link.getAttribute('href')).not.toBe('#');
+    }
+    await expect(footer.getByRole('link', { name: /^Help/ })).toHaveCount(0); // not configured in the test runs
+  });
+
+  test('footerLinks: Help only for an https or mailto address (no browser)', () => {
+    expect(footerLinks(undefined).map((link) => link.label)).toEqual(['Terms', 'Privacy']);
+    expect(footerLinks('https://help.example.org')[0]).toEqual({ label: 'Help', href: 'https://help.example.org' });
+    expect(footerLinks('mailto:desk@example.org')[0].label).toBe('Help');
+    expect(footerLinks('javascript:alert(1)').map((link) => link.label)).toEqual(['Terms', 'Privacy']);
+    expect(footerLinks('#').map((link) => link.label)).toEqual(['Terms', 'Privacy']);
+  });
+});
+
+test.describe('Details lists in a narrow card (GOD-T38)', () => {
+  test.skip(!MOCK_RUN, 'uses the mock record seeker-1');
+  test('in the side card a label sits above its value, so a long email keeps to one or two lines; a wide card keeps two columns', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${BASE_URL}/seekers/seeker-1`, { timeout: 30_000 });
+    const list = page.getByTestId('key-value-list').first();
+    await expect(list).toBeVisible();
+    const email = list.locator('dd').filter({ hasText: '@' }).first();
+    await expect(email).toBeVisible();
+    const label = email.locator('xpath=preceding-sibling::dt[1]');
+    const [dd, dt] = [(await email.boundingBox())!, (await label.boundingBox())!];
+    const width = (await list.boundingBox())!.width;
+    if (width < 384) {
+      expect(dd.y).toBeGreaterThanOrEqual(dt.y + dt.height - 1); // stacked: the value starts under its label
+      expect(Math.abs(dd.x - dt.x)).toBeLessThanOrEqual(1);
+    } else {
+      expect(Math.abs(dd.y - dt.y)).toBeLessThanOrEqual(4); // side by side
+    }
+    expect(dd.height).toBeLessThanOrEqual(44); // at most two lines of 20px
+  });
+});
+
 test.describe('Plural helper (no browser)', () => {
   test('pluralize: 0 and 2 take the plural, exactly 1 the singular; thousands get separators; an irregular plural can be given', () => {
     expect(pluralize(0, 'share')).toBe('0 shares');
@@ -12802,6 +13173,16 @@ test.describe('Real-API mode: the screen never shows the server\'s own words (AP
     await page.goto(`${BASE_URL}/hirers`, { timeout: 30_000 });
     await expect(page.getByText('We could not load this list. Please try again.')).toBeVisible();
     await expect(page.getByText(/MongoServerError|pool destroyed/)).toHaveCount(0);
+  });
+
+  test('GOD-T39: a hirer with no verification case is "Not submitted" (not Pending), "Not specified" reads like other missing values, and one account is singular', async ({ page }) => {
+    await stub(page, '**/admin/hirers**', 200, { success: true, data: [{ id: 'h1', companyName: 'Fresh Co', industry: 'Not specified', location: 'Not specified', recruiterEmail: 'hr@fresh.example', createdAt: '2026-11-01', overallStatus: null, linkedVerificationId: null }], meta: { page: 1, limit: 100, total: 1, pages: 1 } });
+    await page.goto(`${BASE_URL}/hirers`, { timeout: 30_000 });
+    const row = page.getByTestId('table-row').filter({ hasText: 'Fresh Co' });
+    await expect(row).toBeVisible();
+    await expect(row.getByTestId('status-badge').first()).toHaveText('Not submitted'); // the verification column (the account status follows)
+    await expect(page.locator('main')).not.toContainText('Not specified');
+    await expect(page.getByText('1 hirer/company account registered on the platform.')).toBeVisible();
   });
 
   test('a verification request with no submitted date reads "Not recorded", never "undefined"', async ({ page }) => {

@@ -2189,6 +2189,9 @@ export const toBeneficiaryClientObject = (doc) => {
     addedBy: addedById,
     addedById,
     addedByName,
+    // GOD-T3: "App registration" or "Manual entry" (records from before the field existed were added by staff).
+    origin: raw.origin === 'app' ? 'app' : 'manual',
+    userId: raw.userId ? String(raw.userId._id ?? raw.userId) : undefined,
   };
 };
 
@@ -2406,34 +2409,42 @@ const prepareBeneficiary = (body, existing = {}) => {
 };
 
 adminApiRouter.get('/beneficiaries', requireAdminOrStaffAuth, requireScreen('database', 'view'), asyncHandler(async (req, res) => {
-  const filter = {};
+  // Each filter is one condition and they all apply together ($and). Before GOD-T3 the source, month and search filters each
+  // wrote `filter.$or`, so a search silently dropped the source filter.
+  const conditions = [];
   if (req.query.source) {
-    const s = req.query.source;
-    filter.$or = [{ source: s }, { sourceType: s }];
-    if (s === 'ambassador') filter.$or.push({ sourceType: 'ambassador-referral' });
-    if (s === 'partner') filter.$or.push({ sourceType: 'partner-channel' });
-    if (s === 'import') filter.$or.push({ sourceType: 'bulk-import' });
+    const s = String(req.query.source);
+    const anyOf = [{ source: s }, { sourceType: s }];
+    if (s === 'ambassador') anyOf.push({ sourceType: 'ambassador-referral' });
+    if (s === 'partner') anyOf.push({ sourceType: 'partner-channel' });
+    if (s === 'import') anyOf.push({ sourceType: 'bulk-import' });
+    conditions.push({ $or: anyOf });
   } else if (req.query.sourceType) {
-    filter.sourceType = req.query.sourceType;
+    conditions.push({ sourceType: String(req.query.sourceType) });
   }
+  // GOD-T3: "App registration" or "Manual entry". Records from before the field existed were all added by staff.
+  if (req.query.origin === 'app') conditions.push({ origin: 'app' });
+  else if (req.query.origin === 'manual') conditions.push({ origin: { $ne: 'app' } });
   if (req.query.verified !== undefined) {
-    filter.verified = req.query.verified === 'true' || req.query.verified === true;
+    conditions.push({ verified: req.query.verified === 'true' || req.query.verified === true });
   }
   if (req.query.month) {
-    filter.$or = [
-      { verifiedAt: { $regex: `^${req.query.month}` } },
-      { createdAtDate: { $regex: `^${req.query.month}` } },
-    ];
+    const month = escapedRegex(req.query.month);
+    conditions.push({ $or: [
+      { verifiedAt: { $regex: `^${month}` } },
+      { createdAtDate: { $regex: `^${month}` } },
+    ] });
   }
   if (req.query.q) {
     const term = escapedRegex(req.query.q);
-    filter.$or = [
+    conditions.push({ $or: [
       { fullName: { $regex: term, $options: 'i' } },
       { email: { $regex: term, $options: 'i' } },
       { phone: { $regex: term, $options: 'i' } },
       { institution: { $regex: term, $options: 'i' } },
-    ];
+    ] });
   }
+  const filter = conditions.length > 0 ? { $and: conditions } : {};
 
   const { page, skip, limit } = pageOptions(req.query);
   const total = await Beneficiary.countDocuments(filter);

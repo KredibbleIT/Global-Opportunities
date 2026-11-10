@@ -6,6 +6,7 @@
  * Data: mock events (src/lib/mock-events.ts), unchanged.
  */
 import { CalendarDays } from "lucide-react";
+import { eventStatus } from "@/lib/event-status";
 import { eventRecords, type EventRecord } from "@/lib/mock-events";
 import { overlayRows, subscribeMockStore } from "@/lib/mock-store";
 import { useListData } from "@/lib/use-list-data";
@@ -29,7 +30,8 @@ const COLUMNS: Column<EventRecord>[] = [
     label: (r) => `${r.attendeesCount}/${r.capacity}`,
     percent: (r) => Math.round((r.attendeesCount / r.capacity) * 100),
   },
-  { key: "status", header: "Status", type: "status", width: "18%", status: (r) => r.status },
+  // GOD-T7: worked out from the date (an event whose day is over is Past), never the stored word alone
+  { key: "status", header: "Status", type: "status", width: "18%", status: (r) => eventStatus(r) },
 ];
 
 export default function EventsPage() {

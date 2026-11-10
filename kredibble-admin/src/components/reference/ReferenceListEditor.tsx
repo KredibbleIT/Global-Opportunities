@@ -7,7 +7,7 @@
  *   Universities                                              21 items
  *   [ Add a new university...            ] [+ Add]
  *   (!) "MIT" is already in this list.                     <- duplicate: inline error
- *   [ Search universities... ]                             <- only when the list has more than 12 items
+ *   [ Search universities... ]                             <- on every list with items (GOD-T42: consistent, and ready for long lists)
  *   ( Ashesi University (x) ) ( MIT (x) ) ...              <- removable chips
  *
  * Rules (same as before, plus the new ones from the brief):
@@ -21,7 +21,6 @@
  */
 import { useRef, useState, type FormEvent } from "react";
 import { Plus, SearchX, X } from "lucide-react";
-import { SEARCH_THRESHOLD } from "@/lib/reference-data";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -43,7 +42,7 @@ export function ReferenceListEditor({ label, singular, items, onChange }: Refere
   const [query, setQuery] = useState("");
   const addRef = useRef<HTMLInputElement>(null);
 
-  const searchable = items.length > SEARCH_THRESHOLD;
+  const searchable = items.length > 0;
   const needle = normalise(query);
   const visible = searchable && needle ? items.filter((item) => normalise(item).includes(needle)) : items;
 
@@ -125,14 +124,15 @@ export function ReferenceListEditor({ label, singular, items, onChange }: Refere
           {visible.map((item) => (
             <li
               key={item}
-              className="input-text flex max-w-full items-center gap-1 rounded-pill border border-line bg-surface-2 py-1 pl-3 pr-1 text-ink"
+              className="group input-text flex max-w-full items-center gap-1 rounded-pill border border-line bg-surface-2 py-1 pl-3 pr-1 text-ink"
             >
               <span className="min-w-0 break-words">{item}</span>
               <button
                 type="button"
                 aria-label={`Remove ${item}`}
                 onClick={() => remove(item)}
-                className="relative inline-flex size-6 shrink-0 items-center justify-center rounded-pill text-muted transition-colors before:absolute before:-inset-2 before:content-[''] hover:bg-danger-soft hover:text-danger"
+                // GOD-T42: removal stays reachable but quiet (faint until the chip is hovered or the button is focused)
+                className="relative inline-flex size-6 shrink-0 items-center justify-center rounded-pill text-muted opacity-50 transition-[color,opacity] before:absolute before:-inset-2 before:content-[''] group-hover:opacity-100 hover:bg-danger-soft hover:text-danger focus-visible:opacity-100"
               >
                 <X size={14} strokeWidth={2} aria-hidden="true" />
               </button>

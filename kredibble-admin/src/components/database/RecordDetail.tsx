@@ -29,7 +29,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TagPill } from "@/components/ui/TagPill";
 import { useBreadcrumbLabel } from "@/lib/breadcrumb-label";
 import { formatDate } from "@/lib/format";
-import { RECORD_SOURCE_LABELS } from "@/lib/mock-entities";
+import { RECORD_ORIGIN_LABELS, RECORD_SOURCE_LABELS, recordOrigin } from "@/lib/mock-entities";
 import { useMockCollection } from "@/lib/mock-store";
 import { loadRecord, recordLinkAccess, subscribeDatabase, withNames } from "@/lib/services/database";
 import { isMockMode } from "@/lib/services/mock-mode";
@@ -88,7 +88,9 @@ export function RecordDetail({ id }: { id: string }) {
                 { label: "Country", value: record.country },
                 { label: "Institution", value: record.institution },
                 { label: "Source", value: RECORD_SOURCE_LABELS[record.source] },
-                { label: "Added by", value: record.addedByName },
+                // GOD-T3: an app registration has no staff member behind it
+                { label: "Entry", value: RECORD_ORIGIN_LABELS[recordOrigin(record)] },
+                { label: "Added by", value: recordOrigin(record) === "app" ? "The person, in the app" : record.addedByName },
                 { label: "Added on", value: formatDate(record.createdAt) },
                 { label: "Verified on", value: record.verifiedAt ? formatDate(record.verifiedAt) : undefined },
               ]}

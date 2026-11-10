@@ -154,8 +154,10 @@ export function DataTable<T>({
 
   return (
     <Card flush as="section" ariaLabel={label}>
-      {/* From 640px up, a table too narrow for its progress column scrolls sideways INSIDE the card, never the page. */}
-      <div className="overflow-x-auto p-3 pb-0 max-sm:overflow-visible">
+      {/* From 640px up, a table too narrow for its progress column scrolls sideways INSIDE the card, never the page. `relative` makes this
+          the containing block of the absolutely positioned bits inside (the sr-only header text): without it they escaped the scroll box
+          and pushed the whole page sideways at tablet widths (GOD-T49: Programs, Events, Grants at 768px). */}
+      <div className="relative overflow-x-auto p-3 pb-0 max-sm:overflow-visible">
         <table
           // The minimum width belongs to the TABLE layout only (640px and up). The stacked cards below 640px have none.
           className="w-full table-fixed text-left sm:min-w-(--table-min) max-sm:block"

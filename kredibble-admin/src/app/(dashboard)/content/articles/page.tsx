@@ -5,12 +5,15 @@
  * Built on the shared list template; this file holds the column config and the data.
  * Data: mock articles (src/lib/mock-articles.ts), unchanged. "New Article" is the primary action.
  */
+import { useState } from "react";
 import { FileText, Plus } from "lucide-react";
 import { articles, type Article } from "@/lib/mock-articles";
+import { pluralize } from "@/lib/plural";
 import { useListData } from "@/lib/use-list-data";
 import { EmptyAction } from "@/components/list/EmptyAction";
 import { DataTable } from "@/components/list/DataTable";
 import { ListPage } from "@/components/list/ListPage";
+import { TableToolbar } from "@/components/list/TableToolbar";
 import type { Column } from "@/components/list/types";
 import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 
@@ -32,32 +35,54 @@ const COLUMNS: Column<Article>[] = [
   { key: "status", header: "Status", type: "status", width: "22%", status: (r) => r.status },
 ];
 
+type StatusFilter = "all" | "published" | "draft";
+
 export default function ArticlesListPage() {
   const { rows, isLoading, error, retry } = useListData(loadArticles);
-  const draftCount = (rows ?? []).filter((a) => a.status === "draft").length;
+  // GOD-T41: a search (title or category) and a status filter, as on the other lists; the counts follow the search.
+  const [status, setStatus] = useState<StatusFilter>("all");
+  const [search, setSearch] = useState("");
+  const all = rows ?? [];
+  const draftCount = all.filter((a) => a.status === "draft").length;
+  const term = search.trim().toLowerCase();
+  const searched = all.filter((a) => !term || a.title.toLowerCase().includes(term) || a.category.toLowerCase().includes(term));
+  const visible = status === "all" ? searched : searched.filter((a) => a.status === status);
+  const options = (["all", "published", "draft"] as const).map((value) => ({
+    value,
+    label: value === "all" ? "All" : value === "published" ? "Published" : "Draft",
+    count: rows ? (value === "all" ? searched.length : searched.filter((a) => a.status === value).length) : undefined,
+  }));
 
   return (
     <ListPage
       title="Career Resources"
       subtitle={
         rows
-          ? `Articles shown in the Career Resources section of the app. ${draftCount} draft not yet published.`
+          ? `Articles shown in the Career Resources section of the app. ${pluralize(draftCount, "draft")} not yet published.`
           : "Articles shown in the Career Resources section of the app."
       }
       action={{ label: "New Article", href: "/content/articles/new", icon: Plus }}
       notice={<NotConnectedNotice />}
+      toolbar={
+        <TableToolbar
+          search={{ value: search, onChange: setSearch, placeholder: "Search by title or category", label: "Search articles" }}
+          filters={{ options, value: status, onChange: setStatus, label: "Filter by status" }}
+        />
+      }
     >
       <DataTable
         label="Articles"
         columns={COLUMNS}
-        rows={rows ?? []}
+        rows={visible}
         getRowKey={(r) => r.id}
         getRowHref={(r) => `/content/articles/${r.id}`}
         loading={isLoading}
         error={error}
         onRetry={retry}
+        isFiltered={status !== "all" || term !== ""}
+        resetKey={`${status}|${term}`}
         emptyNoData={{ icon: FileText, title: "No articles yet", description: "Write the first Career Resources article.", action: <EmptyAction href="/content/articles/new" label="Add your first article" /> }}
-        emptyNoResults={{ icon: FileText, title: "No articles match" }}
+        emptyNoResults={{ icon: FileText, title: "No articles match", description: "Try another status or search." }}
       />
     </ListPage>
   );

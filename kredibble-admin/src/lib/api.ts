@@ -214,6 +214,10 @@ export type VerificationDoc = {
 
 export type OpportunityRecord = {
   id: string;
+  /** Set on a hirer's own posting (the HirerAccount or User id). A staff-curated listing has none. */
+  hirerId?: string | null;
+  /** The staff member who created a curated listing (a hirer's posting may carry it too, alongside hirerId). */
+  createdBy?: string | null;
   title: string;
   type: string;
   company: string;
@@ -1502,6 +1506,10 @@ export interface BeneficiaryApiRecord {
   listingId?: string;
   opportunityId?: string;
   listingTitle?: string;
+  /** GOD-T3: "app" (the person registered in the app) or "manual" (added by staff). */
+  origin?: "app" | "manual";
+  /** The app account an "app" record belongs to. */
+  userId?: string;
 }
 
 export interface BeneficiaryPaceApiRecord {

@@ -53,7 +53,7 @@ export function CredentialField({ kind, title, name }: CredentialFieldProps) {
     return () => document.removeEventListener("visibilitychange", clear);
   }, []);
 
-  const save = () => {
+  const save = async () => {
     const secret = draft;
     if (!secret.trim()) {
       setError("Enter the credential.");
@@ -61,8 +61,13 @@ export function CredentialField({ kind, title, name }: CredentialFieldProps) {
     }
     setDraft(""); // emptied at once: the value is not kept in this component after this line
     setError(undefined);
-    // TODO(backend): send it to the server over HTTPS; the server stores it and never sends it back
-    saveCredential(kind, secret);
+    // Real mode: sent to the server over HTTPS, which stores it and never sends it back. A refusal asks for it again.
+    try {
+      await saveCredential(kind, secret);
+    } catch (problem) {
+      setError(problem instanceof Error ? `It was not saved: ${problem.message}` : "It was not saved. Enter it again.");
+      return;
+    }
     setReplacing(false);
     setTest("idle");
     toast.success(`The ${name} credential was saved.`);
@@ -104,7 +109,7 @@ export function CredentialField({ kind, title, name }: CredentialFieldProps) {
                 Cancel
               </Button>
             )}
-            <Button type="button" onClick={save}>
+            <Button type="button" onClick={() => void save()}>
               Save credential
             </Button>
           </div>
