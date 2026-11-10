@@ -14,7 +14,7 @@ import { getMockCollection, setMockCollection } from "@/lib/mock-store";
 import { partnerMetrics, storeReportData, teamReport, type PartnerMetric, type ReportView, type TeamReportData } from "@/lib/report";
 import { platformRows, type PlatformRow } from "@/lib/services/social";
 import { buildTrend } from "@/lib/services/dashboard";
-import { earliestMonth } from "@/lib/report";
+import { earliestMonth, isMonthToDate } from "@/lib/report";
 import { isMockMode } from "./mock-mode";
 
 /** One month of the "Monthly views by platform" chart: the website views, and the app views when they are tracked (null = "No data"). */
@@ -103,8 +103,9 @@ export function getPartnerReport(month: MonthKey): Promise<PartnerReportResult> 
           .filter((point) => point.month >= earliestMonth())
           .map((point) => ({
             month: point.month,
-            label: point.label,
-            tooltipLabel: point.tooltipLabel,
+            // GOD-T15: the month still running says so ("Nov to date"), so its partial figure is not read against a full month
+            label: isMonthToDate(point.month) ? `${point.label} to date` : point.label,
+            tooltipLabel: isMonthToDate(point.month) ? `${point.tooltipLabel} to date` : point.tooltipLabel,
             website: empty ? 0 : point.value,
             app: empty ? null : (websiteByMonth.get(point.month)?.appViews ?? null),
           })),

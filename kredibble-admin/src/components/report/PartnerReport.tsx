@@ -21,19 +21,22 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { cn } from "@/lib/cn";
 import { formatMonth } from "@/lib/format";
 import type { MonthKey } from "@/lib/mock-entities";
-import { isEmptyMonth, previousMonthLabel, type Delta } from "@/lib/report";
+import { DAILY_FIGURES_DEFINITION, comparisonLine, isEmptyMonth, type Delta } from "@/lib/report";
 import type { PartnerReportData } from "@/lib/services/report";
 import { ReportPaper, ReportSection } from "./ReportPaper";
 
 const format = (value: number) => value.toLocaleString("en-US");
 
-/** The change since the previous month: an arrow AND words (colour is never the only signal). */
-function DeltaText({ delta }: { delta: Delta }) {
+/** The change since the previous month: an arrow AND words (colour is never the only signal); "(est.)" when compared with an estimate. */
+function DeltaText({ delta, estimated }: { delta: Delta; estimated: boolean }) {
   const Icon = delta.kind === "up" ? ArrowUp : delta.kind === "down" ? ArrowDown : delta.kind === "flat" ? Minus : null;
   return (
     <p data-testid="metric-delta" data-kind={delta.kind} className={cn("flex items-start gap-1 text-xs font-semibold leading-4", delta.kind === "up" ? "text-success" : delta.kind === "down" ? "text-danger" : "text-muted")}>
       {Icon && <Icon size={12} strokeWidth={2.25} aria-hidden="true" className="mt-0.5 shrink-0" />}
-      <span>{delta.text}</span>
+      <span>
+        {delta.text}
+        {estimated && delta.percent !== null && <span className="font-normal"> (est.)</span>}
+      </span>
     </p>
   );
 }
@@ -63,10 +66,9 @@ export function PartnerReportSkeleton() {
 
 export function PartnerReport({ data, month, toDate, sample }: { data: PartnerReportData | null; month: MonthKey; toDate: boolean; sample: boolean }) {
   if (!data) return <PartnerReportSkeleton />;
-  const previous = previousMonthLabel(month);
   const empty = isEmptyMonth(data.metrics);
   // The one line under "Performance overview": what the percentages are compared with (an estimate for a month still running).
-  const comparedWith = toDate ? `the same period last month (${previous}), estimated` : previous;
+  const comparedWith = comparisonLine(month);
   return (
     <ReportPaper testId="partner-report" title="Progress report" month={month} toDate={toDate} sample={sample}>
       {empty && (
@@ -74,7 +76,7 @@ export function PartnerReport({ data, month, toDate, sample }: { data: PartnerRe
           No figures were recorded for {formatMonth(month)}.
         </p>
       )}
-      <ReportSection title="Performance overview" subtitle={`Percentage changes are compared with ${comparedWith}.`} testId="report-metrics">
+      <ReportSection title="Performance overview" subtitle={comparedWith} testId="report-metrics">
         <div className="grid grid-cols-2 gap-3 min-[640px]:grid-cols-5">
           {data.metrics.map((metric) => (
             <div key={metric.id} data-testid={`metric-${metric.id}`} className="report-cell card-surface flex h-full flex-col overflow-hidden">
@@ -85,11 +87,14 @@ export function PartnerReport({ data, month, toDate, sample }: { data: PartnerRe
                 </p>
               </div>
               <div className="bg-white p-3">
-                <DeltaText delta={metric.delta} />
+                <DeltaText delta={metric.delta} estimated={metric.estimated} />
               </div>
             </div>
           ))}
         </div>
+        <p data-testid="daily-definition" className="caption mt-3">
+          {DAILY_FIGURES_DEFINITION}
+        </p>
       </ReportSection>
       <ReportSection title="Website and app views" subtitle="Monthly views by platform" testId="report-audience">
         {data.audience.length >= 2 ? (

@@ -1502,6 +1502,10 @@ export interface BeneficiaryApiRecord {
   listingId?: string;
   opportunityId?: string;
   listingTitle?: string;
+  /** GOD-T3: "app" (the person registered in the app) or "manual" (added by staff). */
+  origin?: "app" | "manual";
+  /** The app account an "app" record belongs to. */
+  userId?: string;
 }
 
 export interface BeneficiaryPaceApiRecord {

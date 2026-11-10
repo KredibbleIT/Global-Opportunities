@@ -260,6 +260,7 @@ export const toRecordRow = (b: BeneficiaryApiRecord): RecordRow => ({
   verified: Boolean(b.verified),
   createdAt: b.createdAt,
   addedById: b.addedById || b.addedBy || undefined,
+  origin: b.origin === "app" ? "app" : "manual",
   verifiedAt: b.verifiedAt || undefined,
   ambassadorId: b.ambassadorId || undefined,
   listingId: b.listingId || b.opportunityId || undefined,

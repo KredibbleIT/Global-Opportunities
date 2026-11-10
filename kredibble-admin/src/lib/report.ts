@@ -62,7 +62,7 @@ export const reportTitle = (view: ReportView, month: MonthKey): string => `GOD-$
 export interface Delta {
   /** up / down / flat: a percentage; "na": the previous value was 0; "none": there is no previous month to compare with. */
   kind: "up" | "down" | "flat" | "na" | "none";
-  /** The words: "+12% vs August 2026", "n/a" or "—". */
+  /** The words: "+12%" (or "+12% vs August 2026" when `against` is given), "n/a" or "—". */
   text: string;
   /** The rounded percentage, or null for "na" and "none". */
   percent: number | null;
@@ -70,15 +70,15 @@ export interface Delta {
 
 /**
  * The change of a figure against the previous month. `previous` is null when there is no previous month (the first month the desk has figures for): "—".
- * A previous value of 0 gives "n/a" (a percentage of nothing is not a number). Otherwise "+12% vs August 2026", "-8% vs August 2026" or "0% vs August 2026".
- * For the current month, `previous` is the previous month pro-rated to the same day and `against` says so.
+ * A previous value of 0 gives "n/a" (a percentage of nothing is not a number). Otherwise "+12%", "-8%" or "0%", followed by " vs <against>" when
+ * `against` is given. The partner report gives none: it states the comparison once, under "Performance overview" (GOD-T11).
  */
-export function metricDelta(value: number, previous: number | null, against: string): Delta {
+export function metricDelta(value: number, previous: number | null, against?: string): Delta {
   if (previous === null) return { kind: "none", text: "—", percent: null };
   if (previous === 0) return { kind: "na", text: "n/a", percent: null };
   const percent = Math.round(((value - previous) / previous) * 100);
   const sign = percent > 0 ? "+" : "";
-  return { kind: percent > 0 ? "up" : percent < 0 ? "down" : "flat", text: `${sign}${percent}% vs ${against}`, percent };
+  return { kind: percent > 0 ? "up" : percent < 0 ? "down" : "flat", text: against ? `${sign}${percent}% vs ${against}` : `${sign}${percent}%`, percent };
 }
 
 // ---- the ten figures of the partner report ----------------------------------------------------------------------------------
@@ -89,16 +89,21 @@ export interface PartnerMetric {
   id: PartnerMetricId;
   label: string;
   value: number;
-  /** The previous month's value (pro-rated to the same day for the current month); null when there is no previous month. */
+  /**
+   * The previous month's value; null when there is no previous month. For the current month it is the same period of the previous month (up to the same
+   * day): counted from the dated records where there are some (GOD-T12), and pro-rated (an estimate) for the website figures, which are monthly totals.
+   */
   previous: number | null;
+  /** True when `previous` is an estimate (the website figures of the current month): the card says "(est.)". */
+  estimated: boolean;
   delta: Delta;
 }
 
 // Labels match the Overview's KPI names. The cards show the label, the figure and the change — nothing else (November 2026 review).
 const METRICS: { id: PartnerMetricId; label: string }[] = [
   { id: "website_views", label: "Website views" },
-  { id: "daily_first_visits", label: "Daily first visits (sum)" },
-  { id: "daily_visitors", label: "Daily visitors (sum)" },
+  { id: "daily_first_visits", label: "Daily first visits" },
+  { id: "daily_visitors", label: "Daily visitors" },
   { id: "social_reach", label: "Social reach" },
   { id: "social_engagement", label: "Social engagement" },
   { id: "posts_published", label: "Posts published" },
@@ -133,23 +138,60 @@ export function partnerFigure(id: PartnerMetricId, month: MonthKey, today: Date 
   return dailySum(data, month, id === "daily_first_visits" ? "dailyFirstVisits" : "dailyVisitors", isMonthToDate(month, today) ? today : reportToday(month, today));
 }
 
+/** The figures that come from monthly totals of the website table: for the current month their "same period" can only be estimated. */
+export const ESTIMATED_TO_DATE: ReadonlySet<PartnerMetricId> = new Set<PartnerMetricId>(["website_views", "daily_first_visits", "daily_visitors"]);
+
+/** The records as they stood at the end of `cutoff` (YYYY-MM-DD): everything dated later is left out (a partner keeps its earlier stages). */
+export function recordsUpTo(data: ReportData, cutoff: string): ReportData {
+  const upTo = (iso: string | undefined) => !iso || iso.slice(0, 10) <= cutoff;
+  return {
+    ...data,
+    socialPosts: data.socialPosts.filter((post) => upTo(post.postedAt)),
+    listings: data.listings.filter((listing) => upTo(listing.publishedAt)),
+    programs: data.programs.filter((program) => upTo(program.deliveredAt)),
+    ambassadors: data.ambassadors.filter((ambassador) => upTo(ambassador.joinedAt)),
+    partners: data.partners.map((partner) => ({ ...partner, stageHistory: partner.stageHistory.filter((entry) => upTo(entry.at)) })),
+  };
+}
+
 /**
- * The ten figures of the partner report with their change. For a past month the comparison is the previous month; for the current month it is the previous
- * month pro-rated to the same day (the report says it is an estimate). With no previous month (the first month on record) the change is "—".
+ * The ten figures of the partner report with their change. For a past month the comparison is the previous month. For the current month it is the same
+ * period of the previous month, up to the same day: COUNTED from the dated records (posts, reach, engagement, ambassadors, partners, opportunities,
+ * programs), so a small total is compared with what really happened (the review saw 2 opportunities shown as +675% against an estimate of 0.26); the
+ * website figures are monthly totals, so theirs is the previous month pro-rated to the same day and is marked as an estimate. With no previous month
+ * (the first month on record) the change is "—". The change is the percentage alone: the report says once what it is compared with.
  */
 export function partnerMetrics(month: MonthKey, today: Date = new Date(), data: ReportData = storeReportData()): PartnerMetric[] {
   const previousMonth = monthsBefore(month, 1);
   const hasPrevious = previousMonth >= earliestMonth(today);
   const toDate = isMonthToDate(month, today);
-  // the share of the previous month that has gone by the same day of this month
+  // the same day of the previous month (its last day when it is shorter), and the share of it that has gone by
+  const cutoffDay = Math.min(today.getUTCDate(), daysInMonth(previousMonth));
   const share = toDate ? Math.min(1, today.getUTCDate() / daysInMonth(previousMonth)) : 1;
-  const against = toDate ? "the same period last month, estimated" : formatMonth(previousMonth);
+  const samePeriod = toDate ? recordsUpTo(data, `${previousMonth}-${String(cutoffDay).padStart(2, "0")}`) : data;
   return METRICS.map((metric) => {
     const value = partnerFigure(metric.id, month, today, data);
-    const previous = hasPrevious ? partnerFigure(metric.id, previousMonth, today, data) * share : null;
-    return { ...metric, value, previous, delta: metricDelta(value, previous, against) };
+    const estimated = toDate && hasPrevious && ESTIMATED_TO_DATE.has(metric.id);
+    let previous: number | null = null;
+    if (hasPrevious) previous = estimated ? partnerFigure(metric.id, previousMonth, today, data) * share : partnerFigure(metric.id, previousMonth, today, samePeriod);
+    return { ...metric, value, previous, estimated, delta: metricDelta(value, previous) };
   });
 }
+
+/**
+ * The one line under "Performance overview" that says what every change is compared with (GOD-T11, GOD-T12):
+ * "Percentage changes are compared with October 2026." for a past month, and for the current month
+ * "November 2026 to date · Compared with the same period in October 2026 (website figures estimated)."
+ */
+export function comparisonLine(month: MonthKey, today: Date = new Date()): string {
+  const previous = formatMonth(monthsBefore(month, 1));
+  if (!isMonthToDate(month, today)) return `Percentage changes are compared with ${previous}.`;
+  return `${formatMonth(month)} to date · Compared with the same period in ${previous} (website figures estimated).`;
+}
+
+/** What the two daily website figures count, printed once under the cards (GOD-T12). */
+export const DAILY_FIGURES_DEFINITION =
+  "Daily first visits and Daily visitors are counted each day and added up over the month: someone who visits on three days counts three times.";
 
 /** True when the month recorded nothing at all (every figure is 0): the report says so in a neutral note. */
 export const isEmptyMonth = (metrics: readonly PartnerMetric[]): boolean => metrics.every((metric) => metric.value === 0);

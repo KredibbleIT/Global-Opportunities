@@ -20,7 +20,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TagPill } from "@/components/ui/TagPill";
 import { TruncatedLink, TruncatedText } from "@/components/ui/TruncatedText";
 import { formatDate } from "@/lib/format";
-import { RECORD_SOURCE_LABELS } from "@/lib/mock-entities";
+import { RECORD_ORIGIN_LABELS, RECORD_SOURCE_LABELS, recordOrigin } from "@/lib/mock-entities";
 import type { RecordRow } from "@/lib/services/database";
 
 interface RecordCardProps {
@@ -57,8 +57,11 @@ export function RecordCard({ record, access, canEdit, onVerify }: RecordCardProp
       <div className="flex items-center justify-between gap-2">
         {!record.verified && canEdit ? <VerifyButton name={record.name} onVerify={onVerify} /> : <span />}
         <div className="flex min-w-0 items-center gap-1.5">
-          {record.addedByName && <Avatar name={record.addedByName} size="xs" />}
-          <TruncatedText text={`${record.addedByName ?? "—"} · ${formatDate(record.createdAt)}`} className="caption" />
+          {recordOrigin(record) === "manual" && record.addedByName && <Avatar name={record.addedByName} size="xs" />}
+          <TruncatedText
+            text={recordOrigin(record) === "app" ? `${RECORD_ORIGIN_LABELS.app} · ${formatDate(record.createdAt)}` : `${record.addedByName ?? "—"} · ${RECORD_ORIGIN_LABELS.manual} · ${formatDate(record.createdAt)}`}
+            className="caption"
+          />
         </div>
       </div>
     </div>

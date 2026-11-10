@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { BRAND, BRAND_ADMIN_TITLE, BRAND_EMAIL_DOMAIN } from '../src/config/brand';
+import { BRAND, BRAND_ADMIN_TITLE, BRAND_EMAIL_DOMAIN, footerLinks } from '../src/config/brand';
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import path from 'path';
 import { isDevRoleSwitcherEnabled, parseDevRoles } from '../src/config/dev-roles';
@@ -23,7 +23,7 @@ import {
 import { logPost, platformRows, socialMonth, validatePost, validatePostUrl } from '../src/lib/services/social';
 import { ACTIONS_BY_STATUS, ACTION_RESULT, applyTestimonialAction, publicPreview, sortTestimonials, testimonialCounts } from '../src/lib/services/testimonials';
 import { DUPLICATE_MESSAGES, createRecord, findDuplicate, normalizeEmail, normalizePhone, pendingRecordCount, recordLinkAccess, recordsPace, sourceBreakdown, undoVerify, verifyRecord } from '../src/lib/services/database';
-import { AMBASSADOR_STATUSES, AMBASSADOR_TIERS, AMBASSADOR_TIER_LABELS, LISTING_TYPES, PARTNER_STAGES, PARTNER_STAGE_LABELS, isPartnerClosed, partnerClosedAt, PROGRAM_STATUSES, PROGRAM_TYPES, POST_PLATFORM_LABELS, RECORD_SOURCES, RECORD_SOURCE_LABELS, SOCIAL_PLATFORMS, SOCIAL_POST_PLATFORMS, TESTIMONIAL_STATUSES } from '../src/lib/mock-entities';
+import { AMBASSADOR_STATUSES, AMBASSADOR_TIERS, AMBASSADOR_TIER_LABELS, LISTING_TYPES, PARTNER_STAGES, PARTNER_STAGE_LABELS, isPartnerClosed, partnerClosedAt, PROGRAM_STATUSES, PROGRAM_TYPES, POST_PLATFORM_LABELS, RECORD_SOURCES, RECORD_SOURCE_LABELS, recordOrigin, SOCIAL_PLATFORMS, SOCIAL_POST_PLATFORMS, TESTIMONIAL_STATUSES } from '../src/lib/mock-entities';
 import { DEFAULT_TARGETS, DEFAULT_THRESHOLDS, buildSeed } from '../src/lib/mock-seed';
 import { getMockCollection, getPartnerStageLabels, setMockCollection, setPartnerStageLabels } from '../src/lib/mock-store';
 import { getStatusMeta } from '../src/lib/status-map';
@@ -33,11 +33,12 @@ import { MOCK_RUN, defaultBaseUrl } from './mode';
 import { MOCK_COUNTS } from '../src/lib/services/mock-counts';
 import { kpiMonthProgress } from '../src/lib/kpi';
 import { kpiUnit, pluralize, pluralWord } from '../src/lib/plural';
-import { metricDelta, partnerMetrics, lastCompleteMonth, isMonthToDate, earliestMonth, reportToday, reportTitle } from '../src/lib/report';
+import { metricDelta, partnerMetrics, lastCompleteMonth, isMonthToDate, earliestMonth, reportToday, reportTitle, recordsUpTo, comparisonLine, DAILY_FIGURES_DEFINITION } from '../src/lib/report';
 import { recordReport } from '../src/lib/services/report';
 import { buildKpiCards } from '../src/lib/services/dashboard';
 import { highlightLabels } from '../src/lib/scorecard';
 import { SCORE_FROM_DAY } from '../src/config/scorecard';
+import { eventDayEndsAt, eventStatus } from '../src/lib/event-status';
 import { formatAttainment, isTooEarly, metricResult, compositeSeries, composite, compositeStatus, highlightOf, metricAttainment, ownedMetrics, scorecardFor, strengths, teamScorecards, teamSummary } from '../src/lib/scorecard';
 
 const BASE_URL = defaultBaseUrl();
@@ -5253,6 +5254,25 @@ test.describe('Database, Social and Testimonials against the real API', () => {
     await expect(row.getByRole('button', { name: new RegExp(`Verify ${name}`) })).toBeVisible({ timeout: 15_000 });
   });
 
+  test('database (GOD-T3): a seeker who registers in the app is listed once, as an App registration, and the Entry filter finds them', async ({ page }) => {
+    const name = `App Seeker ${stamp}`;
+    const email = `app.seeker.${stamp}@example.org`;
+    const registered = await page.request.post(`${API_URL}/v1/auth/register`, { data: { name, email, password: 'Password123', role: 'seeker', country: 'Ghana' } });
+    expect(registered.status()).toBe(201);
+    await open(page, '/database');
+    await page.getByLabel('Search records').fill(name);
+    const row = page.locator('main tbody tr').filter({ hasText: name });
+    await expect(row).toHaveCount(1, { timeout: 15_000 });
+    await expect(row.locator('td[data-label="Added by and on"]')).toContainText('App registration');
+    await expect(row.locator('td[data-label="Source"]')).toContainText('Organic');
+    await page.getByRole('combobox', { name: 'Filter by entry' }).click();
+    await page.getByRole('option', { name: 'Manual entries' }).click();
+    await expect(row).toHaveCount(0);
+    await page.getByRole('combobox', { name: 'Filter by entry' }).click();
+    await page.getByRole('option', { name: 'App registrations' }).click();
+    await expect(row).toHaveCount(1);
+  });
+
   test('social: a logged post is saved, listed this month and counted in the totals', async ({ page }) => {
     const title = `Live Post ${stamp}`;
     await open(page, '/social');
@@ -7303,13 +7323,16 @@ test.describe('Database: the rules (no browser)', () => {
     }
   });
 
-  test('the seed: five sources, every email on @god.example and unique, phones unique, who added it resolves, a referral names an ambassador', () => {
+  test('the seed: five sources, every email on @god.example and unique, phones unique, who added a manual entry resolves (an app registration has nobody), a referral names an ambassador', () => {
     expect(new Set(seed.databaseRecords.map((r) => r.source))).toEqual(new Set(['organic', 'ambassador', 'event', 'partner', 'import']));
     expect(seed.databaseRecords.every((r) => r.email.endsWith(`@${BRAND_EMAIL_DOMAIN}`))).toBe(true);
     expect(new Set(seed.databaseRecords.map((r) => r.email)).size).toBe(seed.databaseRecords.length);
     expect(new Set(seed.databaseRecords.map((r) => normalizePhone(r.phone, r.country))).size).toBe(seed.databaseRecords.length);
     const staffIds = new Set(seed.staff.map((s) => s.id));
-    expect(seed.databaseRecords.every((r) => r.addedById && staffIds.has(r.addedById))).toBe(true);
+    // GOD-T3: both entry types are seeded; staff added the manual entries, nobody added an app registration
+    expect(new Set(seed.databaseRecords.map((r) => recordOrigin(r)))).toEqual(new Set(['app', 'manual']));
+    expect(seed.databaseRecords.filter((r) => recordOrigin(r) === 'manual').every((r) => r.addedById && staffIds.has(r.addedById))).toBe(true);
+    expect(seed.databaseRecords.filter((r) => recordOrigin(r) === 'app').every((r) => !r.addedById && r.source === 'organic')).toBe(true);
     for (const r of seed.databaseRecords) expect(Boolean(r.ambassadorId)).toBe(r.source === 'ambassador');
     // nobody in the seed is a duplicate of anybody else
     expect(seed.databaseRecords.filter((r) => findDuplicate(r, seed.databaseRecords, r.id))).toHaveLength(0);
@@ -7334,36 +7357,32 @@ test.describe('Database: the page', () => {
     await expect(page.getByTestId('table-row').first()).toBeVisible();
   };
 
-  test('the pace card: the meter, its text, the status in words, the marker, the pace tick and three labelled zones', async ({ page }) => {
+  test('the pace card (GOD-T17): the title and the status, "n of target verified", ONE bar and ONE "Expected by today" caption, no repeated pace or target', async ({ page }) => {
     await openList(page);
     const pace = recordsPace();
     const card = page.getByTestId('records-pace');
     const meter = card.getByRole('meter');
+    await expect(meter).toHaveCount(1);
     await expect(meter).toHaveAttribute('aria-valuemin', '0');
     await expect(meter).toHaveAttribute('aria-valuenow', String(pace.verified));
-    await expect(meter).toHaveAttribute('aria-valuemax', String(pace.gauge.max));
+    await expect(meter).toHaveAttribute('aria-valuemax', String(pace.target));
     await expect(meter).toHaveAttribute('aria-valuetext', pace.text);
+    await expect(card.getByRole('heading', { name: 'Verified this month' })).toBeVisible();
     await expect(page.getByTestId('pace-headline')).toHaveText(`${pace.verified} of ${pace.target} verified`);
-    await expect(page.getByTestId('pace-status')).toHaveText({ on_pace: 'On track', behind: 'Behind', far_behind: 'Off track' }[pace.status]);
-    await expect(page.getByTestId('pace-zone-labels')).toHaveText('Far behindBehindOn pace');
-    await expect(page.getByTestId('pace-marker-label')).toHaveText(new RegExp(`^${pace.verified} verified`)); // (plus the chevron and "4.4x pace" when capped)
-    await expect(page.getByTestId('pace-tick-label')).toHaveText(`pace ${pace.paceRounded}`);
-    // more verified than the bar can show: the marker is pinned to the right end with a chevron and the multiple of the pace
-    if (pace.gauge.capped) {
-      await expect(page.getByTestId('pace-capped')).toHaveText(`${pace.gauge.capped}× the pace`);
-      await expect(page.getByTestId('pace-arrow')).toBeVisible();
-    } else {
-      await expect(page.getByTestId('pace-capped')).toHaveCount(0);
-      await expect(page.getByTestId('pace-arrow')).toHaveCount(0);
-    }
-    const bar = (await meter.boundingBox())!;
-    const centre = async (id: string) => {
-      const b = (await page.getByTestId(id).boundingBox())!;
-      return (b.x + b.width / 2 - bar.x) / bar.width;
-    };
-    expect(await centre('pace-tick')).toBeCloseTo(pace.gauge.paceAt / 100, 1);
-    expect(await centre('pace-marker')).toBeCloseTo(pace.gauge.markerAt / 100, 1);
-    expect(Math.round((await page.getByTestId('pace-marker').boundingBox())!.width)).toBe(12);
+    await expect(page.getByTestId('pace-expected')).toHaveText(`Expected by today: ${pace.paceRounded}`);
+    // the status badge is on the right of the title, on the same line
+    const title = (await card.getByRole('heading', { name: 'Verified this month' }).boundingBox())!;
+    const badge = (await page.getByTestId('pace-status').boundingBox())!;
+    expect(badge.x).toBeGreaterThan(title.x + title.width);
+    expect(Math.abs(badge.y + badge.height / 2 - (title.y + title.height / 2))).toBeLessThanOrEqual(4);
+    // nothing repeated: no separate pace or target figure, no zone words, no tick or marker labels
+    for (const id of ['pace-figure', 'pace-target', 'pace-zone-labels', 'pace-tick-label', 'pace-marker-label', 'pace-capped']) await expect(page.getByTestId(id), id).toHaveCount(0);
+    await expect(card).not.toContainText('Pace ');
+    await expect(card).not.toContainText('Target ');
+    // the fill is the share of the target verified so far (full once the target is met)
+    const bar = (await page.getByTestId('pace-bar').boundingBox())!;
+    const fill = (await page.getByTestId('pace-bar-fill').boundingBox())!;
+    expect(fill.width / bar.width).toBeCloseTo(Math.min(1, pace.verified / pace.target), 1);
   });
 
   test('records by source: a bar and a legend with a count and a percentage for each of the five sources', async ({ page }) => {
@@ -7378,7 +7397,7 @@ test.describe('Database: the page', () => {
     await openList(page);
     const headers = (await page.locator('main table thead th').allTextContents()).map((text) => text.trim()).filter((text) => text && text !== 'Open');
     expect(headers).toEqual(['Record', 'Country', 'Institution', 'Source', 'Linked', 'Verified', 'Added by and on']);
-    const record = pendingAll[0];
+    const record = pendingAll.find((r) => recordOrigin(r) === 'manual')!; // a staff entry: it has an added-by avatar
     await page.getByRole('searchbox', { name: 'Search records' }).fill(record.name);
     const row = page.getByTestId('table-row').first();
     await expect(row).toContainText(record.name);
@@ -7389,9 +7408,35 @@ test.describe('Database: the page', () => {
     await expect(row.getByTestId('status-badge').first()).toContainText('Pending');
     const staff = data.staff.find((s) => s.id === record.addedById)!;
     await expect(row.locator('td[data-label="Added by and on"]')).toContainText(staff.name);
+    await expect(row.locator('td[data-label="Added by and on"]')).toContainText('Manual entry');
     const avatar = row.locator('td[data-label="Added by and on"] span.size-6').first();
     expect(Math.round((await avatar.boundingBox())!.width)).toBe(24);
     expect(Math.round((await row.boundingBox())!.height)).toBe(56);
+  });
+
+  test('GOD-T3: an app registration says so instead of a staff name, and the Entry filter splits app registrations from manual entries', async ({ page }) => {
+    await openList(page);
+    const app = data.databaseRecords.find((r) => recordOrigin(r) === 'app')!;
+    await page.getByRole('searchbox', { name: 'Search records' }).fill(app.name);
+    const row = page.getByTestId('table-row').first();
+    await expect(row).toContainText(app.name);
+    const cell = row.locator('td[data-label="Added by and on"]');
+    await expect(cell).toContainText('App registration');
+    await expect(cell).not.toContainText('Manual entry');
+    await expect(cell.locator('span.size-6')).toHaveCount(0); // no staff avatar
+    await page.getByRole('searchbox', { name: 'Search records' }).fill('');
+    const appCount = data.databaseRecords.filter((r) => recordOrigin(r) === 'app').length;
+    expect(appCount).toBeGreaterThan(0);
+    await page.getByRole('combobox', { name: 'Filter by entry' }).click();
+    await page.getByRole('option', { name: 'App registrations' }).click();
+    expect(await tab(page, 'All')).toBe(String(appCount));
+    await page.getByRole('combobox', { name: 'Filter by entry' }).click();
+    await page.getByRole('option', { name: 'Manual entries' }).click();
+    expect(await tab(page, 'All')).toBe(String(data.databaseRecords.length - appCount));
+    // each record is in exactly one of the two: together they are All
+    await page.getByRole('combobox', { name: 'Filter by entry' }).click();
+    await page.getByRole('option', { name: 'All entries' }).click();
+    expect(await tab(page, 'All')).toBe(String(data.databaseRecords.length));
   });
 
   test('filters and counts: All, Verified and Pending count the records; the source and the search narrow the counts', async ({ page }) => {
@@ -7798,28 +7843,19 @@ test.describe('Database: the pre-step additions', () => {
   test.skip(!MOCK_RUN, 'the redesign screens run on sample data: see npm run test:e2e:mock');
   const data = buildSeed().collections;
 
-  test('the default view is not pinned past the scale: the marker is inside the bar and there is no capped text', async ({ page }) => {
-    await page.setViewportSize({ width: 1440, height: 1000 });
-    await page.goto(`${BASE_URL}/database`, { timeout: 30_000 });
-    await expect(page.getByTestId('pace-gauge')).toBeVisible();
-    const pace = recordsPace();
-    expect(pace.gauge.capped).toBeNull();
-    expect(pace.verified).toBeLessThanOrEqual(Math.max(Math.ceil(pace.pace * 2), 1)); // inside the scale
-    await expect(page.getByTestId('pace-capped')).toHaveCount(0);
-    await expect(page.getByTestId('pace-arrow')).toHaveCount(0);
-    const bar = (await page.getByRole('meter').boundingBox())!;
-    const marker = (await page.getByTestId('pace-marker').boundingBox())!;
-    expect(marker.x + marker.width / 2).toBeLessThan(bar.x + bar.width - 2);
-    // the zone words are centred under their own zones, and the tooltip names the real thresholds
-    const zones = await Promise.all(['far_behind', 'behind', 'on_pace'].map(async (key) => (await page.getByTestId(`pace-zone-${key}`).boundingBox())!));
-    const words = page.getByTestId('pace-zone-labels').locator('span');
-    for (let i = 0; i < 3; i++) {
-      const w = (await words.nth(i).boundingBox())!;
-      expect(Math.abs(w.x + w.width / 2 - (zones[i].x + zones[i].width / 2))).toBeLessThanOrEqual(2);
+  test('the verification bar never draws past its track, and the two halves of the card are top-aligned, stacked on a phone (GOD-T17)', async ({ page }) => {
+    for (const width of [1440, 434]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await page.goto(`${BASE_URL}/database`, { timeout: 30_000 });
+      await expect(page.getByTestId('pace-bar')).toBeVisible();
+      const bar = (await page.getByTestId('pace-bar').boundingBox())!;
+      const fill = (await page.getByTestId('pace-bar-fill').boundingBox())!;
+      expect(fill.x + fill.width).toBeLessThanOrEqual(bar.x + bar.width + 0.5);
+      const verified = (await page.getByRole('heading', { name: 'Verified this month' }).boundingBox())!;
+      const sources = (await page.getByRole('heading', { name: 'Records by source' }).boundingBox())!;
+      if (width >= 1024) expect(Math.abs(verified.y - sources.y)).toBeLessThanOrEqual(2); // side by side, aligned
+      else expect(sources.y).toBeGreaterThan(verified.y + verified.height); // stacked
     }
-    await page.getByTestId('pace-zone-labels').hover();
-    await expect(page.getByRole('tooltip')).toHaveText(pace.hint);
-    expect(pace.hint).toBe('Far behind: below 70% of the pro-rated pace. Behind: 70% to 95%. On pace: 95% and above.');
   });
 
   test('the legend is a compact left-aligned row with a 16px gap that wraps where it must, each item on one line, no gaps over 24px', async ({ page }) => {
@@ -8976,16 +9012,14 @@ test.describe('ZoneGauge: the labels never overlap', () => {
     });
   }
 
-  test('the Database pace gauge uses the same rule', async ({ page }) => {
+  test('the Database verification card uses the same rule: its headline, bar and caption never overlap', async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 900 });
     await page.goto(`${BASE_URL}/database`, { timeout: 30_000 });
-    await expect(page.getByTestId('pace-gauge')).toBeVisible();
-    await expect(page.getByTestId('pace-marker-label')).toBeVisible();
-    await expect(page.getByTestId('pace-tick-label')).toBeVisible();
+    await expect(page.getByTestId('pace-bar')).toBeVisible();
+    await expect(page.getByTestId('pace-expected')).toBeVisible();
     await expect.poll(async () => {
-      const a = await page.getByTestId('pace-marker-label').boundingBox();
-      const b = await page.getByTestId('pace-tick-label').boundingBox();
-      return a && b ? overlap(a, b) : true;
+      const [a, b, c] = await Promise.all(['pace-headline', 'pace-bar', 'pace-expected'].map((id) => page.getByTestId(id).boundingBox()));
+      return a && b && c ? overlap(a, b) || overlap(b, c) || overlap(a, c) : true;
     }).toBe(false);
   });
 });
@@ -10309,7 +10343,6 @@ test.describe('Settings: Targets', () => {
     await expect(page.getByTestId('toast').filter({ hasText: `Beneficiaries verified target changed to 60 from ${formatMonth(currentMonth())}.` })).toBeVisible();
     await expect(page.getByTestId('changed-dot-beneficiaries_verified')).toHaveCount(0);
     await goViaSidebar(page, 'People', 'Database');
-    await expect(page.getByTestId('pace-target')).toHaveText('60');
     const pace = recordsPace();
     await expect(page.getByTestId('pace-headline')).toHaveText(`${pace.verified} of 60 verified`);
     await expect(page.getByRole('meter')).toHaveAttribute('aria-valuetext', new RegExp(`^${pace.verified} of 60 verified, pro-rated pace \\d+, (off track|behind)$`));
@@ -10368,7 +10401,7 @@ test.describe('Settings: Targets', () => {
     await goViaSidebar(page, 'People', 'Database');
     await expect(page.getByRole('meter')).toBeVisible();
     // the zone words' tooltip names the saved thresholds
-    await page.getByTestId('pace-zone-labels').hover();
+    await page.getByTestId('pace-status').hover(); // GOD-T17: the thresholds are the status badge's tooltip
     await expect(page.getByRole('tooltip')).toHaveText('Far behind: below 100% of the pro-rated pace. Behind: 100% to 150%. On pace: 150% and above.');
   });
 
@@ -10838,7 +10871,7 @@ test.describe('Dated thresholds: in Settings and on the pages', () => {
     await expect(page.getByTestId('scheduled-thresholds')).toHaveText(`Changes to green 150%, amber 100% from ${formatMonth(next)}`);
     await expect(history(page).getByTestId('history-row').first()).toContainText(formatMonth(next));
     await goViaSidebar(page, 'People', 'Database');
-    await page.getByTestId('pace-zone-labels').hover();
+    await page.getByTestId('pace-status').hover(); // GOD-T17: the thresholds are the status badge's tooltip
     await expect(page.getByRole('tooltip')).toHaveText('Far behind: below 70% of the pro-rated pace. Behind: 70% to 95%. On pace: 95% and above.');
   });
 
@@ -10853,7 +10886,7 @@ test.describe('Dated thresholds: in Settings and on the pages', () => {
     await expect(rows).toHaveCount(2);
     for (const index of [0, 1]) await expect(rows.nth(index)).toContainText(formatMonth(currentMonth())); // the same month for both
     await goViaSidebar(page, 'People', 'Database');
-    await page.getByTestId('pace-zone-labels').hover();
+    await page.getByTestId('pace-status').hover(); // GOD-T17: the thresholds are the status badge's tooltip
     await expect(page.getByRole('tooltip')).toHaveText('Far behind: below 100% of the pro-rated pace. Behind: 100% to 150%. On pace: 150% and above.');
   });
 
@@ -12135,6 +12168,9 @@ test.describe('Monthly report maths (no browser)', () => {
     expect(metricDelta(0, 0, 'August 2026')).toEqual({ kind: 'na', text: 'n/a', percent: null });
     expect(metricDelta(5, null, 'August 2026')).toEqual({ kind: 'none', text: '—', percent: null }); // no previous month
     expect(metricDelta(3, 2.4, 'the same period last month, estimated').text).toBe('+25% vs the same period last month, estimated'); // an estimate is a fraction
+    // GOD-T11: the partner report gives no "against": the change alone, the comparison is stated once above the cards
+    expect(metricDelta(112, 100)).toEqual({ kind: 'up', text: '+12%', percent: 12 });
+    expect(metricDelta(100, 100).text).toBe('0%');
   });
 
   test('months: the last complete month is the default; the current month is month to date; the first month on record has no previous one', () => {
@@ -12173,15 +12209,33 @@ test.describe('Monthly report maths (no browser)', () => {
     const views = normal.find((metric) => metric.id === 'website_views')!;
     const before = kpiValue('website_views', monthsBefore(may, 1), kpiData);
     expect(views.previous).toBe(before);
-    expect(views.delta).toEqual(metricDelta(views.value, before, formatMonth(monthsBefore(may, 1))));
+    expect(views.delta).toEqual(metricDelta(views.value, before));
+    expect(normal.every((metric) => !metric.estimated)).toBe(true); // a past month compares real figures
     // the first month on record: nothing to compare with
     const first = partnerMetrics(FIXED_MONTHS[0], FIXED_TODAY, reportData);
     expect(first.every((metric) => metric.previous === null && metric.delta.kind === 'none' && metric.delta.text === '—')).toBe(true);
-    // the current month (June 15 of 30; May has 31 days): May pro-rated to the 15th, and the words say it is an estimate
+    // the current month (June 15 of 30; May has 31 days). GOD-T12: what has dates is COUNTED up to May 15; only the website figures (monthly totals)
+    // are May pro-rated to the 15th, and only they are marked as estimates
     const toDate = partnerMetrics(june, FIXED_TODAY, reportData);
-    const reach = toDate.find((metric) => metric.id === 'social_reach')!;
-    expect(reach.previous).toBeCloseTo(kpiValue('social_reach', may, kpiData) * (15 / 31), 8);
-    expect(reach.delta.text.endsWith('vs the same period last month, estimated') || reach.delta.kind === 'na').toBe(true);
+    const byId = Object.fromEntries(toDate.map((metric) => [metric.id, metric]));
+    const mayTo15 = recordsUpTo(reportData, `${may}-15`);
+    expect(byId.social_reach.previous).toBe(kpiValue('social_reach', may, mayTo15));
+    expect(byId.posts_published.previous).toBe(kpiValue('posts_published', may, mayTo15));
+    expect(byId.opportunities_published.previous).toBe(kpiValue('opportunities_published', may, mayTo15));
+    expect(byId.programs_organised.previous).toBe(kpiValue('programs_organised', may, mayTo15));
+    expect(byId.new_partners.previous).toBe(kpiValue('partners_onboarded', may, mayTo15));
+    expect(byId.new_ambassadors.previous).toBe(mayTo15.ambassadors.filter((a) => a.status !== 'applicant' && a.joinedAt.startsWith(may)).length);
+    expect(byId.website_views.previous).toBeCloseTo(kpiValue('website_views', may, kpiData) * (15 / 31), 8);
+    expect(toDate.filter((metric) => metric.estimated).map((metric) => metric.id)).toEqual(['website_views', 'daily_first_visits', 'daily_visitors']);
+    for (const metric of toDate) expect(metric.delta.text, metric.id).toMatch(/^([+-]?\d+%|n\/a|—)$/);
+    // the counted figures are whole numbers: a small total is compared with what really happened, never with a fraction
+    for (const metric of toDate.filter((m) => !m.estimated)) expect(Number.isInteger(metric.previous), metric.id).toBe(true);
+  });
+
+  test('GOD-T12: the comparison line and the daily-figures definition', () => {
+    expect(comparisonLine(may, FIXED_TODAY)).toBe(`Percentage changes are compared with ${formatMonth(monthsBefore(may, 1))}.`);
+    expect(comparisonLine(june, FIXED_TODAY)).toBe(`${formatMonth(june)} to date · Compared with the same period in ${formatMonth(may)} (website figures estimated).`);
+    expect(DAILY_FIGURES_DEFINITION).toContain('counted each day and added up');
   });
 
   test('a zero previous value is "n/a", not a percentage (a month after an empty one)', () => {
@@ -12259,8 +12313,8 @@ test.describe('Monthly report: routes, access, the two templates and the coheren
     await expect(cells).toHaveCount(10);
     const expected: [string, string][] = [
       ['website_views', 'Website views'],
-      ['daily_first_visits', 'Daily first visits (sum)'],
-      ['daily_visitors', 'Daily visitors (sum)'],
+      ['daily_first_visits', 'Daily first visits'],
+      ['daily_visitors', 'Daily visitors'],
       ['social_reach', 'Social reach'],
       ['social_engagement', 'Social engagement'],
       ['posts_published', 'Posts published'],
@@ -12343,9 +12397,13 @@ test.describe('Monthly report: routes, access, the two templates and the coheren
     await expect(page).toHaveURL(new RegExp(`month=${currentMonth()}`));
     await expect(page.getByTestId('month-to-date')).toHaveText('Month to date');
     await expect(page.getByTestId('to-date-note')).toBeVisible();
-    await expect(page.getByTestId('partner-report').getByText('compared with the same period last month', { exact: false }).first()).toBeVisible();
-    const deltas = await page.getByTestId('metric-delta').allTextContents();
-    for (const text of deltas) expect(text === 'n/a' || text === '—' || text.endsWith('vs the same period last month, estimated'), text).toBe(true);
+    await expect(page.getByTestId('report-metrics').getByText(comparisonLine(currentMonth()), { exact: true })).toBeVisible();
+    // GOD-T11/T12: each card shows the change alone; "(est.)" only on the three website figures
+    for (const metric of partnerMetrics(currentMonth(), new Date())) {
+      const delta = page.getByTestId(`metric-${metric.id}`).getByTestId('metric-delta');
+      await expect(delta, metric.id).toHaveText(metric.estimated && metric.delta.percent !== null ? `${metric.delta.text} (est.)` : metric.delta.text);
+    }
+    await expect(page.getByTestId('daily-definition')).toHaveText(DAILY_FIGURES_DEFINITION);
     // back to the default month removes the parameter
     await page.getByRole('combobox', { name: 'Month' }).click();
     await page.getByRole('option', { name: new RegExp(formatMonth(defaultMonth())) }).click();
@@ -12701,6 +12759,56 @@ test.describe('Monthly report: real-API mode says it is sample data', () => {
 // ---------------------------------------------------------------------------------------------
 // Plurals: ONE helper for "1 share" / "2 shares" (lib/plural.ts), and the counts in the reports and on the cards use it.
 // ---------------------------------------------------------------------------------------------
+test.describe('Event status from the date (GOD-T7, no browser)', () => {
+  const at = (iso: string) => new Date(iso);
+  test('an event is upcoming until the end of its day in its own zone, then past; cancelled stays cancelled', () => {
+    const event = { status: 'upcoming' as const, dateTime: '2 Aug 2026, 6:00 PM GMT' };
+    expect(eventStatus(event, at('2026-08-02T12:00:00Z'))).toBe('upcoming'); // the afternoon before
+    expect(eventStatus(event, at('2026-08-02T23:59:59Z'))).toBe('upcoming'); // still the event's day
+    expect(eventStatus(event, at('2026-08-03T00:00:00Z'))).toBe('past');
+    expect(eventStatus(event, at('2026-11-05T09:00:00Z'))).toBe('past'); // the admin review's November visit
+    // a stored "past" is not trusted either: the date decides
+    expect(eventStatus({ status: 'past', dateTime: '20 Dec 2026, 10:00 AM GMT' }, at('2026-11-05T09:00:00Z'))).toBe('upcoming');
+    expect(eventStatus({ status: 'cancelled', dateTime: '20 Dec 2026, 10:00 AM GMT' }, at('2026-11-05T09:00:00Z'))).toBe('cancelled');
+  });
+
+  test('the zone moves the end of the day; ISO dates from the API work; an unreadable date keeps the stored status', () => {
+    // GMT+1: the day ends at 23:00 UTC
+    expect(eventDayEndsAt('2 Aug 2026, 6:00 PM GMT+1')).toBe(Date.UTC(2026, 7, 2, 23));
+    expect(eventDayEndsAt('2 Aug 2026, 6:00 PM UTC-05:00')).toBe(Date.UTC(2026, 7, 3, 5));
+    expect(eventDayEndsAt('2 August 2026')).toBe(Date.UTC(2026, 7, 3));
+    expect(eventDayEndsAt('2026-11-01T10:00')).toBe(Date.UTC(2026, 10, 2));
+    expect(eventDayEndsAt('2026-11-01T10:00:00.000Z')).toBe(Date.UTC(2026, 10, 2));
+    expect(eventDayEndsAt('2026-11-01T10:00+02:00')).toBe(Date.UTC(2026, 10, 1, 22));
+    expect(eventDayEndsAt('sometime soon')).toBeNull();
+    expect(eventDayEndsAt('2 Foo 2026')).toBeNull();
+    expect(eventStatus({ status: 'upcoming', dateTime: 'TBC' }, at('2030-01-01T00:00:00Z'))).toBe('upcoming');
+  });
+});
+
+test.describe('Footer links (GOD-T20)', () => {
+  test('Terms and Privacy open the published pages in a new tab; no link points at "#"; Help is absent until NEXT_PUBLIC_HELP_URL is set', async ({ page }) => {
+    await page.goto(`${BASE_URL}/`, { timeout: 30_000 });
+    const footer = page.locator('main footer').last();
+    await expect(footer.getByRole('link', { name: /^Terms/ })).toHaveAttribute('href', 'https://globalopportunitydesk.com/terms-of-service/');
+    await expect(footer.getByRole('link', { name: /^Privacy/ })).toHaveAttribute('href', 'https://globalopportunitydesk.com/privacy-policy/');
+    for (const link of await footer.getByRole('link').all()) {
+      await expect(link).toHaveAttribute('target', '_blank');
+      await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+      expect(await link.getAttribute('href')).not.toBe('#');
+    }
+    await expect(footer.getByRole('link', { name: /^Help/ })).toHaveCount(0); // not configured in the test runs
+  });
+
+  test('footerLinks: Help only for an https or mailto address (no browser)', () => {
+    expect(footerLinks(undefined).map((link) => link.label)).toEqual(['Terms', 'Privacy']);
+    expect(footerLinks('https://help.example.org')[0]).toEqual({ label: 'Help', href: 'https://help.example.org' });
+    expect(footerLinks('mailto:desk@example.org')[0].label).toBe('Help');
+    expect(footerLinks('javascript:alert(1)').map((link) => link.label)).toEqual(['Terms', 'Privacy']);
+    expect(footerLinks('#').map((link) => link.label)).toEqual(['Terms', 'Privacy']);
+  });
+});
+
 test.describe('Plural helper (no browser)', () => {
   test('pluralize: 0 and 2 take the plural, exactly 1 the singular; thousands get separators; an irregular plural can be given', () => {
     expect(pluralize(0, 'share')).toBe('0 shares');

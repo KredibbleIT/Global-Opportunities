@@ -17,8 +17,9 @@ import { computeGrants, getEffectiveToggles } from '../lib/permissions.js';
 import { SeekerProfile, HirerAccount } from '../models/Profiles.js';
 import { Applicant, EventAttendee, CompanyVerification, VerificationDoc, Opportunity, GrantApplication } from '../models/Platform.js';
 import { Channel, ChannelPost, CommunityMembership } from '../models/Community.js';
-import { Testimonial } from '../models/AdminPortal.js';
+import { Testimonial, Beneficiary } from '../models/AdminPortal.js';
 import { AccountInvite } from '../models/AdminPortal.js';
+import { ensureAppBeneficiary } from '../lib/app-beneficiaries.js';
 import { SavedItem } from '../models/User.js';
 import { createVerificationCode, hashVerificationCode, sendVerificationEmail, sendPasswordResetEmail } from '../lib/email.js';
 import { env } from '../config/env.js';
@@ -117,6 +118,13 @@ authRouter.post(
           : '[]',
       });
       await seeker.save();
+      // GOD-T3: the seeker appears in the admin Database as an "App registration". A failure here must not undo a valid
+      // registration: it is logged, and migration 003 (run on every deploy, idempotent) creates the missing record.
+      try {
+        await ensureAppBeneficiary(user, seeker);
+      } catch (error) {
+        logger.error({ err: error, userId: String(user._id) }, 'Could not add the new seeker to the Database; migration 003 will add it');
+      }
     } else if (role === 'hirer') {
       const hirer = new HirerAccount({
         userId: user._id,
@@ -1079,7 +1087,7 @@ authRouter.get(
     const where = await userDataFilters(user);
     const [
       seekerProfile, hirerAccount, applications, grantApplications, eventBookings, companyVerifications, verificationDocs,
-      savedItems, channelMemberships, communityPosts, channels, opportunities, testimonials, sessions,
+      savedItems, channelMemberships, communityPosts, channels, opportunities, testimonials, sessions, databaseRecords,
     ] = await Promise.all([
       SeekerProfile.findOne(where.seekerProfile).lean(),
       HirerAccount.findOne(where.hirerAccount).lean(),
@@ -1096,6 +1104,8 @@ authRouter.get(
       Testimonial.find(where.testimonials).lean(),
       // Device and dates only: token hashes stay on the server.
       RefreshToken.find(where.sessions).select('deviceLabel createdAt expiresAt revokedAt').lean(),
+      // GOD-T3: the desk's Database record for this account (sync bookkeeping stays on the server).
+      Beneficiary.find(where.beneficiaries).select('-wordpressSync -phoneNormalized').lean(),
     ]);
 
     const exportData = {
@@ -1114,6 +1124,7 @@ authRouter.get(
       opportunities,
       testimonials,
       sessions,
+      databaseRecords,
       exportedAt: new Date().toISOString(),
     };
 
