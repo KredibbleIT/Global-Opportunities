@@ -110,37 +110,36 @@ jobs:
     if: inputs.target_env != 'production'
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    outputs:
-      skipped: ${{ steps.deploy.outputs.skipped }}
     steps:
+      # A missing secret fails the run. It used to print a notice and exit 0,
+      # which left CD green while nothing was deployed (10 Nov 2026).
       - name: Deploy to VPS staging via SSH
-        id: deploy
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
           VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
           RELEASE_SHA: ${{ needs.image.outputs.release_sha }}
         run: |
-          if [ -z "$VPS_HOST" ] || [ -z "$VPS_SSH_KEY" ]; then
-            echo "::notice title=Staging VPS deploy skipped::Set VPS_HOST, VPS_SSH_KEY and VPS_KNOWN_HOSTS repository secrets to deploy to the VPS."
-            echo "skipped=true" >> "$GITHUB_OUTPUT"
-            exit 0
+          missing=""
+          [ -n "$VPS_HOST" ] || missing="$missing VPS_HOST"
+          [ -n "$VPS_SSH_KEY" ] || missing="$missing VPS_SSH_KEY"
+          [ -n "$VPS_KNOWN_HOSTS" ] || missing="$missing VPS_KNOWN_HOSTS"
+          if [ -n "$missing" ]; then
+            echo "::error title=Staging VPS deploy not run::Missing repository secrets:$missing. Nothing was deployed. Add them under Settings > Secrets and variables > Actions (see docs/infrastructure/VPS.md), then re-run this workflow."
+            exit 1
           fi
-          echo "skipped=false" >> "$GITHUB_OUTPUT"
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          if [ -n "$VPS_KNOWN_HOSTS" ]; then
-            echo "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
-            chmod 600 ~/.ssh/known_hosts
-          fi
+          echo "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
           eval "$(ssh-agent -s)"
           echo "$VPS_SSH_KEY" | tr -d '\r' | ssh-add -
-          ssh -o BatchMode=yes deploy@"$VPS_HOST" "deploy staging $RELEASE_SHA"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes deploy@"$VPS_HOST" "deploy staging $RELEASE_SHA"
 
   smoke-staging:
     name: Smoke test (Staging)
     needs: [image, deploy-staging]
-    if: needs.deploy-staging.outputs.skipped != 'true' && inputs.target_env != 'production'
+    if: inputs.target_env != 'production'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -157,44 +156,43 @@ jobs:
   deploy-production:
     name: Deploy to Production (VPS)
     needs: [image, smoke-staging]
-    if: always() && needs.image.result == 'success' && (needs.smoke-staging.result == 'success' || needs.smoke-staging.result == 'skipped') && inputs.target_env != 'staging'
+    # Production needs a passing staging smoke test, unless this is a manual
+    # production-only run. A failed staging deploy SKIPS the smoke test, so
+    # "skipped" must not count as a pass here.
+    if: always() && needs.image.result == 'success' && inputs.target_env != 'staging' && (needs.smoke-staging.result == 'success' || inputs.target_env == 'production')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:
       name: production
     steps:
       - name: Deploy to VPS production via SSH
-        id: deploy
         env:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
           VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
           RELEASE_SHA: ${{ needs.image.outputs.release_sha }}
         run: |
-          if [ -z "$VPS_HOST" ] || [ -z "$VPS_SSH_KEY" ]; then
-            echo "::notice title=Production VPS deploy skipped::Set VPS_HOST, VPS_SSH_KEY and VPS_KNOWN_HOSTS repository secrets to deploy to the VPS."
-            echo "skipped=true" >> "$GITHUB_OUTPUT"
-            exit 0
+          missing=""
+          [ -n "$VPS_HOST" ] || missing="$missing VPS_HOST"
+          [ -n "$VPS_SSH_KEY" ] || missing="$missing VPS_SSH_KEY"
+          [ -n "$VPS_KNOWN_HOSTS" ] || missing="$missing VPS_KNOWN_HOSTS"
+          if [ -n "$missing" ]; then
+            echo "::error title=Production VPS deploy not run::Missing repository secrets:$missing. Nothing was deployed. Add them under Settings > Secrets and variables > Actions (see docs/infrastructure/VPS.md), then re-run this workflow."
+            exit 1
           fi
-          echo "skipped=false" >> "$GITHUB_OUTPUT"
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          if [ -n "$VPS_KNOWN_HOSTS" ]; then
-            echo "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
-            chmod 600 ~/.ssh/known_hosts
-          fi
+          echo "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
           eval "$(ssh-agent -s)"
           echo "$VPS_SSH_KEY" | tr -d '\r' | ssh-add -
-          ssh -o BatchMode=yes deploy@"$VPS_HOST" "deploy production $RELEASE_SHA"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes deploy@"$VPS_HOST" "deploy production $RELEASE_SHA"
 
       - uses: actions/checkout@v7
-        if: steps.deploy.outputs.skipped != 'true'
       - uses: actions/setup-node@v7
-        if: steps.deploy.outputs.skipped != 'true'
         with:
           node-version-file: .nvmrc
       - name: Run smoke test against Production API
-        if: steps.deploy.outputs.skipped != 'true'
         env:
           RELEASE_SHA: ${{ needs.image.outputs.release_sha }}
         run: |
@@ -210,8 +208,10 @@ jobs:
         env:
           RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
         run: |
+          # A warning, not a failure: Render is the old host being retired, and
+          # its own GitHub auto-deploy can still deploy main without the hook.
           if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
-            echo "::notice title=Render deploy skipped::RENDER_DEPLOY_HOOK_URL is not set. Render's own GitHub auto-deploy (if enabled) still deploys main."
+            echo "::warning title=Render deploy not triggered::RENDER_DEPLOY_HOOK_URL is not set, so this run did not deploy to Render. Render's own GitHub auto-deploy (if enabled) still deploys main."
             exit 0
           fi
           curl --fail --silent --show-error --max-time 60 -X POST "$RENDER_DEPLOY_HOOK_URL" > /dev/null
