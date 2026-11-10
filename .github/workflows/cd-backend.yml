@@ -130,11 +130,20 @@ jobs:
           fi
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          echo "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # Secrets pasted on Windows can end in a carriage return, which breaks
+          # both the host name and the host key line. Strip it.
+          host=$(printf '%s' "$VPS_HOST" | tr -d '\r\n\t ')
+          printf '%s\n' "$VPS_KNOWN_HOSTS" | tr -d '\r' > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
+          if ! ssh-keygen -F "$host" -f ~/.ssh/known_hosts > /dev/null; then
+            echo "::error title=VPS_KNOWN_HOSTS does not match VPS_HOST::VPS_KNOWN_HOSTS has no key for the host in VPS_HOST. Each line must start with exactly the VPS_HOST value; regenerate it with ssh-keyscan -t ed25519 and the VPS_HOST value. The fingerprints it holds are listed below."
+            # Fingerprints and key types only: never print host names (SEC-140).
+            ssh-keygen -lf ~/.ssh/known_hosts | awk '{ print $2, $NF }' || echo "No valid key lines in VPS_KNOWN_HOSTS."
+            exit 1
+          fi
           eval "$(ssh-agent -s)"
           echo "$VPS_SSH_KEY" | tr -d '\r' | ssh-add -
-          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes deploy@"$VPS_HOST" "deploy staging $RELEASE_SHA"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes deploy@"$host" "deploy staging $RELEASE_SHA"
 
   smoke-staging:
     name: Smoke test (Staging)
@@ -182,11 +191,17 @@ jobs:
           fi
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          echo "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          host=$(printf '%s' "$VPS_HOST" | tr -d '\r\n\t ')
+          printf '%s\n' "$VPS_KNOWN_HOSTS" | tr -d '\r' > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
+          if ! ssh-keygen -F "$host" -f ~/.ssh/known_hosts > /dev/null; then
+            echo "::error title=VPS_KNOWN_HOSTS does not match VPS_HOST::VPS_KNOWN_HOSTS has no key for the host in VPS_HOST. Each line must start with exactly the VPS_HOST value; regenerate it with ssh-keyscan -t ed25519 and the VPS_HOST value. The fingerprints it holds are listed below."
+            ssh-keygen -lf ~/.ssh/known_hosts | awk '{ print $2, $NF }' || echo "No valid key lines in VPS_KNOWN_HOSTS."
+            exit 1
+          fi
           eval "$(ssh-agent -s)"
           echo "$VPS_SSH_KEY" | tr -d '\r' | ssh-add -
-          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes deploy@"$VPS_HOST" "deploy production $RELEASE_SHA"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes deploy@"$host" "deploy production $RELEASE_SHA"
 
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
