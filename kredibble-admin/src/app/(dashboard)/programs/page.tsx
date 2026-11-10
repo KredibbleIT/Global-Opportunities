@@ -4,8 +4,8 @@
  * Programs (/programs): GOD's own activities, a separate entity from Opportunities (orange accent). Built on the shared
  * list template.
  *
- * - Summary strip (ProgramSummary): TWO separate MiniStats, "Active" (planned + running) and "Delivered". They count ALL
- *   programs, so they do not move when a filter is used.
+ * - Summary strip (ProgramSummary): ONE MiniStat, "Active" (planned + running). Delivered is only in the status filter below.
+ *   It counts ALL programs, so it does not move when a filter is used.
  * - Columns: Program (orange icon tile, the type underneath), Status, Partner, Participants ("42 of 60" with a 6px purple
  *   bar), Start date, Country.
  * - Filters (they combine): Status (SegmentedControl with counts), Type and Country (the custom Select). The status counts
@@ -17,7 +17,9 @@
  * ?state=loading|empty|error switch works here.
  */
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { GraduationCap, Plus } from "lucide-react";
+import { buttonClasses } from "@/components/ui/Button";
 import { useRoles } from "@/components/access/RoleProvider";
 import { formatDate } from "@/lib/format";
 import { PROGRAM_STATUSES, PROGRAM_TYPES, type ProgramStatus, type ProgramType } from "@/lib/mock-entities";
@@ -25,11 +27,11 @@ import { loadProgramRows, subscribeProgramStore, type ProgramRow } from "@/lib/s
 import { useListData } from "@/lib/use-list-data";
 import { DataTable } from "@/components/list/DataTable";
 import { ListPage } from "@/components/list/ListPage";
-import { TableToolbar } from "@/components/list/TableToolbar";
+import { FilterSelect, TableToolbar } from "@/components/list/TableToolbar";
 import type { Column } from "@/components/list/types";
 import { PROGRAM_STATUS_LABELS, PROGRAM_TYPE_META } from "@/components/programs/program-meta";
 import { ProgramSummary } from "@/components/programs/ProgramSummary";
-import { Select, type SelectOption } from "@/components/ui/form/Select";
+import { type SelectOption } from "@/components/ui/form/Select";
 
 const ALL = "all";
 type StatusFilter = "all" | ProgramStatus;
@@ -96,13 +98,14 @@ export default function ProgramsPage() {
         <div className="space-y-4">
           <ProgramSummary programs={rows} />
           <TableToolbar filters={{ options, value: status, onChange: setStatus, label: "Filter by status" }}>
-            <Select options={typeOptions} value={type} onChange={setType} ariaLabel="Filter by type" sheetTitle="Type" className="w-fit" />
-            <Select options={countryOptions} value={country} onChange={setCountry} ariaLabel="Filter by country" sheetTitle="Country" className="w-fit" />
+            <FilterSelect options={typeOptions} value={type} onChange={setType} ariaLabel="Filter by type" sheetTitle="Type" />
+            <FilterSelect options={countryOptions} value={country} onChange={setCountry} ariaLabel="Filter by country" sheetTitle="Country" />
           </TableToolbar>
         </div>
       }
     >
       <DataTable
+        onClearFilters={() => { setStatus(ALL); setType(ALL); setCountry(ALL); }}
         label="Programs"
         columns={COLUMNS}
         rows={visible}
@@ -113,7 +116,18 @@ export default function ProgramsPage() {
         onRetry={retry}
         isFiltered={filtered}
         resetKey={`${status}|${type}|${country}`}
-        emptyNoData={{ icon: GraduationCap, title: "No programs yet", description: "Trainings, bootcamps and webinars the desk runs appear here." }}
+        emptyNoData={{
+          icon: GraduationCap,
+          title: "No programs yet",
+          description: "Trainings, bootcamps and webinars the desk runs appear here.",
+          // The first-program action (only for a role that may add programs).
+          action: can("programs", "edit") ? (
+            <Link href="/programs/new" className={buttonClasses("primary")}>
+              <Plus size={16} strokeWidth={2} aria-hidden="true" />
+              Add your first program
+            </Link>
+          ) : undefined,
+        }}
         emptyNoResults={{ icon: GraduationCap, title: "No programs match these filters", description: "Try another status, type or country." }}
       />
     </ListPage>

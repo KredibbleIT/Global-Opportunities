@@ -34,7 +34,7 @@ const FILTERS: { value: Filter; label: string }[] = [
 const capitalise = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 const COLUMNS: Column<Report>[] = [
-  { key: "target", header: "Target", type: "primary", width: "30%", title: (r) => r.targetLabel },
+  { key: "target", header: "Target", type: "primary", width: "30%", title: (r) => r.targetLabel, titleLines: 2 },
   { key: "type", header: "Type", type: "text", width: "13%", value: (r) => capitalise(r.targetType) },
   { key: "reason", header: "Reason", type: "text", width: "20%", value: (r) => r.reason },
   { key: "reporter", header: "Reported by", type: "text", width: "20%", mobileLabel: "Reported by", value: (r) => r.reporterName },
@@ -72,7 +72,8 @@ export default function ReportsQueuePage() {
         loading={isLoading}
         error={error}
         onRetry={retry}
-        isFiltered={filter !== "all"}
+        isFiltered={filter !== "all" && all.length > 0} // an empty dataset is "No reports yet", whatever the default filter
+        onClearFilters={() => setFilter("all")}
         resetKey={filter}
         emptyNoData={{ icon: Flag, title: "No reports yet", description: "Reports from users appear here for review." }}
         emptyNoResults={{ icon: Flag, title: "No reports in this category", description: "Try another status, or choose All." }}

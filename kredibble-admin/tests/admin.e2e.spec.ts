@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { BRAND, BRAND_ADMIN_TITLE, BRAND_EMAIL_DOMAIN, footerLinks } from '../src/config/brand';
+import { BRAND, BRAND_EMAIL_DOMAIN, footerLinks } from '../src/config/brand';
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import path from 'path';
 import { isDevRoleSwitcherEnabled, parseDevRoles } from '../src/config/dev-roles';
@@ -48,6 +48,25 @@ const API_URL = process.env.E2E_API_URL || 'http://localhost:4000/api';
 // signed OUT opt out with test.use(SIGNED_OUT).
 const SIGNED_OUT = { storageState: { cookies: [], origins: [] } };
 
+// Verification: open the "E2E Verify Co" request. It is in Awaiting verification while pending, and in Reviewed requests once decided
+// (an earlier test may have approved it), so look in both sections (the tab counts show once the list has loaded).
+const openVerifyCo = async (page: import('@playwright/test').Page) => {
+  await expect(page.getByRole('tab', { name: /^Awaiting verification/ })).toContainText(/\d/);
+  const row = page.locator('main tbody tr').filter({ hasText: 'E2E Verify Co' });
+  if ((await row.count()) === 0) await page.getByRole('tab', { name: /^Reviewed requests/ }).click();
+  await row.getByRole('link').first().click();
+};
+
+// Programs: the count printed in a status filter radio ("Delivered 6" -> "6"). Delivered is only there, not in the summary.
+const statusCount = async (page: import('@playwright/test').Page, name: string) =>
+  (await page.getByRole('radiogroup', { name: 'Filter by status' }).getByRole('radio', { name: new RegExp(`^${name}`) }).innerText()).replace(/\D+/g, '');
+
+// Social: logging a post happens in the "Add post" dialog. Open it unless it is already open.
+const ensureAddPost = async (page: import('@playwright/test').Page) => {
+  if ((await page.getByTestId('log-post-dialog').count()) === 0) await page.getByRole('button', { name: 'Add post' }).click();
+  await expect(page.getByRole('region', { name: 'Log a post' })).toBeVisible();
+};
+
 // Tests that call the real backend skip (with this reason) when it is not reachable.
 const apiAvailable = (request: import('@playwright/test').APIRequestContext) =>
   request.get(`${API_URL}/health`, { timeout: 3_000 }).then((response) => response.ok()).catch(() => false);
@@ -66,7 +85,7 @@ test.describe('Admin Authentication', () => {
 
   test('login page loads correctly', async ({ page }) => {
     await page.goto(`${BASE_URL}/login`);
-    await expect(page.locator('h1')).toContainText(BRAND_ADMIN_TITLE);
+    await expect(page.locator('h1')).toHaveText('Admin Portal');
     await expect(page.locator('input[type="email"]')).toBeVisible();
     await expect(page.locator('input[type="password"]')).toBeVisible();
     await expect(page.locator('button[type="submit"]')).toContainText('Sign in');
@@ -431,7 +450,7 @@ test.describe('Content panel and breadcrumbs', () => {
     await signedIn(page);
     await page.goto(`${BASE_URL}/seekers`);
     await page.locator('header button[aria-haspopup="menu"]').first().click();
-    const current = page.locator('header [role="menuitem"][aria-current="page"]');
+    const current = page.locator('[role="menu"] [role="menuitem"][aria-current="page"]');
     await expect(current).toHaveCount(1);
     await expect(current).toHaveText('Seekers');
     await expect(current.locator('svg.lucide-check')).toBeVisible();
@@ -785,18 +804,26 @@ test.describe('List pages: template', () => {
     await expect(page.getByRole('button', { name: 'Next', exact: true })).toHaveCount(0);
   });
 
-  test('filters show counts and narrow the rows (Verification)', async ({ page }) => {
+  test('two sections with their own counts: Awaiting verification and Reviewed requests (Verification)', async ({ page }) => {
     test.skip(!MOCK_RUN, 'needs mock mode');
     await page.goto(`${BASE_URL}/verification`);
     await expect(page.locator('main tbody tr a').first()).toBeVisible();
-    const all = await page.locator('main tbody tr').count();
-    await expect(page.getByRole('radio', { name: new RegExp(`^All ${all}$`) })).toBeVisible();
-    await page.getByRole('radio', { name: /^Pending/ }).click();
+    await expect(page.getByText('Review company verification requests.')).toBeVisible();
+    // the first section is the pending ones; its tab carries the count
+    const awaitingTab = page.getByRole('tab', { name: /^Awaiting verification/ });
+    await expect(awaitingTab).toHaveAttribute('aria-selected', 'true');
     const pending = await page.locator('main tbody tr').count();
     expect(pending).toBeGreaterThan(0);
-    expect(pending).toBeLessThan(all);
+    await expect(awaitingTab).toContainText(String(pending));
     await expect(page.locator('main tbody tr').filter({ hasText: 'Approved' })).toHaveCount(0);
     await expect(page.getByText(`Showing 1-${pending} of ${pending}`)).toBeVisible();
+    // the second section is the decided ones, with its own count
+    const reviewedTab = page.getByRole('tab', { name: /^Reviewed requests/ });
+    await reviewedTab.click();
+    const reviewed = await page.locator('main tbody tr').count();
+    expect(reviewed).toBeGreaterThan(0);
+    await expect(reviewedTab).toContainText(String(reviewed));
+    await expect(page.locator('main tbody tr').filter({ hasText: 'Pending' })).toHaveCount(0);
   });
 
   test('search with no match and an empty list show DIFFERENT messages (Seekers)', async ({ page }) => {
@@ -855,7 +882,7 @@ test.describe('List pages: template', () => {
     await expect(attendance).toHaveAttribute('aria-valuenow', /^\d+$/);
     expect(Math.round((await attendance.boundingBox())!.height)).toBe(6);
     await page.goto(`${BASE_URL}/grants`);
-    await expect(page.locator('main tbody tr').first()).toContainText(/\$[\d,]+ \/ \$[\d,]+/);
+    await expect(page.locator('main tbody tr').first()).toContainText(/USD [\d,]+ \/ USD [\d,]+/);
   });
 });
 
@@ -898,7 +925,7 @@ test.describe('Mock counts agree everywhere', () => {
     // The Verification list's Pending filter holds exactly that many rows; the breadcrumb pill matches.
     await page.goto(`${BASE_URL}/verification`);
     await expect(page.locator('main tbody tr a').first()).toBeVisible();
-    await page.getByRole('radio', { name: /^Pending/ }).click();
+    // (the first section, Awaiting verification, is the pending ones)
     await expect(page.locator('main tbody tr')).toHaveCount(pendingVerifications);
     await expect(page.locator('header.sticky nav[aria-label="Breadcrumb"] [aria-current="page"]')).toContainText(String(pendingVerifications));
 
@@ -1086,9 +1113,10 @@ test.describe('Shared mock store', () => {
 
     await pill.click();
     await expect(page).toHaveURL(`${BASE_URL}/verification`);
-    await expect(page.locator('main tbody tr').filter({ hasText: 'Ashesi Ventures' })).toContainText('Approved');
-    await page.getByRole('radio', { name: /^Pending/ }).click();
+    // the approved request left Awaiting verification (the pending ones) and is now in Reviewed requests
     await expect(page.locator('main tbody tr')).toHaveCount(MOCK_COUNTS.pendingVerifications - 1);
+    await page.getByRole('tab', { name: /^Reviewed requests/ }).click();
+    await expect(page.locator('main tbody tr').filter({ hasText: 'Ashesi Ventures' })).toContainText('Approved');
   });
 
   test('the toast sits bottom-right, outside the header and its actions, and closes on its own', async ({ page }) => {
@@ -1336,7 +1364,7 @@ test.describe('Reference data', () => {
 
   test('groups, list tabs with counts, and the add / duplicate / remove rules', async ({ page }) => {
     await page.goto(`${BASE_URL}/reference-data`, { timeout: 30_000 });
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Reference data');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Reference Data');
     const group = page.getByRole('radiogroup', { name: 'Reference data group' });
     await expect(group.getByRole('radio')).toHaveText(['Seekers', 'Hirers', 'Grants']);
 
@@ -1894,7 +1922,8 @@ test.describe('Login page', () => {
     await page.goto(`${BASE_URL}/login`);
     const panel = page.locator('aside');
     await expect(panel).toBeVisible();
-    await expect(panel).toContainText(BRAND.name);
+    await expect(panel).toContainText('Keep every opportunity on the platform trusted.');
+    await expect(panel.getByTestId('brand-logo').or(panel.getByTestId('brand-wordmark'))).toBeVisible(); // the official logo, or the text wordmark until the file is added
     const panelBox = (await panel.boundingBox())!;
     const formBox = (await page.locator('form').boundingBox())!;
     expect(panelBox.x + panelBox.width).toBeLessThanOrEqual(formBox.x); // panel left of the form
@@ -2007,7 +2036,7 @@ test.describe('Smoke: every audited route renders its title with no console erro
     const page = await context.newPage();
     const problems = trackProblems(page);
     await page.goto(`${BASE_URL}/login`);
-    await expect(page.getByTestId('page-title')).toHaveText(BRAND_ADMIN_TITLE);
+    await expect(page.getByTestId('page-title')).toHaveText('Admin Portal');
     expect(problems).toEqual([]);
     await context.close();
   });
@@ -2553,13 +2582,16 @@ test.describe('One focus treatment on text fields', () => {
 // ---------------------------------------------------------------------------
 test.describe('Month selector', () => {
   test('1440px: options render in our listbox (not a native select); arrows and Enter change the label; Esc returns focus', async ({ page }) => {
-    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.setViewportSize({ width: 1440, height: 1200 });
     await page.goto(`${BASE_URL}/`, { timeout: 30_000 });
+    await expect(page.getByTestId('priorities-list')).toBeVisible(); // the page has finished loading, so the selector no longer moves
     await expect(page.locator('select')).toHaveCount(0); // no native select anywhere on the page
     const trigger = page.getByRole('combobox', { name: 'Month' });
     const first = (await trigger.innerText()).trim();
     expect(first).toMatch(/^[A-Z][a-z]+ \d{4}$/); // the label format stays "October 2026"
 
+    // On the Overview the selector sits beside "Team performance", lower on the page: bring it to the top so the panel opens downward (it flips up near the bottom).
+    await trigger.evaluate((el) => el.scrollIntoView({ block: 'start' }));
     await trigger.click();
     const list = page.getByRole('listbox', { name: 'Month' });
     await expect(list).toBeVisible();
@@ -2762,7 +2794,7 @@ test.describe('Roles: gated navigation (dev role cookie, mock mode)', () => {
     await expect(palette.getByRole('option', { name: /Verification Queue/ })).toHaveCount(0);
     await page.keyboard.press('Escape');
     await page.locator('header button[aria-haspopup="menu"]').first().click();
-    const items = await page.locator('header [role="menuitem"]').allInnerTexts();
+    const items = await page.locator('[role="menu"] [role="menuitem"]').allInnerTexts(); // (the menu is drawn in a portal on <body>, above the page)
     expect(items.map((text) => text.trim())).toEqual(['Seekers', 'Hirers']); // People group: no Channels, no Database
   });
 
@@ -3434,7 +3466,7 @@ test.describe('useMonth: the month lives in the URL', () => {
 test.describe('Partner stages', () => {
   test('the stage keys are exactly prospect, outreach, proposal, mou, onboard, renew, with these labels', () => {
     expect([...PARTNER_STAGES]).toEqual(['prospect', 'outreach', 'proposal', 'mou', 'onboard', 'renew']);
-    expect(PARTNER_STAGE_LABELS).toEqual({ prospect: 'Prospect', outreach: 'Outreach', proposal: 'Proposal', mou: 'MOU', onboard: 'Onboard', renew: 'Renew' });
+    expect(PARTNER_STAGE_LABELS).toEqual({ prospect: 'Prospect', outreach: 'Outreach', proposal: 'Proposal', mou: 'MOU', onboard: 'Onboarded', renew: 'Renewed' });
     for (const old of ['contacted', 'negotiating', 'active']) expect((PARTNER_STAGES as readonly string[]).includes(old)).toBe(false);
   });
 
@@ -3711,7 +3743,7 @@ test.describe('Verification detail (real API)', () => {
 
   test('approving every document approves the company, after a reload and in the queue', async ({ page }) => {
     await page.goto(`${BASE_URL}/verification`, { timeout: 30_000 });
-    await page.locator('main tbody tr').filter({ hasText: 'E2E Verify Co' }).getByRole('link').first().click();
+    await openVerifyCo(page);
     await expect(page.getByTestId('page-title')).toHaveText('E2E Verify Co');
     await expect(page.getByText('Logistics · 11-50 · Tema')).toBeVisible();
     await expect(page.getByText('hr@verify.example.com')).toBeVisible();
@@ -3730,6 +3762,7 @@ test.describe('Verification detail (real API)', () => {
     await expect(page.getByRole('region', { name: 'Summary' }).getByTestId('status-badge')).toHaveText('Approved');
 
     await page.goto(`${BASE_URL}/verification`, { timeout: 30_000 });
+    await page.getByRole('tab', { name: /^Reviewed requests/ }).click(); // a decided request moves to the second section
     await expect(page.locator('main tbody tr').filter({ hasText: 'E2E Verify Co' })).toContainText('Approved');
   });
 
@@ -3741,7 +3774,7 @@ test.describe('Verification detail (real API)', () => {
         : route.continue(),
     );
     await page.goto(`${BASE_URL}/verification`, { timeout: 30_000 });
-    await page.locator('main tbody tr').filter({ hasText: 'E2E Verify Co' }).getByRole('link').first().click();
+    await openVerifyCo(page);
     await expect(page.getByTestId('page-title')).toHaveText('E2E Verify Co');
     const logo = page.getByRole('listitem').filter({ hasText: 'E2E Company Logo' });
     const before = await logo.getByTestId('status-badge').innerText();
@@ -4671,25 +4704,19 @@ test.describe('Programs: list', () => {
   test.skip(!MOCK_RUN, 'the redesign screens run on sample data: see npm run test:e2e:mock');
   test.use({ viewport: { width: 1440, height: 900 } });
 
-  const statusCount = async (page: import('@playwright/test').Page, name: string) =>
-    (await page.getByRole('radiogroup', { name: 'Filter by status' }).getByRole('radio', { name: new RegExp(`^${name}`) }).innerText()).replace(/\D+/g, '');
   const stat = async (page: import('@playwright/test').Page, id: 'active' | 'delivered') =>
     (await page.getByTestId(`program-summary-${id}`).innerText()).replace(/\D+/g, '');
 
-  test('two SEPARATE stats, Active 5 and Delivered 6, equal to the counts from the list', async ({ page }) => {
+  test('one Active stat (5) in the summary; Delivered (6) is only in the status filter, equal to the list', async ({ page }) => {
     await page.goto(`${BASE_URL}/programs`, { timeout: 30_000 });
     await expect(page.getByTestId('table-row').first()).toBeVisible();
     await expect(page.getByTestId('program-summary-active')).toContainText('Active');
-    await expect(page.getByTestId('program-summary-delivered')).toContainText('Delivered');
     expect(await stat(page, 'active')).toBe('5');
-    expect(await stat(page, 'delivered')).toBe('6');
+    expect(await statusCount(page, 'Delivered')).toBe('6'); // Delivered lives in the status filter only, not in the summary
     // they equal what the list itself says: Active = planned + running, Delivered = delivered
     expect(Number(await statusCount(page, 'Planned')) + Number(await statusCount(page, 'Running'))).toBe(5);
     expect(await statusCount(page, 'Delivered')).toBe('6');
-    // two different tiles, not one combined figure
-    const a = (await page.getByTestId('program-summary-active').boundingBox())!;
-    const d = (await page.getByTestId('program-summary-delivered').boundingBox())!;
-    expect(a.x + a.width).toBeLessThanOrEqual(d.x + 1);
+    await expect(page.getByTestId('program-summary-delivered')).toHaveCount(0); // not repeated between the summary and the filter
   });
 
   test('columns, orange tiles, "42 of 60" figures with a bar, and the first rows', async ({ page }) => {
@@ -4737,7 +4764,6 @@ test.describe('Programs: list', () => {
     await expect(page.getByTestId('table-row')).toContainText('Career Mentorship Circle');
     // the summary counts ALL programs, so a filter does not move it
     expect(await stat(page, 'active')).toBe('5');
-    expect(await stat(page, 'delivered')).toBe('6');
     // an impossible combination
     await page.getByRole('radiogroup', { name: 'Filter by status' }).getByRole('radio', { name: /^Cancelled/ }).click();
     await expect(page.getByText('No programs match these filters')).toBeVisible();
@@ -4750,7 +4776,6 @@ test.describe('Programs: list', () => {
     await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
     await page.goto(`${BASE_URL}/programs?state=loading`);
     await expect(page.getByTestId('program-summary-active')).toContainText('—');
-    await expect(page.getByTestId('program-summary-delivered')).toContainText('—');
   });
 });
 
@@ -4845,7 +4870,7 @@ test.describe('Programs: form', () => {
     await page.locator('header.sticky').getByRole('link', { name: 'Programs' }).click();
     await expect(page.getByTestId('table-row').first()).toBeVisible();
     expect((await page.getByTestId('program-summary-active').innerText()).replace(/\D+/g, '')).toBe('6');
-    expect((await page.getByTestId('program-summary-delivered').innerText()).replace(/\D+/g, '')).toBe('6');
+    expect(await statusCount(page, 'Delivered')).toBe('6');
     await expect(page.getByTestId('table-row').filter({ hasText: 'Created In Test' })).toContainText('0 of 30');
   });
 
@@ -4861,7 +4886,7 @@ test.describe('Programs: form', () => {
     await page.locator('header.sticky').getByRole('link', { name: 'Programs' }).click();
     await expect(page.getByTestId('table-row').first()).toBeVisible();
     expect((await page.getByTestId('program-summary-active').innerText()).replace(/\D+/g, '')).toBe('4');
-    expect((await page.getByTestId('program-summary-delivered').innerText()).replace(/\D+/g, '')).toBe('7');
+    expect(await statusCount(page, 'Delivered')).toBe('7');
   });
 
   test('unknown ids and hirer postings are not found; leaving with unsaved changes asks first', async ({ page }) => {
@@ -4919,7 +4944,7 @@ test.describe('Programs: detail and cancel', () => {
     await page.locator('header.sticky').getByRole('link', { name: 'Programs' }).click();
     await expect(page.getByTestId('table-row').first()).toBeVisible();
     expect((await page.getByTestId('program-summary-active').innerText()).replace(/\D+/g, '')).toBe('4');
-    expect((await page.getByTestId('program-summary-delivered').innerText()).replace(/\D+/g, '')).toBe('6');
+    expect(await statusCount(page, 'Delivered')).toBe('6');
     const tabs = page.getByRole('radiogroup', { name: 'Filter by status' });
     await expect(tabs.getByRole('radio', { name: /^Running/ })).toContainText('2');
     await expect(tabs.getByRole('radio', { name: /^Cancelled/ })).toContainText('2');
@@ -5002,7 +5027,6 @@ test.describe('Programs: phone (434px)', () => {
     await expect(card.locator('td[data-label="Country"]')).not.toBeEmpty();
     await expect(card.getByTestId('status-badge')).toBeVisible();
     await expect(page.getByTestId('program-summary-active')).toBeVisible();
-    await expect(page.getByTestId('program-summary-delivered')).toBeVisible();
     await expect(page.getByRole('link', { name: 'New program' })).toBeVisible();
     await expect(page.getByRole('combobox', { name: 'Filter by type' })).toBeVisible();
     expect(await noOverflow(page)).toBe(true);
@@ -5373,6 +5397,7 @@ test.describe('Database, Social and Testimonials against the real API', () => {
   test('social: a logged post is saved, listed this month and counted in the totals', async ({ page }) => {
     const title = `Live Post ${stamp}`;
     await open(page, '/social');
+    await ensureAddPost(page);
     const card = page.getByRole('region', { name: 'Log a post' });
     await card.getByRole('combobox', { name: 'Platform' }).click();
     await page.getByRole('option', { name: 'LinkedIn' }).click();
@@ -5510,7 +5535,7 @@ test.describe('Partners: pipelineHealth (no browser)', () => {
 
   test('stage labels come from the store and can be renamed; the keys stay fixed', () => {
     const before = { ...getPartnerStageLabels() };
-    expect(before).toEqual({ prospect: 'Prospect', outreach: 'Outreach', proposal: 'Proposal', mou: 'MOU', onboard: 'Onboard', renew: 'Renew' });
+    expect(before).toEqual({ prospect: 'Prospect', outreach: 'Outreach', proposal: 'Proposal', mou: 'MOU', onboard: 'Onboarded', renew: 'Renewed' });
     setPartnerStageLabels({ proposal: 'Pitch', mou: '   ' }); // a blank label keeps the default
     expect(getPartnerStageLabels().proposal).toBe('Pitch');
     expect(getPartnerStageLabels().mou).toBe('MOU');
@@ -5523,7 +5548,7 @@ test.describe('Partners: pipelineHealth (no browser)', () => {
     expect(getStatusMeta('healthy')).toEqual({ tone: 'success', label: 'Healthy' });
     expect(getStatusMeta('thin')).toEqual({ tone: 'warning', label: 'Thin' });
     expect(getStatusMeta('critical')).toEqual({ tone: 'danger', label: 'Critical' });
-    expect(getStatusMeta('unknown')).toEqual({ tone: 'neutral', label: 'Not enough data' });
+    expect(getStatusMeta('unknown')).toEqual({ tone: 'neutral', label: 'Awaiting data' });
   });
 });
 
@@ -5554,7 +5579,7 @@ test.describe('Partners: the board', () => {
     await ready(page);
     await expect(page.getByTestId('kanban-card-ptn-15')).toBeVisible();
     const headings = await page.locator('[data-testid^="kanban-column-"] h3').allInnerTexts();
-    expect(headings.map((text) => text.trim())).toEqual(['Prospect', 'Outreach', 'Proposal', 'MOU', 'Onboard', 'Renew']);
+    expect(headings.map((text) => text.trim())).toEqual(['Prospect', 'Outreach', 'Proposal', 'MOU', 'Onboarded', 'Renewed']);
     expect(await counts(page)).toEqual({ prospect: 4, outreach: 4, proposal: 3, mou: 2, onboard: 3, renew: 2 });
     for (const stage of ['onboard', 'renew']) await expect(page.getByTestId(`kanban-marker-${stage}`)).toHaveText('Closed');
     for (const stage of ['prospect', 'outreach', 'proposal', 'mou']) await expect(page.getByTestId(`kanban-marker-${stage}`)).toHaveCount(0);
@@ -5583,7 +5608,7 @@ test.describe('Partners: the board', () => {
     const menu = page.getByRole('menu', { name: 'Move Google Africa to another stage' });
     await expect(menu).toBeVisible();
     // it lists every OTHER stage, in order
-    expect((await menu.getByRole('menuitem').allInnerTexts()).map((text) => text.trim())).toEqual(['Outreach', 'Proposal', 'MOU', 'Onboard', 'Renew']);
+    expect((await menu.getByRole('menuitem').allInnerTexts()).map((text) => text.trim())).toEqual(['Outreach', 'Proposal', 'MOU', 'Onboarded', 'Renewed']);
     await page.keyboard.press('ArrowDown'); // Proposal
     await page.keyboard.press('Enter');
     await expect.poll(() => counts(page)).toEqual({ prospect: 3, outreach: 4, proposal: 4, mou: 2, onboard: 3, renew: 2 });
@@ -5595,16 +5620,16 @@ test.describe('Partners: the board', () => {
 
   test('closed is automatic in both directions: into Onboard closes it, out of Onboard opens it again', async ({ page }) => {
     await ready(page);
-    await moveTo(page, 'Google Africa', 'Onboard');
-    await expect(page.getByText('Google Africa moved to Onboard. It is now closed.')).toBeVisible();
+    await moveTo(page, 'Google Africa', 'Onboarded');
+    await expect(page.getByText('Google Africa moved to Onboarded. It is now closed.')).toBeVisible();
     await expect.poll(() => count(page, 'onboard')).toBe(4);
     await page.getByTestId('kanban-card-ptn-15').getByRole('link', { name: 'Google Africa' }).click();
     // (the global setup has already compiled every page, so this first visit waits no longer than any other)
     await expect(page.getByTestId('closed-marker')).toHaveText('Closed');
-    await expect(page.getByTestId('stage-badge')).toContainText('Onboard');
+    await expect(page.getByTestId('stage-badge')).toContainText('Onboarded');
     await page.goBack();
-    await moveTo(page, 'Google Africa', 'Renew'); // Onboard -> Renew stays closed: no second note
-    await expect(page.getByText('Google Africa moved to Renew.', { exact: true })).toBeVisible();
+    await moveTo(page, 'Google Africa', 'Renewed'); // Onboarded -> Renewed stays closed: no second note
+    await expect(page.getByText('Google Africa moved to Renewed.', { exact: true })).toBeVisible();
     await moveTo(page, 'Google Africa', 'Proposal');
     await expect(page.getByText('Google Africa moved to Proposal. It is open again.')).toBeVisible();
     await expect.poll(() => counts(page)).toEqual({ prospect: 3, outreach: 4, proposal: 4, mou: 2, onboard: 3, renew: 2 });
@@ -5613,9 +5638,9 @@ test.describe('Partners: the board', () => {
     await expect(page.getByTestId('closed-marker')).toHaveCount(0);
     // the history recorded every step with its date and from-to, newest first
     const history = page.getByTestId('stage-history');
-    await expect(history).toContainText('Renew → Proposal');
-    await expect(history).toContainText('Onboard → Renew');
-    await expect(history).toContainText('Prospect → Onboard');
+    await expect(history).toContainText('Renewed → Proposal');
+    await expect(history).toContainText('Onboarded → Renewed');
+    await expect(history).toContainText('Prospect → Onboarded');
     await expect(history).toContainText(formatDate(todayLocal()));
     await expect(history).toContainText('The deal closed.');
     await expect(history).toContainText('The deal is open again.');
@@ -5635,7 +5660,7 @@ test.describe('Partners: the board', () => {
     await expect.poll(() => count(page, 'outreach')).toBe(5);
     // dropping into Onboard closes it
     await page.getByTestId('kanban-card-ptn-17').dragTo(page.getByTestId('kanban-column-onboard'));
-    await expect(page.getByText('Wave Mobile Money moved to Onboard. It is now closed.')).toBeVisible();
+    await expect(page.getByText('Wave Mobile Money moved to Onboarded. It is now closed.')).toBeVisible();
   });
 
   test('pipeline health: the headline matches the maths on the data, and moving a deal into Onboard lowers the open deals', async ({ page }) => {
@@ -5645,12 +5670,13 @@ test.describe('Partners: the board', () => {
     expect(expected.openDeals).toBe(13);
     await ready(page);
     const card = page.getByRole('region', { name: 'Pipeline health' });
-    await expect(page.getByTestId('pipeline-headline')).toHaveText(expected.needed === null ? '13 open deals' : `13 open deals, ${expected.needed} needed`);
-    await expect(page.getByTestId('pipeline-status')).toContainText({ healthy: 'Healthy', thin: 'Thin', critical: 'Critical', unknown: 'Not enough data' }[expected.status]);
+    await expect(page.getByTestId('pipeline-headline')).toHaveText(expected.needed === null ? 'Close rate not known yet' : `${expected.needed} ${expected.needed === 1 ? 'deal' : 'deals'} needed`);
+    await expect(page.getByTestId('partner-summary-open')).toContainText('13'); // the open count lives on its own card, not in the headline
+    await expect(page.getByTestId('pipeline-status')).toContainText({ healthy: 'Healthy', thin: 'Thin', critical: 'Critical', unknown: 'Awaiting data' }[expected.status]);
     await expect(card.getByRole('meter')).toHaveAttribute('aria-valuenow', '13');
-    await expect(card).toContainText(`Next month's target: ${target} ${target === 1 ? 'partner' : 'partners'} onboarded.`);
-    await moveTo(page, 'Google Africa', 'Onboard');
-    await expect(page.getByTestId('pipeline-headline')).toContainText('12 open deals');
+    await expect(page.getByTestId('partner-summary-target')).toContainText(String(target)); // next month's target is its own card
+    await moveTo(page, 'Google Africa', 'Onboarded');
+    await expect(page.getByTestId('partner-summary-open')).toContainText('12');
     await expect(card.getByRole('meter')).toHaveAttribute('aria-valuenow', '12');
   });
 
@@ -5660,7 +5686,7 @@ test.describe('Partners: the board', () => {
     await expect(visibleCards).toHaveCount(18);
     await page.getByRole('searchbox', { name: 'Search partners' }).fill('google');
     await expect(visibleCards).toHaveCount(1);
-    await expect(page.getByTestId('pipeline-headline')).toContainText('13 open deals'); // unchanged by the search
+    await expect(page.getByTestId('partner-summary-open')).toContainText('13'); // unchanged by the search
     await page.getByRole('searchbox', { name: 'Search partners' }).fill('');
     await page.getByRole('combobox', { name: 'Filter by type' }).click();
     await page.getByRole('option', { name: 'University' }).click();
@@ -5742,7 +5768,7 @@ test.describe('Partners: form and detail', () => {
   });
 
   test('edit: the form is filled, and saving changes the details but not the stage', async ({ page }) => {
-    await ready(page, '/partners/ptn-01/edit'); // MTN Ghana, Onboard
+    await ready(page, '/partners/ptn-01/edit'); // MTN Ghana, Onboarded
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Edit partner');
     await expect(page.getByLabel('Organisation name')).toHaveValue('MTN Ghana');
     await expect(page.getByLabel('Contact name')).toHaveValue('Efua Darko');
@@ -5751,20 +5777,20 @@ test.describe('Partners: form and detail', () => {
     await expect(page.getByText('MTN Ghana was updated.')).toBeVisible({ timeout: 10_000 });
     await expect(page).toHaveURL(`${BASE_URL}/partners/ptn-01`, { timeout: 10_000 });
     await expect(page.getByRole('region', { name: 'Details' })).toContainText('Graduate roles, internships and mentors');
-    await expect(page.getByTestId('stage-badge')).toContainText('Onboard');
+    await expect(page.getByTestId('stage-badge')).toContainText('Onboarded');
     await expect(page.getByTestId('closed-marker')).toBeVisible();
   });
 
   test('detail: stage badge, Closed marker, Details, Contact, the full stage history and the linked programs', async ({ page }) => {
     await ready(page, '/partners/ptn-01'); // MTN Ghana
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('MTN Ghana');
-    await expect(page.getByTestId('stage-badge')).toContainText('Onboard');
+    await expect(page.getByTestId('stage-badge')).toContainText('Onboarded');
     await expect(page.getByTestId('closed-marker')).toHaveText('Closed');
     await expect(page.getByRole('region', { name: 'Details' })).toContainText('Graduate roles and internships');
     await expect(page.getByRole('region', { name: 'Contact' })).toContainText('Efua Darko');
     const items = page.getByTestId('stage-history').getByRole('listitem');
     await expect(items).toHaveCount(5);
-    await expect(items.first()).toContainText('MOU → Onboard'); // newest first
+    await expect(items.first()).toContainText('MOU → Onboarded'); // newest first
     await expect(items.last()).toContainText('Added at Prospect');
     await expect(page.getByTestId('linked-programs').getByRole('link', { name: 'CV and Interview Masterclass' })).toHaveAttribute('href', '/programs/prg-01');
     await expect(page.getByRole('link', { name: 'Edit' })).toHaveAttribute('href', '/partners/ptn-01/edit');
@@ -5811,11 +5837,11 @@ test.describe('Partners: roles', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
   for (const role of ['partnerships_officer', 'desk_lead', 'super_admin']) {
-    test(`${role} edits: New partner, the Move to menu, the drag handles and the form`, async ({ page, context }) => {
+    test(`${role} edits: Add partner, the Move to menu, the drag handles and the form`, async ({ page, context }) => {
       await asRoles(context, role);
       await page.goto(`${BASE_URL}/partners`, { timeout: 30_000 });
       await expect(page.getByTestId('kanban-card-ptn-15')).toBeVisible();
-      await expect(page.getByRole('link', { name: 'New partner' })).toHaveAttribute('href', '/partners/new');
+      await expect(page.getByRole('link', { name: 'Add partner' })).toHaveAttribute('href', '/partners/new');
       await expect(page.getByRole('button', { name: /^Move .* to/ })).toHaveCount(18);
       await expect(page.getByTestId('kanban-grip')).toHaveCount(18);
       await page.goto(`${BASE_URL}/partners/new`);
@@ -5823,12 +5849,12 @@ test.describe('Partners: roles', () => {
     });
   }
 
-  test('country_lead can only view: no New partner, no Move to menu, no drag handles, Edit disabled, no Remove, no form', async ({ page, context }) => {
+  test('country_lead can only view: no Add partner, no Move to menu, no drag handles, Edit disabled, no Remove, no form', async ({ page, context }) => {
     await asRoles(context, 'country_lead');
     await page.goto(`${BASE_URL}/partners`, { timeout: 30_000 });
     await expect(page.getByTestId('kanban-card-ptn-15')).toBeVisible();
     expect(await counts(page)).toEqual({ prospect: 4, outreach: 4, proposal: 3, mou: 2, onboard: 3, renew: 2 });
-    await expect(page.getByRole('link', { name: 'New partner' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Add partner' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /^Move .* to/ })).toHaveCount(0);
     await expect(page.getByTestId('kanban-grip')).toHaveCount(0);
     expect(await page.locator('[data-testid^="kanban-card-"][draggable="true"]').count()).toBe(0);
@@ -5873,7 +5899,7 @@ test.describe('Partners: phone (434px)', () => {
     const tabs = page.getByRole('tablist', { name: 'Partner pipeline stages' });
     await expect(tabs).toBeVisible();
     const names = (await tabs.getByRole('tab').allInnerTexts()).map((text) => text.replace(/\s+/g, ' ').trim());
-    expect(names).toEqual(['Prospect 4', 'Outreach 4', 'Proposal 3', 'MOU 2', 'Onboard 3', 'Renew 2']);
+    expect(names).toEqual(['Prospect 4', 'Outreach 4', 'Proposal 3', 'MOU 2', 'Onboarded 3', 'Renewed 2']);
     // one column at a time: Prospect's four cards, none of Outreach's
     await expect(page.locator('[data-testid^="kanban-card-"]')).toHaveCount(4);
     await expect(page.getByTestId('kanban-card-ptn-15')).toBeVisible();
@@ -5893,7 +5919,7 @@ test.describe('Partners: phone (434px)', () => {
     await expect(page.getByTestId('kanban-card-ptn-15')).toBeVisible();
     await expect(page.locator('[data-testid^="kanban-card-"]')).toHaveCount(5);
     // the Closed marker shows on the Onboard tab's panel
-    await tabs.getByRole('tab', { name: /^Onboard/ }).click();
+    await tabs.getByRole('tab', { name: /^Onboarded/ }).click();
     await expect(page.getByTestId('kanban-marker-onboard')).toHaveText('Closed');
     expect(await noOverflow(page)).toBe(true);
   });
@@ -5902,7 +5928,7 @@ test.describe('Partners: phone (434px)', () => {
     await page.goto(`${BASE_URL}/partners`, { timeout: 30_000 });
     await expect(page.getByTestId('pipeline-headline')).toBeVisible();
     await expect(page.getByRole('searchbox', { name: 'Search partners' })).toBeVisible();
-    await expect(page.getByRole('link', { name: 'New partner' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Add partner' })).toBeVisible();
     expect(await noOverflow(page)).toBe(true);
     await page.goto(`${BASE_URL}/partners/new`);
     await expect(page.getByTestId('back-button')).toBeVisible();
@@ -5971,9 +5997,9 @@ test.describe('Partners: summary tiles, health states and the empty filter', () 
     await page.getByRole('menu', { name: `Move ${name} to another stage` }).getByRole('menuitem', { name: stage, exact: true }).click();
   };
 
-  test('two SEPARATE tiles: Open pipeline 13 and Closed this month 0; they follow moves, and not the filters', async ({ page }) => {
+  test('three aligned tiles: Open deals 13, Closed this month 0 and the next month target; they follow moves, and not the filters', async ({ page }) => {
     await ready(page);
-    await expect(page.getByTestId('partner-summary-open')).toContainText('Open pipeline');
+    await expect(page.getByTestId('partner-summary-open')).toContainText('Open deals');
     await expect(page.getByTestId('partner-summary-closed')).toContainText('Closed this month');
     expect(await tile(page, 'open')).toBe('13');
     expect(await tile(page, 'closed')).toBe('0'); // nothing closed yet this month in the seed (a known zero)
@@ -5982,10 +6008,10 @@ test.describe('Partners: summary tiles, health states and the empty filter', () 
     const b = (await page.getByTestId('partner-summary-closed').boundingBox())!;
     expect(a.y + a.height <= b.y + 1 || a.x + a.width <= b.x + 1).toBe(true);
 
-    await moveTo(page, 'Google Africa', 'Onboard');
+    await moveTo(page, 'Google Africa', 'Onboarded');
     await expect.poll(() => tile(page, 'open')).toBe('12');
     expect(await tile(page, 'closed')).toBe('1');
-    await moveTo(page, 'Google Africa', 'Renew'); // onboard -> renew: still one closed deal, closed this month
+    await moveTo(page, 'Google Africa', 'Renewed'); // onboard -> renew: still one closed deal, closed this month
     await expect.poll(() => tile(page, 'closed')).toBe('1');
     expect(await tile(page, 'open')).toBe('12');
     await page.getByRole('searchbox', { name: 'Search partners' }).fill('mtn'); // a filter does not move them
@@ -6003,9 +6029,9 @@ test.describe('Partners: summary tiles, health states and the empty filter', () 
   });
 
   const STATES = [
-    { key: 'healthy', headline: '14 open deals, 10 needed', badge: 'Healthy', value: '14' },
-    { key: 'thin', headline: '8 open deals, 10 needed', badge: 'Thin', value: '8' },
-    { key: 'critical', headline: '4 open deals, 10 needed', badge: 'Critical', value: '4' },
+    { key: 'healthy', headline: '10 deals needed', badge: 'Healthy', value: '14' },
+    { key: 'thin', headline: '10 deals needed', badge: 'Thin', value: '8' },
+    { key: 'critical', headline: '10 deals needed', badge: 'Critical', value: '4' },
   ];
   for (const state of STATES) {
     test(`?health=${state.key}: "${state.headline}", the ${state.badge} badge in words, the gauge and the wording`, async ({ page }) => {
@@ -6034,7 +6060,7 @@ test.describe('Partners: summary tiles, health states and the empty filter', () 
       const centre = async (id: string) => { const b = (await page.getByTestId(id).boundingBox())!; return (b.x + b.width / 2 - bar.x) / bar.width; };
       expect(await centre('pipeline-needed-tick')).toBeCloseTo(0.5, 1); // 1.0 of the 2.0 scale
       expect(await centre('pipeline-marker')).toBeCloseTo({ healthy: 0.7, thin: 0.4, critical: 0.2 }[state.key] as number, 1); // ratio / 2.0
-      await expect(page.getByTestId('pipeline-detail')).toHaveText("Based on the last 6 months: 2 closed, 10 reached Outreach (close rate 20%). Next month's target: 2 partners onboarded.");
+      await expect(page.getByTestId('pipeline-detail')).toHaveText("Based on the last 6 months: 2 closed, 10 reached Outreach (close rate 20%).");
       await expect(page.getByTestId('pipeline-demo')).toContainText(`?health=${state.key}`);
       // the colour comes with words: the badge text, the zone names and the meter's text value
       // the board itself still shows the real partners
@@ -6044,9 +6070,9 @@ test.describe('Partners: summary tiles, health states and the empty filter', () 
 
   test('?health=nodata: "Not enough data", the explanation, and no needed number', async ({ page }) => {
     await ready(page, '/partners?health=nodata');
-    await expect(page.getByTestId('pipeline-headline')).toHaveText('5 open deals');
-    await expect(page.getByTestId('pipeline-status')).toHaveText('Not enough data');
-    await expect(page.getByTestId('pipeline-detail')).toContainText('No deal has reached Outreach in the last 6 months, so there is no close rate to learn from yet.');
+    await expect(page.getByTestId('pipeline-headline')).toHaveText('Close rate not known yet');
+    await expect(page.getByTestId('pipeline-status')).toHaveText('Awaiting data');
+    await expect(page.getByTestId('pipeline-detail')).toContainText('No deals reached outreach in the past six months.');
     await expect(page.getByRole('region', { name: 'Pipeline health' }).getByRole('meter')).toHaveAttribute('aria-valuetext', '5 open deals, not enough data to work out how many are needed');
     await expect(page.getByTestId('pipeline-marker')).toHaveCount(0); // nothing to place on the scale
     await expect(page.getByTestId('pipeline-needed')).toHaveCount(0);
@@ -6056,7 +6082,7 @@ test.describe('Partners: summary tiles, health states and the empty filter', () 
   test('an unknown ?health= value is ignored and the real pipeline shows', async ({ page }) => {
     await ready(page, '/partners?health=bogus');
     await expect(page.getByTestId('pipeline-demo')).toHaveCount(0);
-    await expect(page.getByTestId('pipeline-headline')).toContainText('13 open deals');
+    await expect(page.getByTestId('partner-summary-open')).toContainText('13');
   });
 
   test('Type = Government (no seeded partner) shows "no results" with Clear filters; clearing brings the board back', async ({ page }) => {
@@ -6204,15 +6230,15 @@ test.describe('Partners: polish', () => {
   const overlaps = (a: { x: number; y: number; width: number; height: number }, b: { x: number; y: number; width: number; height: number }) =>
     a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
-  test('from 1280px the two tiles (a 240px column) and the health card share ONE row; the column headers are above the fold', async ({ page }) => {
+  test('from 1280px the three cards and the health card share ONE row; the column headers are above the fold', async ({ page }) => {
     for (const [width, height] of [[1440, 900], [1280, 800]]) {
       await open(page, width, height);
       const summary = await box(page.getByTestId('partner-summary'));
       const open1 = await box(page.getByTestId('partner-summary-open'));
       const closed = await box(page.getByTestId('partner-summary-closed'));
       const health = await box(page.getByRole('region', { name: 'Pipeline health' }));
-      expect(Math.round(summary.width), `${width}: the tile column`).toBe(240);
-      expect(closed.y, `${width}: the tiles are stacked`).toBeGreaterThanOrEqual(open1.y + open1.height - 1);
+      expect(Math.abs(closed.y - open1.y), `${width}: the cards are aligned in one row`).toBeLessThanOrEqual(1);
+      expect(Math.abs(closed.height - open1.height), `${width}: the cards have the same height`).toBeLessThanOrEqual(1);
       expect(health.x, `${width}: the health card is beside the tiles`).toBeGreaterThanOrEqual(summary.x + summary.width);
       expect(Math.abs(health.y - summary.y), `${width}: one row`).toBeLessThanOrEqual(2);
       // the column headers (before this pass they started at y=500) are in the first screen, with room for the first cards
@@ -6228,15 +6254,15 @@ test.describe('Partners: polish', () => {
     const summary = await box(page.getByTestId('partner-summary'));
     const health = await box(page.getByRole('region', { name: 'Pipeline health' }));
     expect(health.y).toBeGreaterThanOrEqual(summary.y + summary.height - 1);
-    expect(summary.width).toBeGreaterThan(240); // two tiles side by side again
+    expect(summary.width).toBeGreaterThan(240);
   });
 
   test('tile captions: "Prospect to MOU" and the live count of closed partners', async ({ page }) => {
     await open(page, 1440, 900);
     await expect(page.getByTestId('partner-summary-open')).toContainText('Prospect to MOU');
-    await expect(page.getByTestId('partner-summary-closed')).toContainText('5 closed in total'); // 3 in Onboard + 2 in Renew
+    await expect(page.getByTestId('partner-summary-closed')).toContainText('5 closed in total'); // 3 in Onboarded + 2 in Renewed
     await page.getByRole('button', { name: /^Move Google Africa to/ }).click();
-    await page.getByRole('menu', { name: 'Move Google Africa to another stage' }).getByRole('menuitem', { name: 'Onboard', exact: true }).click();
+    await page.getByRole('menu', { name: 'Move Google Africa to another stage' }).getByRole('menuitem', { name: 'Onboarded', exact: true }).click();
     await expect(page.getByTestId('partner-summary-closed')).toContainText('6 closed in total');
     await page.getByRole('button', { name: /^Move Google Africa to/ }).click();
     await page.getByRole('menu', { name: 'Move Google Africa to another stage' }).getByRole('menuitem', { name: 'Proposal', exact: true }).click();
@@ -6306,7 +6332,7 @@ test.describe('Partners: polish', () => {
     await button.focus();
     await page.keyboard.press('Enter');
     const menu = page.getByRole('menu', { name: 'Move Google Africa to another stage' });
-    expect((await menu.getByRole('menuitem').allInnerTexts()).map((text) => text.trim())).toEqual(['Outreach', 'Proposal', 'MOU', 'Onboard', 'Renew']);
+    expect((await menu.getByRole('menuitem').allInnerTexts()).map((text) => text.trim())).toEqual(['Outreach', 'Proposal', 'MOU', 'Onboarded', 'Renewed']);
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('Enter');
     await expect(page.getByTestId('kanban-live')).toHaveText('Google Africa moved to Proposal');
@@ -6348,7 +6374,7 @@ test.describe('Partners: polish', () => {
     await expect(page.getByTestId('kanban-card-ptn-08')).toBeVisible();
     await page.waitForTimeout(500);
     await page.getByRole('combobox', { name: 'Filter by type' }).click();
-    await page.getByRole('option', { name: 'Foundation' }).click(); // Tony Elumelu (Proposal) and Mastercard (Renew)
+    await page.getByRole('option', { name: 'Foundation' }).click(); // Tony Elumelu (Proposal) and Mastercard (Renewed)
     await expect(page.getByTestId('kanban-empty-prospect')).toBeVisible();
     await page.getByTestId('kanban-card-ptn-08').dragTo(page.getByTestId('kanban-empty-prospect'));
     await expect.poll(async () => (await page.getByTestId('kanban-count-prospect').innerText()).trim()).toBe('1');
@@ -6416,24 +6442,19 @@ test.describe('Partners: compact health card', () => {
     await open(page, 1440, 900);
     const sentence = page.getByTestId('pipeline-detail').locator('span').first();
     await expect(sentence).toContainText('Based on the last 6 months');
-    await expect(sentence).toContainText("Next month's target: 4 partners onboarded.");
     expect(Math.round((await sentence.boundingBox())!.height)).toBeLessThanOrEqual(16); // one line of 12/16
     await expect(sentence).not.toHaveAttribute('title', /.*/); // nothing is cut, so no title and no tooltip
   });
 
-  test('on a narrow phone (360px) it is cut after two lines and shows in full in the tooltip (hover and keyboard focus) and a title', async ({ page }) => {
+  test('on a narrow phone (360px) the sentence takes at most two lines and nothing is cut (it is shorter now that the target has its own card)', async ({ page }) => {
     await open(page, 360, 900);
     const sentence = page.getByTestId('pipeline-detail').locator('span.line-clamp-2');
     await expect(sentence).toBeVisible();
     expect(Math.round((await sentence.boundingBox())!.height)).toBeLessThanOrEqual(36); // two lines of 12/16 (and the 1.4 line height)
     const full = (await sentence.textContent())!;
-    expect(full).toContain("Next month's target");
-    await expect(sentence).toHaveAttribute('title', full);
-    await sentence.hover();
-    await expect(page.getByRole('tooltip')).toHaveText(full);
-    await page.mouse.move(0, 0);
-    await sentence.focus();
-    await expect(page.getByRole('tooltip')).toHaveText(full);
+    expect(full).toContain('Based on the last 6 months');
+    // nothing is clipped: the whole sentence fits in its two lines (and so needs no title or tooltip)
+    expect(await sentence.evaluate((el) => el.scrollHeight <= el.clientHeight + 1)).toBe(true);
   });
 
   test('the column headers start at y 400 or less at 1440x900, and the first card is in view at 1280x800', async ({ page }) => {
@@ -6451,7 +6472,7 @@ test.describe('Partners: compact health card', () => {
   });
 
   test('every state of the compact card still reads: the chip, the figures and the one-line sentence', async ({ page }) => {
-    for (const [state, text] of [['healthy', 'Healthy'], ['thin', 'Thin'], ['critical', 'Critical'], ['nodata', 'Not enough data']] as const) {
+    for (const [state, text] of [['healthy', 'Healthy'], ['thin', 'Thin'], ['critical', 'Critical'], ['nodata', 'Awaiting data']] as const) {
       await open(page, 1440, 900, `/partners?health=${state}`);
       await expect(page.getByTestId('pipeline-status')).toHaveText(text);
       const sentence = page.getByTestId('pipeline-detail').locator('span').first();
@@ -6815,7 +6836,7 @@ test.describe('Network: form, detail and the amplification log', () => {
     await page.getByTestId('nav-item-leaderboard').click(); // the active group (Partners & network) is already open
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Leaderboard');
     const row = page.getByTestId('table-row').filter({ hasText: target.name }).first();
-    await expect(row.locator('td[data-label="Shares logged"]')).toHaveText(String(before + 1));
+    await expect(row.locator('td[data-label="Shares"]')).toHaveText(String(before + 1));
   });
 
   test('an unknown id shows not found; ?state=notfound works on the detail page', async ({ page }) => {
@@ -6847,7 +6868,9 @@ test.describe('Leaderboard', () => {
     await page.goto(`${BASE_URL}/leaderboard`, { timeout: 30_000 });
     await expect(page.getByTestId('table-row').first()).toBeVisible();
     const headers = (await page.locator('main table thead th').allTextContents()).map((text) => text.trim()).filter((text) => text && text !== 'Open');
-    expect(headers).toEqual(['Rank', 'Name', 'Country', 'Campus', 'Tier', 'Shares logged', 'Distinct referred clicks', 'Verified signups attributed']);
+    expect(headers).toEqual(['Rank', 'Name', 'Country', 'Campus', 'Tier', 'Shares', 'Referred clicks', 'Verified signups']);
+    // the short headers are defined in plain text under the table
+    await expect(page.getByTestId('leaderboard-definitions')).toContainText(/Verified signups:\s*people who signed up through the referral code/);
     const want = expected(currentMonth());
     await expect(page.getByTestId('table-row')).toHaveCount(want.length);
     const rows = page.getByTestId('table-row');
@@ -6855,9 +6878,9 @@ test.describe('Leaderboard', () => {
       const row = rows.nth(i);
       await expect(row.locator('td[data-label="Rank"]')).toHaveText(String(i + 1));
       await expect(row).toContainText(want[i].name);
-      await expect(row.locator('td[data-label="Shares logged"]')).toHaveText(String(want[i].shares));
-      await expect(row.locator('td[data-label="Distinct referred clicks"]')).toHaveText(String(want[i].clicks));
-      await expect(row.locator('td[data-label="Verified signups attributed"]')).toHaveText(String(want[i].signups));
+      await expect(row.locator('td[data-label="Shares"]')).toHaveText(String(want[i].shares));
+      await expect(row.locator('td[data-label="Referred clicks"]')).toHaveText(String(want[i].clicks));
+      await expect(row.locator('td[data-label="Verified signups"]')).toHaveText(String(want[i].signups));
     }
   });
 
@@ -6897,8 +6920,8 @@ test.describe('Leaderboard', () => {
     for (let i = 0; i < 5; i++) {
       const row = page.getByTestId('table-row').nth(i);
       await expect(row).toContainText(want[i].name);
-      await expect(row.locator('td[data-label="Verified signups attributed"]')).toHaveText(String(want[i].signups));
-      await expect(row.locator('td[data-label="Shares logged"]')).toHaveText(String(want[i].shares));
+      await expect(row.locator('td[data-label="Verified signups"]')).toHaveText(String(want[i].signups));
+      await expect(row.locator('td[data-label="Shares"]')).toHaveText(String(want[i].shares));
     }
     // the month control switches the month
     await page.getByRole('combobox', { name: /month/i }).click();
@@ -7142,7 +7165,7 @@ test.describe('Visual fixes: the pipeline gauge', () => {
   test('real data: 13 open against 9 needed (a ratio of 1.4, healthy): the marker is a 12px pill INSIDE the bar, nothing is capped, the tick says "9 needed"', async ({ page }) => {
     await page.goto(`${BASE_URL}/partners`, { timeout: 30_000 });
     await expect(page.getByTestId('pipeline-gauge')).toBeVisible();
-    await expect(page.getByTestId('pipeline-headline')).toHaveText('13 open deals, 9 needed');
+    await expect(page.getByTestId('pipeline-headline')).toHaveText('9 deals needed');
     await expect(page.getByTestId('pipeline-marker-label')).toHaveText('13 open');
     await expect(page.getByTestId('pipeline-needed-label')).toHaveText('9 needed');
     await expect(page.getByTestId('pipeline-capped')).toHaveCount(0);
@@ -7360,7 +7383,7 @@ test.describe('Database: the rules (no browser)', () => {
     expect(full).toMatchObject({ month: june, verified: 8, target: 15, paceRounded: 8, status: 'on_pace' });
     expect(full.text).toBe('8 of 15 verified, pro-rated pace 8, on track');
     expect(full.gauge.capped).toBeNull(); // not past the scale (twice the pace) in the default data
-    expect(paceWith(6)).toMatchObject({ status: 'behind', text: '6 of 15 verified, pro-rated pace 8, behind' });
+    expect(paceWith(6)).toMatchObject({ status: 'behind', text: '6 of 15 verified, pro-rated pace 8, at risk' });
     expect(paceWith(5)).toMatchObject({ status: 'far_behind', text: '5 of 15 verified, pro-rated pace 8, off track' });
     // the status is exactly kpiStatus on the same numbers
     for (const count of [0, 3, 5, 6, 7, 8]) {
@@ -7476,6 +7499,7 @@ test.describe('Database: the page', () => {
     await expect(meter).toHaveAttribute('aria-valuetext', pace.text);
     await expect(card.getByRole('heading', { name: 'Verified this month' })).toBeVisible();
     await expect(page.getByTestId('pace-headline')).toHaveText(`${pace.verified} of ${pace.target} verified`);
+    await expect(page.getByTestId('pace-status')).toHaveText({ on_pace: 'On track', behind: 'At risk', far_behind: 'Off track' }[pace.status]);
     await expect(page.getByTestId('pace-expected')).toHaveText(`Expected by today: ${pace.paceRounded}`);
     // the status badge is on the right of the title, on the same line
     const title = (await card.getByRole('heading', { name: 'Verified this month' }).boundingBox())!;
@@ -8222,6 +8246,7 @@ test.describe('Social: the page', () => {
     await expect(page.getByTestId('total-posts')).toContainText(/\d/);
   };
   const fill = async (page: import('@playwright/test').Page, over: Partial<Record<'platform' | 'title' | 'url' | 'reach' | 'engagement' | 'date', string>> = {}) => {
+    await ensureAddPost(page);
     const card = page.getByRole('region', { name: 'Log a post' });
     await card.getByRole('combobox', { name: 'Platform' }).click();
     await page.getByRole('option', { name: over.platform ?? 'YouTube', exact: true }).click();
@@ -8235,33 +8260,26 @@ test.describe('Social: the page', () => {
   const num = (text: string) => Number(text.replace(/[^\d]/g, ''));
   const stat = async (page: import('@playwright/test').Page, id: string) => num(await page.getByTestId(id).locator('.ministat-value').innerText());
 
-  test('two columns from 1024px: Log a post on the left, Monthly totals on the right; stacked below', async ({ page }) => {
+  test('Monthly totals is full width and compact; Add post (beside the title) opens the Log a post form in a dialog', async ({ page }) => {
     await open(page);
-    const left = (await page.getByRole('region', { name: 'Log a post' }).boundingBox())!;
-    const right = (await page.getByRole('region', { name: 'Monthly totals' }).boundingBox())!;
-    expect(left.x).toBeLessThan(right.x);
-    expect(Math.abs(left.y - right.y)).toBeLessThanOrEqual(2);
-    expect(left.x + left.width).toBeLessThanOrEqual(right.x + 1);
-    await page.setViewportSize({ width: 900, height: 1000 });
-    const l2 = (await page.getByRole('region', { name: 'Log a post' }).boundingBox())!;
-    const r2 = (await page.getByRole('region', { name: 'Monthly totals' }).boundingBox())!;
-    expect(r2.y).toBeGreaterThanOrEqual(l2.y + l2.height - 1); // stacked
+    const totals = (await page.getByRole('region', { name: 'Monthly totals' }).boundingBox())!;
+    expect(totals.width).toBeGreaterThan(900); // no longer one half of a two-column row
+    expect(totals.height).toBeLessThan(520); // not stretched to the height of a form
+    await expect(page.getByRole('region', { name: 'Log a post' })).toHaveCount(0); // the form is not on the page until asked for
+    const add = page.getByRole('button', { name: 'Add post' });
+    const title = (await page.getByTestId('page-title').boundingBox())!;
+    const addBox = (await add.boundingBox())!;
+    expect(Math.abs(addBox.y + addBox.height / 2 - (title.y + title.height / 2))).toBeLessThan(60); // on the heading's row
+    await add.click();
+    await expect(page.getByRole('dialog', { name: 'Add post' })).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Log a post' })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog', { name: 'Add post' })).toHaveCount(0);
   });
 
-  test('the two columns end together at 1440x900: the Log card and the Monthly totals card are the same height, no gap over 24px', async ({ page }) => {
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await open(page);
-    const log = (await page.getByRole('region', { name: 'Log a post' }).boundingBox())!;
-    const totals = (await page.getByRole('region', { name: 'Monthly totals' }).boundingBox())!;
-    console.log(`Social card heights at 1440x900: Log ${Math.round(log.height)}px, Monthly totals ${Math.round(totals.height)}px`);
-    expect(Math.abs(log.y + log.height - (totals.y + totals.height))).toBeLessThanOrEqual(24);
-    expect(Math.abs(log.height - totals.height)).toBeLessThanOrEqual(1); // in fact the same height
-    // the shorter card's content is spread out, so no gap inside either card is large
-    const gaps = await page.getByRole('region', { name: 'Monthly totals' }).evaluate((card) => {
-      const kids = [...card.children].map((el) => el.getBoundingClientRect());
-      return kids.slice(1).map((box, i) => Math.round(box.top - kids[i].bottom));
-    });
-    for (const gap of gaps) expect(gap).toBeLessThanOrEqual(40);
+  test('"No posts logged" is said once: an empty month shows it in the list only, not again in the totals', async ({ page }) => {
+    await page.goto(`${BASE_URL}/social?state=empty`, { timeout: 30_000 });
+    await expect(page.getByText(/No posts logged for/)).toHaveCount(1);
   });
 
   test('the totals, the platform table and the leading platform match the data for the month; the three tiles have captions with the targets', async ({ page }) => {
@@ -8303,6 +8321,7 @@ test.describe('Social: the page', () => {
 
   test('Log a post: a bad link, a non-number and a missing platform are refused with messages, and the first bad field takes focus', async ({ page }) => {
     await open(page);
+    await ensureAddPost(page);
     const card = page.getByRole('region', { name: 'Log a post' });
     await card.getByRole('button', { name: 'Log post' }).click();
     for (const message of ['Choose the platform.', 'Enter the post title.', 'Enter the link to the post.', 'Enter the reach (0 if unknown).', 'Enter the engagement (0 if none).']) await expect(card.getByText(message)).toBeVisible();
@@ -8317,6 +8336,7 @@ test.describe('Social: the page', () => {
 
   test('the date defaults to today (in the shared format) and a typed future date is refused', async ({ page }) => {
     await open(page);
+    await ensureAddPost(page);
     const card = page.getByRole('region', { name: 'Log a post' });
     const date = card.getByLabel('Date posted');
     await expect(date).toHaveValue(formatDate(todayLocal()));
@@ -8343,10 +8363,13 @@ test.describe('Social: the page', () => {
     await expect(first).toContainText('Fellowship video');
     await expect(first.getByRole('link', { name: /Fellowship video/ })).toHaveAttribute('href', 'https://www.youtube.com/watch?v=abc');
     await expect(first.getByRole('link', { name: /Fellowship video/ })).toHaveAttribute('target', '_blank');
-    // the form is reset
-    await expect(card.getByRole('textbox', { name: 'Post title' })).toHaveValue('');
-    await expect(card.getByRole('textbox', { name: 'Reach' })).toHaveValue('');
-    await expect(card.getByLabel('Date posted')).toHaveValue(formatDate(todayLocal())); // back to today
+    // the dialog closes after a saved post, and the next time the form is blank again
+    await expect(page.getByTestId('log-post-dialog')).toHaveCount(0);
+    await ensureAddPost(page);
+    const again = page.getByRole('region', { name: 'Log a post' });
+    await expect(again.getByRole('textbox', { name: 'Post title' })).toHaveValue('');
+    await expect(again.getByRole('textbox', { name: 'Reach' })).toHaveValue('');
+    await expect(again.getByLabel('Date posted')).toHaveValue(formatDate(todayLocal())); // back to today
     await expect(card.getByText('Enter the post title.')).toHaveCount(0);
   });
 
@@ -8401,19 +8424,21 @@ test.describe('Social: roles', () => {
   test.use({ viewport: { width: 1440, height: 1000 } });
 
   for (const role of ['social_media_manager', 'desk_lead', 'super_admin']) {
-    test(`${role} edits Social: the Log a post card is there`, async ({ page, context }) => {
+    test(`${role} edits Social: the Add post button opens the Log a post form`, async ({ page, context }) => {
       await asRoles(context, role);
       await page.goto(`${BASE_URL}/social`, { timeout: 30_000 });
+      await page.getByRole('button', { name: 'Add post' }).click();
       await expect(page.getByRole('region', { name: 'Log a post' })).toBeVisible();
       await expect(page.getByRole('button', { name: 'Log post' })).toBeVisible();
     });
   }
 
-  test('communications_officer can only view Social: the totals and the list, and NO Log a post card or button (not rendered)', async ({ page, context }) => {
+  test('communications_officer can only view Social: the totals and the list, and NO Add post button or Log a post form (not rendered)', async ({ page, context }) => {
     await asRoles(context, 'communications_officer');
     await page.goto(`${BASE_URL}/social`, { timeout: 30_000 });
     await expect(page.getByTestId('total-posts')).toContainText(/\d/);
     await expect(page.getByTestId('table-row').first()).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Add post' })).toHaveCount(0);
     await expect(page.getByRole('region', { name: 'Log a post' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Log post' })).toHaveCount(0);
     await expect(page.getByRole('combobox', { name: 'Platform' })).toHaveCount(0);
@@ -8444,17 +8469,15 @@ test.describe('Social: phone (434px)', () => {
 
   test('the cards stack, the posts are cards with labelled values, the form is usable and nothing is wider than the screen', async ({ page }) => {
     await page.goto(`${BASE_URL}/social`, { timeout: 30_000 });
-    const log = (await page.getByRole('region', { name: 'Log a post' }).boundingBox())!;
-    const totals = (await page.getByRole('region', { name: 'Monthly totals' }).boundingBox())!;
-    expect(totals.y).toBeGreaterThanOrEqual(log.y + log.height - 1);
     const card = page.getByTestId('table-row').first();
     await expect(card).toBeVisible();
     for (const label of ['Platform', 'Date', 'Reach', 'Engagement', 'Linked listing']) await expect(card.locator(`td[data-label="${label}"]`)).toBeVisible();
     expect(await noOverflow(page)).toBe(true);
+    await page.getByRole('button', { name: 'Add post' }).click();
     const log2 = page.getByRole('region', { name: 'Log a post' });
     expect((await log2.getByRole('button', { name: 'Log post' }).boundingBox())!.height).toBeGreaterThanOrEqual(40);
     await log2.getByRole('combobox', { name: 'Platform' }).click();
-    await expect(page.getByRole('dialog')).toBeVisible(); // the bottom sheet
+    await expect(page.getByRole('dialog', { name: 'Platform' })).toBeVisible(); // the bottom sheet (the Add post dialog is open under it)
   });
 });
 
@@ -8779,6 +8802,7 @@ test.describe('DatePicker: in the Log a post form', () => {
   test.use({ viewport: { width: 1440, height: 1000 } });
   const open = async (page: import('@playwright/test').Page) => {
     await page.goto(`${BASE_URL}/social`, { timeout: 30_000 });
+    await page.getByRole('button', { name: 'Add post' }).click();
     await expect(page.getByRole('region', { name: 'Log a post' })).toBeVisible();
   };
   const field = (page: import('@playwright/test').Page) => page.getByRole('region', { name: 'Log a post' }).getByLabel('Date posted', { exact: true });
@@ -8943,12 +8967,13 @@ test.describe('DatePicker: in the Log a post form', () => {
     await expect(calendar(page)).toHaveCount(0);
     await expect(field(page)).toBeFocused();
     await openCalendar(page);
-    await page.getByRole('heading', { name: 'Posts in', exact: false }).click();
+    await page.getByRole('heading', { name: 'Add post' }).click(); // outside the calendar (the page behind is under the dialog)
     await expect(calendar(page)).toHaveCount(0);
   });
 
   test('a typed future date is refused by the form (the calendar cannot pick one, the field can be typed in)', async ({ page }) => {
     await open(page);
+    await ensureAddPost(page);
     const card = page.getByRole('region', { name: 'Log a post' });
     await card.getByRole('combobox', { name: 'Platform' }).click();
     await page.getByRole('option', { name: 'X', exact: true }).click();
@@ -8968,6 +8993,7 @@ test.describe('DatePicker: on a phone (a bottom sheet)', () => {
     test(`${width}px: the calendar is a bottom sheet that fits, closes with the backdrop, the close button and Escape, and chooses a day`, async ({ page }) => {
       await page.setViewportSize({ width, height: 800 });
       await page.goto(`${BASE_URL}/social`, { timeout: 30_000 });
+      await ensureAddPost(page);
       const field = page.getByRole('region', { name: 'Log a post' }).getByLabel('Date posted');
       await expect(field).toBeVisible();
       const openIt = async () => {
@@ -9182,8 +9208,10 @@ test.describe('Social: phones and the platform table and chart', () => {
   test.skip(!MOCK_RUN, 'the redesign screens run on sample data: see npm run test:e2e:mock');
   const logAll = async (page: import('@playwright/test').Page) => {
     // seven platforms with posts this month: log the ones the seed does not have (the seed has Facebook, X and LinkedIn this month)
+    await ensureAddPost(page);
     const card = page.getByRole('region', { name: 'Log a post' });
     for (const [i, platform] of ['Instagram', 'TikTok', 'YouTube', 'WhatsApp', 'Other'].entries()) {
+      await ensureAddPost(page); // the dialog closes after each saved post
       // the previous submit resets the form ~300ms after saving: wait for the reset before filling, or it wipes the new values
       await expect(card.getByRole('combobox', { name: 'Platform' })).toContainText('Choose a platform');
       await card.getByRole('combobox', { name: 'Platform' }).click();
@@ -9264,6 +9292,7 @@ test.describe('Social: phones and the platform table and chart', () => {
     const beforeTargetRow = page.getByTestId(`platform-row-${target.platform}`);
     const beforeTargetReach = num(await beforeTargetRow.locator('td').nth(1).textContent() ?? '');
     const beforeTargetEngagement = num(await beforeTargetRow.locator('td').nth(2).textContent() ?? '');
+    await ensureAddPost(page);
     const card = page.getByRole('region', { name: 'Log a post' });
     await card.getByRole('combobox', { name: 'Platform' }).click();
     await page.getByRole('option', { name: targetLabel, exact: true }).click();
@@ -9343,6 +9372,7 @@ test.describe('DatePicker: the popover is placed below the field, or above, neve
     test(`Social at ${vw}x${vh}: the calendar of "Date posted" does not cover the field, nor Post title, URL or Reach`, async ({ page }) => {
       await page.setViewportSize({ width: vw, height: vh });
       await page.goto(`${BASE_URL}/social`, { timeout: 30_000 });
+      await ensureAddPost(page);
       const card = page.getByRole('region', { name: 'Log a post' });
       await expect(card).toBeVisible();
       const field = card.getByLabel('Date posted', { exact: true });
@@ -9378,6 +9408,7 @@ test.describe('DatePicker: the popover is placed below the field, or above, neve
   test('a field near the top has the popover below it (4px gap), and one near the bottom has it above', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 700 });
     await page.goto(`${BASE_URL}/social`, { timeout: 30_000 });
+    await ensureAddPost(page);
     const card = page.getByRole('region', { name: 'Log a post' });
     const field = card.getByLabel('Date posted', { exact: true });
     await field.scrollIntoViewIfNeeded();
@@ -9415,7 +9446,7 @@ test.describe('Menu: a sheet on phones', () => {
     expect((await sheet.getByRole('button', { name: 'Close' }).boundingBox())!.height).toBe(40);
     const menu = sheet.getByRole('menu', { name: 'Move Google Africa to another stage' });
     const items = menu.getByRole('menuitem');
-    expect((await items.allInnerTexts()).map((t) => t.trim())).toEqual(['Outreach', 'Proposal', 'MOU', 'Onboard', 'Renew']);
+    expect((await items.allInnerTexts()).map((t) => t.trim())).toEqual(['Outreach', 'Proposal', 'MOU', 'Onboarded', 'Renewed']);
     for (const box of await items.evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().height)))) expect(box).toBe(48);
     await expect.poll(async () => { const b = (await sheet.boundingBox())!; return Math.round(b.y + b.height); }).toBe(900); // pinned to the bottom
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -9554,6 +9585,7 @@ test.describe('DatePicker: focused and selected days look different', () => {
 
   test('the focused day is a 2px purple outline with no fill; the selected day is a solid purple fill; both hold 3:1 against white', async ({ page }) => {
     await page.goto(`${BASE_URL}/social`, { timeout: 30_000 });
+    await ensureAddPost(page);
     const card = page.getByRole('region', { name: 'Log a post' });
     await card.getByLabel('Date posted', { exact: true }).fill(addDays(todayLocal(), -3));
     await card.getByLabel('Date posted', { exact: true }).blur();
@@ -10041,7 +10073,7 @@ test.describe('Settings: the rules (no browser)', () => {
   test('the live example is worked out with kpiStatus and the thresholds being typed', () => {
     expect(thresholdExample(95, 70)).toBe('With a target of 12,000, an output of 9,000 is On track on the 20th of a 30-day month');
     expect(kpiStatus(9000, 12000, 20, 30, { green: 0.95, amber: 0.7 })).toBe('green');
-    expect(thresholdExample(150, 100)).toContain('is Behind on the 20th of a 30-day month'); // 9,000 / 8,000 = 1.125: below 150%, above 100%
+    expect(thresholdExample(150, 100)).toContain('is At risk on the 20th of a 30-day month'); // 9,000 / 8,000 = 1.125: below 150%, above 100%
     expect(thresholdExample(200, 150)).toContain('is Off track on the 20th'); // below 150%
     expect(thresholdExample(95, 70, 20000, 4000, 15, 30)).toBe('With a target of 20,000, an output of 4,000 is Off track on the 15th of a 30-day month');
   });
@@ -10434,7 +10466,7 @@ test.describe('Settings: Targets', () => {
     await amber.fill('70');
     await green.fill('150');
     await expect(card.getByText('Amber must be below green.')).toHaveCount(0);
-    await expect(page.getByTestId('threshold-example')).toContainText('is Behind on the 20th');
+    await expect(page.getByTestId('threshold-example')).toContainText('is At risk on the 20th');
     await green.fill('201');
     await expect(card.getByText('Use a number from 1 to 200.')).toBeVisible();
     await green.fill('9.5');
@@ -10450,9 +10482,10 @@ test.describe('Settings: Targets', () => {
     await expect(page.getByTestId('toast').filter({ hasText: `Beneficiaries verified target changed to 60 from ${formatMonth(currentMonth())}.` })).toBeVisible();
     await expect(page.getByTestId('changed-dot-beneficiaries_verified')).toHaveCount(0);
     await goViaSidebar(page, 'People', 'Database');
+    // (the target is only in the headline now: "x of 60 verified")
     const pace = recordsPace();
     await expect(page.getByTestId('pace-headline')).toHaveText(`${pace.verified} of 60 verified`);
-    await expect(page.getByRole('meter')).toHaveAttribute('aria-valuetext', new RegExp(`^${pace.verified} of 60 verified, pro-rated pace \\d+, (off track|behind)$`));
+    await expect(page.getByRole('meter')).toHaveAttribute('aria-valuetext', new RegExp(`^${pace.verified} of 60 verified, pro-rated pace \\d+, (off track|at risk)$`));
     await expect(page.getByTestId('pace-status')).not.toHaveText('On track');
   });
 
@@ -10463,9 +10496,9 @@ test.describe('Settings: Targets', () => {
     await save(page).click();
     await expect(page.getByTestId('toast')).toBeVisible();
     await goViaSidebar(page, 'Partners & network', 'Partners');
-    await expect(page.getByTestId('pipeline-headline')).toHaveText('13 open deals, 18 needed');
+    await expect(page.getByTestId('pipeline-headline')).toHaveText('18 deals needed');
     await expect(page.getByRole('region', { name: 'Pipeline health' }).getByRole('meter')).toHaveAttribute('aria-valuetext', '13 open deals, 18 needed, 0.7 times the target, thin');
-    await expect(page.getByTestId('pipeline-detail')).toContainText("Next month's target: 8 partners onboarded.");
+    await expect(page.getByTestId('partner-summary-target')).toContainText('8');
   });
 
   test('the past is not rewritten: a new target for this month changes this month on Social and leaves last month with the old one', async ({ page }) => {
@@ -10509,7 +10542,7 @@ test.describe('Settings: Targets', () => {
     await expect(page.getByRole('meter')).toBeVisible();
     // the zone words' tooltip names the saved thresholds
     await page.getByTestId('pace-status').hover(); // GOD-T17: the thresholds are the status badge's tooltip
-    await expect(page.getByRole('tooltip')).toHaveText('Far behind: below 100% of the pro-rated pace. Behind: 100% to 150%. On pace: 150% and above.');
+    await expect(page.getByRole('tooltip')).toHaveText('Off track: below 100% of the pro-rated pace. At risk: 100% to 150%. On track: 150% and above.');
   });
 
   test('leaving with unsaved changes asks first, and a tab switch asks first too', async ({ page }) => {
@@ -10979,7 +11012,7 @@ test.describe('Dated thresholds: in Settings and on the pages', () => {
     await expect(history(page).getByTestId('history-row').first()).toContainText(formatMonth(next));
     await goViaSidebar(page, 'People', 'Database');
     await page.getByTestId('pace-status').hover(); // GOD-T17: the thresholds are the status badge's tooltip
-    await expect(page.getByRole('tooltip')).toHaveText('Far behind: below 70% of the pro-rated pace. Behind: 70% to 95%. On pace: 95% and above.');
+    await expect(page.getByRole('tooltip')).toHaveText('Off track: below 70% of the pro-rated pace. At risk: 70% to 95%. On track: 95% and above.');
   });
 
   test('(a) thresholds saved for this month: the zones follow them, and the one date covers the targets too', async ({ page }) => {
@@ -10994,7 +11027,7 @@ test.describe('Dated thresholds: in Settings and on the pages', () => {
     for (const index of [0, 1]) await expect(rows.nth(index)).toContainText(formatMonth(currentMonth())); // the same month for both
     await goViaSidebar(page, 'People', 'Database');
     await page.getByTestId('pace-status').hover(); // GOD-T17: the thresholds are the status badge's tooltip
-    await expect(page.getByRole('tooltip')).toHaveText('Far behind: below 100% of the pro-rated pace. Behind: 100% to 150%. On pace: 150% and above.');
+    await expect(page.getByRole('tooltip')).toHaveText('Off track: below 100% of the pro-rated pace. At risk: 100% to 150%. On track: 150% and above.');
   });
 
   test('a past month shows a note: "Showing the targets and thresholds that applied in <month>", and this month does not', async ({ page }) => {
@@ -11364,7 +11397,7 @@ test.describe('Overview: real-API mode shows live figures calmly', () => {
     // (The exact figure moves when earlier tests publish records, so only the vocabulary is pinned.)
     const panel = page.getByTestId('priorities-card');
     await expect(panel).not.toContainText('No target');
-    await expect(panel).toContainText(/On track|Off track|Behind/);
+    await expect(panel).toContainText(/On track|Off track|At risk/);
     await expect(page.getByText('Not available yet')).toHaveCount(0);
     await expect(page.getByText('Status unavailable')).toHaveCount(0);
   });
@@ -11432,12 +11465,12 @@ test.describe('Overview: status words, notes, layout and rankings', () => {
     await expect(page.getByTestId('priorities-card')).toBeVisible();
   };
 
-  test('one status vocabulary: the priorities never say "At risk", only On track, Behind and Off track', async ({ page }) => {
+  test('one status vocabulary: the priorities say only On track, At risk and Off track (never "Behind")', async ({ page }) => {
     await open(page, `?month=${monthsBefore(currentMonth(), 1)}`); // a complete month: a mix of statuses in the seed
     await page.getByRole('button', { name: 'See all' }).click();
     const rows = page.getByTestId('priority-row');
-    for (const row of await rows.all()) await expect(row).toContainText(/On track|Behind|Off track/);
-    expect(await page.getByText('At risk').count()).toBe(0);
+    for (const row of await rows.all()) await expect(row).toContainText(/On track|At risk|Off track/);
+    expect(await page.getByText('Behind', { exact: true }).count()).toBe(0);
   });
 
   test('the note above the priorities says how status is judged, with a worked example in a tooltip', async ({ page }) => {
@@ -11732,7 +11765,7 @@ test.describe('Scorecard: My scorecard and Team (mock mode)', () => {
       const list = roles.split(',') as Parameters<typeof scorecardFor>[0]['roles'];
       const me = scorecardFor({ id: 'x', name: 'x', roles: list }, currentMonth(), TODAY(), data());
       await expect(page.getByTestId('score-value')).toHaveText(String(me.composite));
-      await expect(page.getByTestId('score-ring')).toHaveAttribute('aria-valuetext', `${me.composite} out of 100, ${{ green: 'On track', amber: 'Behind', red: 'Off track' }[me.status!]}`);
+      await expect(page.getByTestId('score-ring')).toHaveAttribute('aria-valuetext', `${me.composite} out of 100, ${{ green: 'On track', amber: 'At risk', red: 'Off track' }[me.status!]}`);
       const h = me.highlight!;
       if (h.kind === 'pair') {
         await expect(page.getByTestId('strongest')).toHaveAttribute('data-kpi', h.strongest.key);
@@ -11751,7 +11784,7 @@ test.describe('Scorecard: My scorecard and Team (mock mode)', () => {
         await expect(rows.nth(index)).toHaveAttribute('data-kpi', metric.key);
         await expect(rows.nth(index).getByTestId('metric-attainment')).toHaveText(pct(metric.attainment));
         await expect(rows.nth(index).getByTestId('metric-value')).toHaveText(metric.value.toLocaleString('en-US'));
-        await expect(rows.nth(index).getByTestId('kpi-status')).toHaveText({ green: 'On track', amber: 'Behind', red: 'Off track' }[metric.status!]);
+        await expect(rows.nth(index).getByTestId('kpi-status')).toHaveText({ green: 'On track', amber: 'At risk', red: 'Off track' }[metric.status!]);
         await expect(rows.nth(index).getByTestId('metric-of')).toContainText(`of ${metric.target.toLocaleString('en-US')} ${kpiUnit(metric.key, metric.target)}`);
         if (metric.prorated) await expect(rows.nth(index).getByTestId('metric-of')).toContainText('pro-rated');
         else await expect(rows.nth(index).getByTestId('metric-of')).not.toContainText('pro-rated'); // a running total: judged against the full target
@@ -11821,7 +11854,7 @@ test.describe('Scorecard: My scorecard and Team (mock mode)', () => {
     for (const [index, person] of ranked.entries()) {
       await expect(rows.nth(index).getByTestId('team-composite')).toHaveText(String(person.composite));
       await expect(rows.nth(index)).toContainText(person.name);
-      await expect(rows.nth(index).getByTestId('kpi-status')).toHaveText({ green: 'On track', amber: 'Behind', red: 'Off track' }[person.status!]);
+      await expect(rows.nth(index).getByTestId('kpi-status')).toHaveText({ green: 'On track', amber: 'At risk', red: 'Off track' }[person.status!]);
       if (person.highlight?.kind === 'pair') {
         await expect(rows.nth(index).getByTestId('team-strongest')).toHaveText(`${highlightLabels(person.highlight).high}: ${person.highlight.strongest.label} ${pct(person.highlight.strongest.attainment)}`);
         await expect(rows.nth(index).getByTestId('team-weakest')).toHaveText(`${highlightLabels(person.highlight).low}: ${person.highlight.weakest.label} ${pct(person.highlight.weakest.attainment)}`);
@@ -11881,7 +11914,7 @@ test.describe('Scorecard: My scorecard and Team (mock mode)', () => {
         // the Overview, same role, same month
         await page.goto(`${BASE_URL}/${query}`, { timeout: 30_000 });
         await expect(page.getByTestId('priorities-card')).toBeVisible();
-        const words = { green: 'On track', amber: 'Behind', red: 'Off track' } as const;
+        const words = { green: 'On track', amber: 'At risk', red: 'Off track' } as const;
         expect(Object.values(words)).toContain(onCard[0].status);
         await page.getByRole('button', { name: 'See all' }).click();
         for (const metric of onCard) {
@@ -12063,7 +12096,7 @@ test.describe('Scorecard follow-up: name and roles, axis, running totals, too ea
     await page.goto(`${BASE_URL}${path}`, { timeout: 30_000 });
     await expect(page.getByRole('heading', { level: 1, name: 'Scorecard' })).toBeVisible();
   };
-  const words = { green: 'On track', amber: 'Behind', red: 'Off track' } as const;
+  const words = { green: 'On track', amber: 'At risk', red: 'Off track' } as const;
 
   for (const roles of ['partnerships_officer', 'database_officer', 'social_media_manager,training_officer']) {
     test(`My scorecard shows the signed-in user's name and the roles viewed as pills, and no other staff name (${roles})`, async ({ page, context }) => {
@@ -12578,7 +12611,7 @@ test.describe('Monthly report: routes, access, the two templates and the coheren
     const cards = buildKpiCards(month, today(), data());
     for (const card of cards) {
       await expect(page.getByTestId(`team-kpi-${card.key}`).getByTestId('team-kpi-value')).toHaveText((card.value ?? 0).toLocaleString('en-US'));
-      await expect(page.getByTestId(`team-kpi-${card.key}`).getByTestId('kpi-status')).toHaveText({ green: 'On track', amber: 'Behind', red: 'Off track' }[card.status!]);
+      await expect(page.getByTestId(`team-kpi-${card.key}`).getByTestId('kpi-status')).toHaveText({ green: 'On track', amber: 'At risk', red: 'Off track' }[card.status!]);
     }
     await expect(page.getByTestId('team-pipeline').getByRole('meter')).toBeVisible();
     await expect(page.getByTestId('team-database').getByRole('meter')).toBeVisible();

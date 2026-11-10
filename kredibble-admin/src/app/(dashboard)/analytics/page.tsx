@@ -16,6 +16,7 @@
  * The month selector keeps the month in the URL (useMonth). These charts do not change by month yet, so choosing a past month
  * shows a note that says so. A skeleton while loading; an error with Try again.
  */
+import { PageHeader } from "@/components/ui/PageHeader";
 import { BarChart3, Briefcase, Flag } from "lucide-react";
 import { useCallback } from "react";
 import { useMockStoreVersion } from "@/lib/mock-store";
@@ -50,15 +51,7 @@ export default function InsightsPage() {
   const load = useCallback(() => loadInsights(), [version]);
   const { data, error, isLoading, reload } = useAsync(load);
 
-  const header = (
-    <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-      <div>
-        <h1 data-testid="page-title" className="page-title">Insights</h1>
-        <p className="page-subtitle mt-1">How postings, verification and reports break down across the platform.</p>
-      </div>
-      <MonthSelect />
-    </header>
-  );
+  const header = <PageHeader title="Insights" subtitle="How postings, verification and reports break down across the platform." actions={<MonthSelect />} />;
   if (error && !isLoading) {
     return (
       <div className="space-y-4">

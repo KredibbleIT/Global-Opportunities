@@ -49,8 +49,8 @@ export default function AmbassadorApplicationsPage() {
 
   return (
     <ListPage
-      title="Ambassador applications"
-      subtitle="Review the people who asked to become Kredibble ambassadors. Approving adds them to the ambassador registry and, if you choose, a channel."
+      title="Ambassador Applications"
+      subtitle="Review the people who asked to become Global Opportunity Desk ambassadors. Approving adds them to the ambassador registry and, if you choose, a channel."
       toolbar={<TableToolbar filters={{ options, value: filter, onChange: setFilter, label: "Filter by status" }} />}
     >
       <DataTable
@@ -62,10 +62,12 @@ export default function AmbassadorApplicationsPage() {
         loading={isLoading}
         error={error}
         onRetry={retry}
-        isFiltered={filter !== "all"}
+        // "Filtered" only when there is something to filter: an empty dataset is "No applications yet", never "No matching applications".
+        isFiltered={filter !== "all" && all.length > 0}
+        onClearFilters={() => setFilter("all")}
         resetKey={filter}
         emptyNoData={{ icon: Megaphone, title: "No applications yet", description: "They appear here when someone taps “Become an ambassador” in the app." }}
-        emptyNoResults={{ icon: Megaphone, title: "No applications match this filter", description: "Try another status, or choose All." }}
+        emptyNoResults={{ icon: Megaphone, title: "No matching applications", description: "Nothing has this status. Choose another status, or clear the filter." }}
       />
     </ListPage>
   );

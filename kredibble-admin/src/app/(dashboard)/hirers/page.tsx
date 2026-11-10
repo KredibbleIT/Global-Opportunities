@@ -58,6 +58,7 @@ export default function HirersDirectoryPage() {
         error={error}
         onRetry={retry}
         isFiltered={q !== ""}
+        onClearFilters={() => setQuery("")}
         resetKey={q}
         emptyNoData={{ icon: Building2, title: "No hirer accounts yet", description: "Companies appear here once they register." }}
         emptyNoResults={{ icon: Building2, title: "No hirers match your search", description: "Check the spelling, or try a company, recruiter or industry." }}

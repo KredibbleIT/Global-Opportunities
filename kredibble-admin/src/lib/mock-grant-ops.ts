@@ -19,6 +19,8 @@ export interface GrantRecord {
   title: string;
   hirer: string;
   sector: string;
+  /** ISO 4217 code of the pool and every requested amount ("USD"). Shown in full, never as a bare "$". */
+  currency: string;
   fundingPool: number;
   allocated: number;
   status: GrantOpsStatus;
@@ -31,6 +33,7 @@ export const grantRecords: GrantRecord[] = [
     title: 'Early-Stage EdTech Innovation Grant',
     hirer: 'Ashesi Ventures',
     sector: 'Education',
+    currency: 'USD',
     fundingPool: 200000,
     allocated: 75000,
     status: 'open',
@@ -46,6 +49,7 @@ export const grantRecords: GrantRecord[] = [
     title: 'Community Health Access Fund',
     hirer: 'Google LLC',
     sector: 'Health',
+    currency: 'USD',
     fundingPool: 500000,
     allocated: 500000,
     status: 'closed',

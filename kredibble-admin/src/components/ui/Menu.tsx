@@ -11,6 +11,10 @@
  * - Tab closes it; a click outside closes it
  * - Enter or Space on an item activates it
  *
+ * The popover is rendered in a portal with fixed positioning (see use-floating-panel.ts): it sits above dialogs and tables, flips
+ * upward near the bottom of the screen, stays inside the viewport at 360px, and a long list scrolls inside it. Items grow in height
+ * to fit their label and hint, so no label is ever cut off.
+ *
  * Items are real links (`href`) or buttons (`onSelect`) with role="menuitem". An item with `checked` set is a
  * checkbox item (role="menuitemcheckbox", aria-checked) with a box on the left; `keepOpen` leaves the menu open
  * after it is chosen. `groupLabel` prints a small caption above that item.
@@ -38,6 +42,7 @@ import Link from "next/link";
 import { Check, X, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useMediaQuery } from "@/lib/use-media-query";
+import { FLOATING_Z, useFloatingPanel } from "./use-floating-panel";
 
 export interface MenuItem {
   label: string;
@@ -70,8 +75,9 @@ interface MenuProps {
   sheetTitle?: string;
 }
 
+// min-h, not h: an item with a hint (or a long label) grows instead of cutting its text.
 const ITEM_CLASSES =
-  "body-sm flex h-10 w-full items-center gap-2 rounded-inset px-3 text-left transition-colors duration-150 ease-out";
+  "body-sm flex min-h-10 w-full items-center gap-2 rounded-inset px-3 py-2 text-left transition-colors duration-150 ease-out";
 
 export function Menu({
   label,
@@ -89,6 +95,7 @@ export function Menu({
   const phone = useMediaQuery("(max-width: 639px)");
   const asSheet = phone && items.length > 3;
   const sheetRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(defaultOpen);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -96,6 +103,8 @@ export function Menu({
   // Which item to focus once the panel has rendered: set when the USER opens it,
   // so a menu that starts open (defaultOpen) does not steal focus on page load.
   const focusOnOpen = useRef<"first" | "last" | null>(null);
+
+  const position = useFloatingPanel({ open: open && !asSheet, anchorRef: triggerRef, panelRef, align, minWidth: 192, maxHeight: 480 });
 
   const enabledIndexes = items.flatMap((item, i) => (item.disabled ? [] : [i]));
 
@@ -107,6 +116,7 @@ export function Menu({
   // Move focus into the panel after it opens.
   useEffect(() => {
     if (!open || !focusOnOpen.current) return;
+    if (!asSheet && !position) return; // the popover is hidden until it has been placed, and a hidden item cannot take focus: retry next render
     const target = focusOnOpen.current === "first" ? enabledIndexes[0] : enabledIndexes[enabledIndexes.length - 1];
     itemRefs.current[target]?.focus();
     focusOnOpen.current = null;
@@ -116,7 +126,8 @@ export function Menu({
   useEffect(() => {
     if (!open || asSheet) return;
     const onPointer = (event: MouseEvent) => {
-      if (!wrapperRef.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (!wrapperRef.current?.contains(target) && !panelRef.current?.contains(target)) setOpen(false);
     };
     document.addEventListener("mousedown", onPointer);
     return () => document.removeEventListener("mousedown", onPointer);
@@ -182,6 +193,81 @@ export function Menu({
     if (!item.keepOpen) close(!item.href); // a link navigates away, so only return focus for button items
   };
 
+  /** The rows, shared by the popover and the phone sheet (the sheet's rows are 48px tall). */
+  const renderItems = () =>
+    items.map((item, index) => {
+      const Icon = item.icon;
+      const classes = cn(
+        ITEM_CLASSES,
+        asSheet && "min-h-12",
+        item.danger ? "text-danger hover:bg-danger-soft" : "text-ink hover:bg-surface-2",
+        item.current && "font-semibold",
+        item.disabled && "cursor-not-allowed text-muted hover:bg-transparent",
+      );
+      const content = (
+        <>
+          {item.checked !== undefined && (
+            <span aria-hidden="true" className={cn("flex size-4 shrink-0 items-center justify-center rounded-inset border", item.checked ? "border-purple-600 bg-purple-600 text-white" : "border-input")}>
+              {item.checked && <Check size={12} strokeWidth={3} />}
+            </span>
+          )}
+          {Icon && <Icon size={16} strokeWidth={1.75} aria-hidden="true" className="shrink-0" />}
+          <span className="min-w-0 flex-1 break-words">
+            {item.label}
+            {item.hint && <span className="caption block font-normal">{item.hint}</span>}
+          </span>
+          {item.current && <Check size={16} strokeWidth={2} aria-hidden="true" className="shrink-0 text-purple-700" />}
+        </>
+      );
+
+      const element = item.href && !item.disabled ? (
+        <Link
+          key={item.label}
+          ref={(el) => {
+            itemRefs.current[index] = el;
+          }}
+          href={item.href}
+          role="menuitem"
+          aria-current={item.current ? "page" : undefined}
+          tabIndex={-1}
+          onClick={() => select(item)}
+          onKeyDown={(e) => e.key === " " && (e.preventDefault(), e.currentTarget.click())}
+          className={classes}
+        >
+          {content}
+        </Link>
+      ) : (
+        <button
+          key={item.label}
+          ref={(el) => {
+            itemRefs.current[index] = el;
+          }}
+          type="button"
+          role={item.checked !== undefined ? "menuitemcheckbox" : "menuitem"}
+          aria-checked={item.checked}
+          aria-current={item.current ? "page" : undefined}
+          tabIndex={-1}
+          disabled={item.disabled}
+          aria-disabled={item.disabled || undefined}
+          onClick={() => select(item)}
+          className={classes}
+        >
+          {content}
+        </button>
+      );
+
+      return item.groupLabel ? (
+        <div key={item.label}>
+          <p role="presentation" className="caption px-3 pb-1 pt-3">
+            {item.groupLabel}
+          </p>
+          {element}
+        </div>
+      ) : (
+        element
+      );
+    });
+
   return (
     <div ref={wrapperRef} className="relative inline-block">
       <button
@@ -201,92 +287,23 @@ export function Menu({
         {children}
       </button>
 
-      {open && !asSheet && (
-        <div
-          id={menuId}
-          role="menu"
-          aria-label={label}
-          onKeyDown={onMenuKeyDown}
-          className={cn(
-            "absolute top-full z-50 mt-2 max-h-[70vh] min-w-48 overflow-y-auto rounded-card border border-line bg-surface p-1 shadow-pop",
-            align === "end" ? "right-0" : "left-0",
-          )}
-        >
-          {header && <div role="presentation">{header}</div>}
-          {items.map((item, index) => {
-            const Icon = item.icon;
-            const classes = cn(
-              ITEM_CLASSES,
-              asSheet && "h-12",
-              item.danger ? "text-danger hover:bg-danger-soft" : "text-ink hover:bg-surface-2",
-              item.current && "font-semibold",
-              item.disabled && "cursor-not-allowed text-muted hover:bg-transparent",
-            );
-            const content = (
-              <>
-                {item.checked !== undefined && (
-                  <span aria-hidden="true" className={cn("flex size-4 shrink-0 items-center justify-center rounded-inset border", item.checked ? "border-purple-600 bg-purple-600 text-white" : "border-input")}>
-                    {item.checked && <Check size={12} strokeWidth={3} />}
-                  </span>
-                )}
-                {Icon && <Icon size={16} strokeWidth={1.75} aria-hidden="true" />}
-                <span className="flex-1">
-                  {item.label}
-                  {item.hint && <span className="caption block font-normal">{item.hint}</span>}
-                </span>
-                {item.current && <Check size={16} strokeWidth={2} aria-hidden="true" className="shrink-0 text-purple-700" />}
-              </>
-            );
-
-            const element = item.href && !item.disabled ? (
-              <Link
-                key={item.label}
-                ref={(el) => {
-                  itemRefs.current[index] = el;
-                }}
-                href={item.href}
-                role="menuitem"
-                aria-current={item.current ? "page" : undefined}
-                tabIndex={-1}
-                onClick={() => select(item)}
-                onKeyDown={(e) => e.key === " " && (e.preventDefault(), e.currentTarget.click())}
-                className={classes}
-              >
-                {content}
-              </Link>
-            ) : (
-              <button
-                key={item.label}
-                ref={(el) => {
-                  itemRefs.current[index] = el;
-                }}
-                type="button"
-                role={item.checked !== undefined ? "menuitemcheckbox" : "menuitem"}
-                aria-checked={item.checked}
-                aria-current={item.current ? "page" : undefined}
-                tabIndex={-1}
-                disabled={item.disabled}
-                aria-disabled={item.disabled || undefined}
-                onClick={() => select(item)}
-                className={classes}
-              >
-                {content}
-              </button>
-            );
-
-            return item.groupLabel ? (
-              <div key={item.label}>
-                <p role="presentation" className="caption px-3 pb-1 pt-3">
-                  {item.groupLabel}
-                </p>
-                {element}
-              </div>
-            ) : (
-              element
-            );
-          })}
-        </div>
-      )}
+      {open && !asSheet && typeof document !== "undefined" &&
+        createPortal(
+          <div
+            ref={panelRef}
+            id={menuId}
+            role="menu"
+            aria-label={label}
+            onKeyDown={onMenuKeyDown}
+            // Fixed to the trigger by useFloatingPanel; hidden for the one frame before it has measured.
+            style={{ position: "fixed", top: position?.top, bottom: position?.bottom, left: position?.left ?? 0, maxHeight: position?.maxHeight, visibility: position ? "visible" : "hidden" }}
+            className={cn(FLOATING_Z, "w-max min-w-48 max-w-[calc(100vw-16px)] overflow-y-auto rounded-card border border-line bg-surface p-1 shadow-pop")}
+          >
+            {header && <div role="presentation">{header}</div>}
+            {renderItems()}
+          </div>,
+          document.body,
+        )}
 
       {open && asSheet && typeof document !== "undefined" &&
         createPortal(
@@ -316,78 +333,7 @@ export function Menu({
               </div>
               <div id={menuId} role="menu" aria-label={label} onKeyDown={onMenuKeyDown} className="space-y-0.5 px-2 pb-3">
                 {header && <div role="presentation">{header}</div>}
-          {items.map((item, index) => {
-            const Icon = item.icon;
-            const classes = cn(
-              ITEM_CLASSES,
-              asSheet && "h-12",
-              item.danger ? "text-danger hover:bg-danger-soft" : "text-ink hover:bg-surface-2",
-              item.current && "font-semibold",
-              item.disabled && "cursor-not-allowed text-muted hover:bg-transparent",
-            );
-            const content = (
-              <>
-                {item.checked !== undefined && (
-                  <span aria-hidden="true" className={cn("flex size-4 shrink-0 items-center justify-center rounded-inset border", item.checked ? "border-purple-600 bg-purple-600 text-white" : "border-input")}>
-                    {item.checked && <Check size={12} strokeWidth={3} />}
-                  </span>
-                )}
-                {Icon && <Icon size={16} strokeWidth={1.75} aria-hidden="true" />}
-                <span className="flex-1">
-                  {item.label}
-                  {item.hint && <span className="caption block font-normal">{item.hint}</span>}
-                </span>
-                {item.current && <Check size={16} strokeWidth={2} aria-hidden="true" className="shrink-0 text-purple-700" />}
-              </>
-            );
-
-            const element = item.href && !item.disabled ? (
-              <Link
-                key={item.label}
-                ref={(el) => {
-                  itemRefs.current[index] = el;
-                }}
-                href={item.href}
-                role="menuitem"
-                aria-current={item.current ? "page" : undefined}
-                tabIndex={-1}
-                onClick={() => select(item)}
-                onKeyDown={(e) => e.key === " " && (e.preventDefault(), e.currentTarget.click())}
-                className={classes}
-              >
-                {content}
-              </Link>
-            ) : (
-              <button
-                key={item.label}
-                ref={(el) => {
-                  itemRefs.current[index] = el;
-                }}
-                type="button"
-                role={item.checked !== undefined ? "menuitemcheckbox" : "menuitem"}
-                aria-checked={item.checked}
-                aria-current={item.current ? "page" : undefined}
-                tabIndex={-1}
-                disabled={item.disabled}
-                aria-disabled={item.disabled || undefined}
-                onClick={() => select(item)}
-                className={classes}
-              >
-                {content}
-              </button>
-            );
-
-            return item.groupLabel ? (
-              <div key={item.label}>
-                <p role="presentation" className="caption px-3 pb-1 pt-3">
-                  {item.groupLabel}
-                </p>
-                {element}
-              </div>
-            ) : (
-              element
-            );
-          })}
+                {renderItems()}
               </div>
             </div>
           </div>,

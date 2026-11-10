@@ -365,7 +365,7 @@ test.describe('Showcase: categories (mock mode)', () => {
     // built-in: Delete is disabled with a reason
     let menu = await openMenu(page, 'Category actions for Partners');
     await expect(menu.getByRole('menuitem', { name: /Delete/ })).toBeDisabled();
-    await expect(menu).toContainText('The built-in categories cannot be deleted.');
+    await expect(menu).toContainText('Built-in: hide it instead.');
     await page.keyboard.press('Escape');
     // a custom category: add, fill, try to delete, empty, delete
     await page.getByTestId('showcase-add-category').click();
@@ -376,7 +376,7 @@ test.describe('Showcase: categories (mock mode)', () => {
     await page.getByRole('tab', { name: 'Categories' }).click();
     menu = await openMenu(page, 'Category actions for Mentors');
     await expect(menu.getByRole('menuitem', { name: /Delete/ })).toBeDisabled();
-    await expect(menu).toContainText('Move or delete its 1 entry first.');
+    await expect(menu).toContainText('Has 1 entry: move them first.');
     // rename
     await menu.getByRole('menuitem', { name: 'Rename' }).click();
     await page.getByTestId('showcase-category-dialog').getByRole('textbox', { name: 'Name' }).fill('Mentors and coaches');

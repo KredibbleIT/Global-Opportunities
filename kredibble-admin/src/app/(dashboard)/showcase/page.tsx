@@ -17,6 +17,7 @@
  * Data: services/showcase.ts. Real mode reads and changes it through the API (BE-030), which checks the role per category and
  * writes the History; mock mode uses the in-memory store.
  */
+import { PageHeader } from "@/components/ui/PageHeader";
 import { useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, Eye, EyeOff, History, Pencil, Plus, Smartphone, Star, Trash2 } from "lucide-react";
 import type { ShowcaseEntry } from "@/lib/mock-entities";
@@ -143,15 +144,11 @@ export default function ShowcasePage() {
   return (
     <>
       <div className="flex flex-1 flex-col gap-4">
-        <header className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h1 data-testid="page-title" className="page-title">
-              Showcase
-            </h1>
-            <p className="page-subtitle mt-1">The people and partners featured on the app&apos;s Meet our people page. Visible means live as soon as it is saved.</p>
-          </div>
-          {action}
-        </header>
+        <PageHeader
+          title="Showcase"
+          subtitle="The people and partners featured on the app's Meet our people page. Visible means live as soon as it is saved."
+          actions={action}
+        />
         {manager.canManageCategories && (
           <Tabs
             ariaLabel="Showcase sections"
@@ -172,6 +169,7 @@ export default function ShowcasePage() {
         )}
         <div role="tabpanel" id={tabPanelId(ID_PREFIX, "entries")} aria-labelledby={tabId(ID_PREFIX, "entries")} hidden={tab !== "entries"}>
           <DataTable
+        onClearFilters={() => { setCategory(ALL); setTerm(""); }}
             label="Showcase entries"
             columns={columns}
             rows={visible}
@@ -182,7 +180,7 @@ export default function ShowcasePage() {
             isFiltered={category !== ALL || term.trim() !== ""}
             resetKey={`${category}|${term}`}
             pageSize={10}
-            emptyNoData={{ icon: Star, title: "Nobody is featured yet", description: "Add the first person or partner to show on the app." }}
+            emptyNoData={{ icon: Star, title: "Nobody is featured yet", description: "Add the first person or partner to show on the app.", action: manager.canAddEntries ? <Button icon={Plus} onClick={manager.openAdd}>Add your first entry</Button> : undefined }}
             emptyNoResults={{ icon: Star, title: "No entries match", description: "Try another category or clear the search." }}
           />
         </div>

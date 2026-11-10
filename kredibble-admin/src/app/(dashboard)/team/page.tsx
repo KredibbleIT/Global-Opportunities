@@ -11,6 +11,7 @@
  *   It needs the "roles_permissions" screen: hidden without it, read-only with view (desk lead), editable with edit (super admin).
  * Both panels stay mounted (the inactive one is hidden), so unsaved permission edits survive a switch to Members.
  */
+import { PageHeader } from "@/components/ui/PageHeader";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { History, Plus, UserPlus } from "lucide-react";
@@ -39,12 +40,8 @@ export default function TeamPage() {
 
   return (
     <div className="flex flex-1 flex-col gap-4">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 data-testid="page-title" className="page-title">Team</h1>
-          <p className="page-subtitle mt-1">Admin and support accounts, and what each role can do.</p>
-        </div>
-        {tab === "members" && (
+      <PageHeader title="Team" subtitle="Admin and support accounts, and what each role can do." actions={
+        tab === "members" && (
           <div className="flex flex-wrap items-center gap-3">
             {accounts.allowed && (
               <>
@@ -64,8 +61,22 @@ export default function TeamPage() {
               </Link>
             )}
           </div>
-        )}
-      </header>
+        )
+      } />
+
+      {/* Who uses which button, in one short line each (only a Super Admin sees the buttons, so only they see this). */}
+      {tab === "members" && accounts.allowed && (
+        <dl data-testid="team-actions-help" className="caption grid gap-1">
+          <div className="flex flex-wrap gap-x-1.5">
+            <dt className="font-semibold text-ink">Create account:</dt>
+            <dd>Super Admin only. Makes a User or Admin account straight away and gives you a 48-hour invite link to send them.</dd>
+          </div>
+          <div className="flex flex-wrap gap-x-1.5">
+            <dt className="font-semibold text-ink">Invite Staff:</dt>
+            <dd>Super Admin only. Adds a colleague to the desk team with one or two roles; use it when they will work in the admin.</dd>
+          </div>
+        </dl>
+      )}
 
       <NotConnectedNotice />
 

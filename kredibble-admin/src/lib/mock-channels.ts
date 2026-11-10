@@ -17,6 +17,9 @@ export interface Channel {
   id: string;
   name: string;
   owner: string;
+  /** The description (bio) and the profile image URL, when the channel has them. */
+  bio?: string;
+  avatar?: string;
   category: string;
   followers: string;
   postsCount: number;

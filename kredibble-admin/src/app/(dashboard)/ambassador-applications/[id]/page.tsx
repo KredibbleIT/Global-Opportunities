@@ -82,7 +82,7 @@ export default function AmbassadorApplicationPage() {
       title: "Approve this ambassador?",
       description: (
         <>
-          <strong className="text-ink">{record.name}</strong> becomes a Kredibble ambassador and gets a notification
+          <strong className="text-ink">{record.name}</strong> becomes a Global Opportunity Desk ambassador and gets a notification
           {channelName ? (
             <>
               {" "}and is added to <strong className="text-ink">{channelName}</strong>
@@ -216,7 +216,7 @@ export default function AmbassadorApplicationPage() {
                 { label: "Profession", value: record.profession },
                 { label: "Organisation", value: record.organisation },
                 { label: "Location", value: place },
-                { label: "Joined Kredibble", value: record.user?.joinedAt ? formatDate(record.user.joinedAt) : undefined },
+                { label: "Joined the platform", value: record.user?.joinedAt ? formatDate(record.user.joinedAt) : undefined },
                 { label: "Email verified", value: record.user ? (record.user.emailVerified ? "Yes" : "No") : undefined },
                 { label: "Verified profile", value: record.role === "seeker" ? (record.verified ? "Yes" : "No") : undefined },
               ]}

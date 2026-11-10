@@ -10,7 +10,8 @@
  * Desktop and tablet (640px and up): a dropdown panel under the trigger
  * - white, 12px radius, 1px line border, the menu shadow, a 4px gap, as wide as the trigger (200px at least),
  *   max 320px tall with its own scroll (shorter when the room is smaller); it flips ABOVE the trigger when
- *   there is more room there
+ *   there is more room there. It is drawn in a portal with fixed positioning (use-floating-panel.ts), so a dialog body, a table
+ *   card or the bottom of a long form never clips it, and it stays inside the viewport (360px and up). Labels wrap, never cut.
  * - the page behind does not scroll while it is open
  * - focus stays on the trigger; the highlighted option is aria-activedescendant
  *
@@ -33,6 +34,7 @@ import { createPortal } from "react-dom";
 import { Check, ChevronDown, X, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useMediaQuery } from "@/lib/use-media-query";
+import { FLOATING_Z, useFloatingPanel } from "../use-floating-panel";
 import { CONTROL_CLASSES, useFieldControlProps } from "./Field";
 
 export interface SelectOption<T extends string> {
@@ -43,7 +45,7 @@ export interface SelectOption<T extends string> {
   badge?: string;
 }
 
-interface SelectProps<T extends string> {
+export interface SelectProps<T extends string> {
   options: SelectOption<T>[];
   value: T | "";
   onChange: (value: T) => void;
@@ -56,8 +58,6 @@ interface SelectProps<T extends string> {
 }
 
 const PANEL_MAX_HEIGHT_PX = 320;
-const ROW_PX = 40;
-const ROW_WITH_DESCRIPTION_PX = 56;
 
 /** Stops the page behind from scrolling while `locked` (keeps the layout width, so nothing jumps). */
 function useScrollLock(locked: boolean) {
@@ -89,17 +89,17 @@ export function Select<T extends string>({
   const listId = useId();
   const titleId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLUListElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const sheetListRef = useRef<HTMLUListElement>(null);
   const sheetCloseRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
-  const [placement, setPlacement] = useState<"down" | "up">("down");
-  // The panel never grows past 320px, nor past the room on its side of the trigger (it then scrolls).
-  const [panelMax, setPanelMax] = useState(PANEL_MAX_HEIGHT_PX);
 
   const isPhone = useMediaQuery("(max-width: 639px)");
   const asSheet = isPhone && !!sheetTitle;
+  // The panel never grows past 320px, nor past the room on its side of the trigger (it then scrolls); it flips up near the bottom.
+  const position = useFloatingPanel({ open: open && !asSheet, anchorRef: rootRef, panelRef, matchWidth: true, minWidth: 200, maxHeight: PANEL_MAX_HEIGHT_PX });
 
   const selectedIndex = options.findIndex((option) => option.value === value);
   const selected = selectedIndex >= 0 ? options[selectedIndex] : undefined;
@@ -109,17 +109,6 @@ export function Select<T extends string>({
 
   const openList = () => {
     setActive(selectedIndex >= 0 ? selectedIndex : 0);
-    // Flip upward when the list would not fit below the trigger but there is more room above.
-    const box = rootRef.current?.getBoundingClientRect();
-    if (box) {
-      const rowHeight = options.some((option) => option.description) ? ROW_WITH_DESCRIPTION_PX : ROW_PX;
-      const needed = Math.min(PANEL_MAX_HEIGHT_PX, options.length * rowHeight + 8) + 4;
-      const below = window.innerHeight - box.bottom;
-      const above = box.top;
-      const up = below < needed && above > below;
-      setPlacement(up ? "up" : "down");
-      setPanelMax(Math.max(ROW_PX * 2, Math.min(PANEL_MAX_HEIGHT_PX, (up ? above : below) - 12)));
-    }
     setOpen(true);
   };
 
@@ -138,7 +127,8 @@ export function Select<T extends string>({
   useEffect(() => {
     if (!open || asSheet) return;
     const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target as Node;
+      if (!rootRef.current?.contains(target) && !panelRef.current?.contains(target)) setOpen(false);
     };
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
@@ -261,29 +251,29 @@ export function Select<T extends string>({
         onClick={() => (open ? setOpen(false) : openList())}
         onKeyDown={onTriggerKeyDown}
         onBlur={onBlur}
-        className={cn(CONTROL_CLASSES, "flex h-10 items-center gap-2 text-left", Icon ? "pl-3" : "")}
+        className={cn(CONTROL_CLASSES, "flex h-auto min-h-10 items-center gap-2 py-2 text-left", Icon ? "pl-3" : "")}
       >
         {Icon && <Icon size={18} strokeWidth={1.75} aria-hidden="true" className="shrink-0 text-muted" />}
-        <span className={cn("min-w-0 flex-1 truncate", !selected && "text-muted")}>{selected ? selected.label : placeholder}</span>
+        <span className={cn("min-w-0 flex-1 break-words", !selected && "text-muted")}>{selected ? selected.label : placeholder}</span>
         <ChevronDown size={16} strokeWidth={2} aria-hidden="true" className={cn("shrink-0 text-muted transition-transform", open && "rotate-180")} />
       </button>
 
-      {open && !asSheet && (
-        <ul
-          id={listId}
-          role="listbox"
-          aria-label={ariaLabel}
-          tabIndex={-1}
-          className={cn(
-            "absolute left-0 z-30 w-full min-w-50 overflow-auto rounded-control border border-line bg-surface p-1 shadow-pop",
-            placement === "down" ? "top-full mt-1" : "bottom-full mb-1",
-          )}
-          // Data-driven cap: 320px from the brief, less when the room on this side is smaller; it scrolls inside.
-          style={{ maxHeight: panelMax }}
-        >
-          {renderOptions((option) => (option.description ? "py-2" : "h-10"))}
-        </ul>
-      )}
+      {open && !asSheet && typeof document !== "undefined" &&
+        createPortal(
+          <ul
+            ref={panelRef}
+            id={listId}
+            role="listbox"
+            aria-label={ariaLabel}
+            tabIndex={-1}
+            // Fixed to the trigger by useFloatingPanel (data-driven numbers, so inline); hidden for the one frame before it has measured.
+            style={{ position: "fixed", top: position?.top, bottom: position?.bottom, left: position?.left ?? 0, width: position?.width, maxHeight: position?.maxHeight, visibility: position ? "visible" : "hidden" }}
+            className={cn(FLOATING_Z, "overflow-auto rounded-control border border-line bg-surface p-1 shadow-pop")}
+          >
+            {renderOptions(() => "min-h-10 py-2")}
+          </ul>,
+          document.body,
+        )}
 
       {open && asSheet && typeof document !== "undefined" &&
         createPortal(

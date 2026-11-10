@@ -10,6 +10,7 @@ import { FileText, Plus } from "lucide-react";
 import { articles, type Article } from "@/lib/mock-articles";
 import { pluralize } from "@/lib/plural";
 import { useListData } from "@/lib/use-list-data";
+import { EmptyAction } from "@/components/list/EmptyAction";
 import { DataTable } from "@/components/list/DataTable";
 import { ListPage } from "@/components/list/ListPage";
 import { TableToolbar } from "@/components/list/TableToolbar";
@@ -25,6 +26,7 @@ const COLUMNS: Column<Article>[] = [
     type: "primary",
     width: "42%",
     title: (r) => r.title,
+    titleLines: 2,
     // A 36px thumbnail when the article has a banner, otherwise a document tile.
     leading: (r) => ({ icon: FileText, imageSrc: r.bannerImage }),
   },
@@ -79,7 +81,7 @@ export default function ArticlesListPage() {
         onRetry={retry}
         isFiltered={status !== "all" || term !== ""}
         resetKey={`${status}|${term}`}
-        emptyNoData={{ icon: FileText, title: "No articles yet", description: "Create the first Career Resources article with New Article." }}
+        emptyNoData={{ icon: FileText, title: "No articles yet", description: "Write the first Career Resources article.", action: <EmptyAction href="/content/articles/new" label="Add your first article" /> }}
         emptyNoResults={{ icon: FileText, title: "No articles match", description: "Try another status or search." }}
       />
     </ListPage>

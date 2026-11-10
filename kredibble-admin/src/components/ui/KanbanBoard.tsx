@@ -34,12 +34,14 @@
  * - renderCard(item): the content of a card (the board adds the grip and the menu)
  * - onMove(item, toKey): called after a drop or a menu choice; the page changes the data and shows a toast
  * - canMove: false hides the menu and the grip and turns dragging off
- * - itemNoun: "partners" (for the column names and the empty text)
+ * - itemNoun / itemNounOne: "partners" / "partner" (for the column names and the empty text; counts use the right number)
+ * - Arrow buttons (left / right) appear while more columns are out of view, so the last stage is always reachable by mouse, touch or keyboard.
  * - loading: shows skeleton columns
  * Test ids: kanban-column-<key>, kanban-count-<key>, kanban-card-<id>, kanban-live, kanban-grip.
  */
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
-import { ArrowRightLeft, CheckCircle2, GripVertical } from "lucide-react";
+import { ArrowRightLeft, CheckCircle2, ChevronLeft, ChevronRight, GripVertical } from "lucide-react";
+import { pluralWord } from "@/lib/plural";
 import { cn } from "@/lib/cn";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { Menu } from "@/components/ui/Menu";
@@ -65,6 +67,8 @@ interface KanbanBoardProps<T> {
   onMove: (item: T, toKey: string) => void;
   canMove: boolean;
   itemNoun?: string;
+  /** The same noun for exactly one ("partner"), so a count never reads "1 partners". Defaults to the plural minus a trailing "s". */
+  itemNounOne?: string;
   loading?: boolean;
 }
 
@@ -72,7 +76,7 @@ interface KanbanBoardProps<T> {
 const MENU_TRIGGER =
   "relative inline-flex items-center justify-center gap-1.5 rounded-control text-sm font-semibold text-purple-700 transition-colors duration-150 ease-out hover:bg-purple-50 max-sm:h-10 max-sm:px-2 sm:size-7 sm:before:absolute sm:before:-inset-1.5 sm:before:content-['']";
 
-export function KanbanBoard<T>({ ariaLabel, columns, items, getId, getColumnKey, getName, renderCard, onMove, canMove, itemNoun = "items", loading = false }: KanbanBoardProps<T>) {
+export function KanbanBoard<T>({ ariaLabel, columns, items, getId, getColumnKey, getName, renderCard, onMove, canMove, itemNoun = "items", itemNounOne, loading = false }: KanbanBoardProps<T>) {
   const phone = useMediaQuery("(max-width: 639px)");
   const [announcement, setAnnouncement] = useState("");
   const [dragId, setDragId] = useState<string | null>(null);
@@ -107,6 +111,9 @@ export function KanbanBoard<T>({ ariaLabel, columns, items, getId, getColumnKey,
   const dragState = (key: string): "idle" | "source" | "accept" | "over" =>
     !dragId || !canMove ? "idle" : key === sourceKey ? "source" : overKey === key ? "over" : "accept";
 
+  // "1 partner", "3 partners": one place for the noun in the right number.
+  const nounFor = (count: number) => pluralWord(count, itemNounOne ?? (itemNoun.endsWith("s") ? itemNoun.slice(0, -1) : itemNoun), itemNoun);
+  const scrollBoard = (direction: -1 | 1) => scrollRef.current?.scrollBy({ left: direction * Math.max(200, scrollRef.current.clientWidth * 0.8), behavior: "smooth" });
   const labelOf = (key: string) => columns.find((column) => column.key === key)?.label ?? key;
   const inColumn = (key: string) => items.filter((item) => getColumnKey(item) === key);
 
@@ -180,9 +187,10 @@ export function KanbanBoard<T>({ ariaLabel, columns, items, getId, getColumnKey,
 
   const header = (column: KanbanColumn, count: number) => (
     <div>
-      <div className="flex items-center gap-2">
+      {/* flex-wrap: a long stage name ("Onboarded") plus the Closed marker wraps the marker to a second line instead of widening the column. */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <h3 className="font-display text-sm font-bold leading-5 text-ink">{column.label}</h3>
-        <span data-testid={`kanban-count-${column.key}`} className="badge-text rounded-pill bg-surface-2 px-2 py-0.5 tabular-nums text-muted" aria-label={`${count} ${itemNoun}`}>
+        <span data-testid={`kanban-count-${column.key}`} className="badge-text rounded-pill bg-surface-2 px-2 py-0.5 tabular-nums text-muted" aria-label={`${count} ${nounFor(count)}`}>
           {count}
         </span>
         {column.marker && (
@@ -270,7 +278,7 @@ export function KanbanBoard<T>({ ariaLabel, columns, items, getId, getColumnKey,
             <section
               key={column.key}
               data-testid={`kanban-column-${column.key}`}
-              aria-label={`${column.label}, ${cards.length} ${itemNoun}`}
+              aria-label={`${column.label}, ${cards.length} ${nounFor(cards.length)}`}
               onDragOver={canMove ? (event) => { event.preventDefault(); setOverKey(column.key); } : undefined}
               onDragLeave={canMove ? () => setOverKey((current) => (current === column.key ? null : current)) : undefined}
               onDrop={canMove ? (event) => onDrop(event, column.key) : undefined}
@@ -305,6 +313,17 @@ export function KanbanBoard<T>({ ariaLabel, columns, items, getId, getColumnKey,
         data-testid="kanban-fade-end"
         className={cn("pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-linear-to-l from-canvas to-transparent transition-opacity", edges.end ? "opacity-100" : "opacity-0")}
       />
+      {/* Arrow buttons while there is more to scroll to in that direction (the fades only hint; these are clickable). */}
+      {edges.start && (
+        <button type="button" data-testid="kanban-scroll-start" aria-label="Scroll the board left" onClick={() => scrollBoard(-1)} className="absolute left-1 top-24 z-20 inline-flex size-10 items-center justify-center rounded-pill border border-line bg-surface text-ink shadow-pop transition-colors hover:bg-surface-2">
+          <ChevronLeft size={20} strokeWidth={2} aria-hidden="true" />
+        </button>
+      )}
+      {edges.end && (
+        <button type="button" data-testid="kanban-scroll-end" aria-label="Scroll the board right" onClick={() => scrollBoard(1)} className="absolute right-1 top-24 z-20 inline-flex size-10 items-center justify-center rounded-pill border border-line bg-surface text-ink shadow-pop transition-colors hover:bg-surface-2">
+          <ChevronRight size={20} strokeWidth={2} aria-hidden="true" />
+        </button>
+      )}
       {liveRegion}
     </section>
   );

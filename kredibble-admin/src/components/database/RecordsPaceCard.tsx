@@ -136,7 +136,7 @@ export function RecordsPaceCard({ pace, sources, error, onRetry }: RecordsPaceCa
       <div className="space-y-1.5">
         <div className="flex min-h-7 items-center justify-between gap-2">
           <h2 className="font-display text-sm font-bold leading-5 text-ink">Verified this month</h2>
-          {/* The thresholds behind the status ("Far behind: below 70% of the pro-rated pace...") on hover and focus. */}
+          {/* The thresholds behind the status ("Off track: below 70% of the pro-rated pace...") on hover and focus. */}
           <Tooltip label={pace.hint}>
             <span data-testid="pace-status" tabIndex={0} className="rounded-pill focus-visible:outline-2 focus-visible:outline-offset-2">
               <StatusBadge status={pace.status} />

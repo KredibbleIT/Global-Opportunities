@@ -9,7 +9,7 @@
  * re-runs it.
  *
  * Reading order: the programs in progress and upcoming (with the latest activity beside them), the dark "Needs your attention" card,
- * how status is judged, the trend and the priorities. The ten KPI cards were removed in the November 2026 design review: the Priorities
+ * how status is judged, then "Team performance" (the month selector beside its heading): the trend and the priorities. Card rows keep their natural heights (a stretched Trend card left a blank band). The ten KPI cards were removed in the November 2026 design review: the Priorities
  * panel shows the same judgement against the monthly targets in a compact form ("See all" expands to all ten).
  *
  * Failure handling: a slim banner explains what went wrong, and only the affected sections show "—". Every section keeps its final
@@ -21,6 +21,7 @@ import { getOverview, type OverviewIssue } from "@/lib/services/dashboard";
 import { useMockStoreVersion } from "@/lib/mock-store";
 import { useAsync } from "@/lib/use-async";
 import { useMonth } from "@/lib/use-month";
+import { MonthSelect } from "@/components/ui/MonthSelect";
 import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 import { PageFooter } from "@/components/ui/PageFooter";
 import { NeedsAttentionCard } from "@/components/overview/NeedsAttentionCard";
@@ -64,6 +65,12 @@ export default function DashboardHomePage() {
         </div>
 
         <NeedsAttentionCard counts={data?.attention ?? null} loading={loading} notConnected={notConnected} />
+
+        {/* Team performance: the month selector lives here, beside the heading of the part of the page the month drives. */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+          <h2 className="card-title">Team performance</h2>
+          <MonthSelect />
+        </div>
 
         <ProRatingNote month={data?.month ?? month} isPast={data?.isPast ?? false} loading={loading} />
 

@@ -33,3 +33,11 @@ export function FormSection({ title, description, className, children }: FormSec
     </section>
   );
 }
+
+/**
+ * FieldRow: two related fields side by side (participants with their target, a start date with its end date). It sits inside a
+ * FormSection and switches on that section's width (a container query): two columns when there is room, stacked when not (phones).
+ */
+export function FieldRow({ children }: { children: ReactNode }) {
+  return <div className="grid gap-4 @xl:grid-cols-2">{children}</div>;
+}

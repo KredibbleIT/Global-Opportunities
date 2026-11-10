@@ -4,9 +4,11 @@
  * Admin sign-in.
  *
  * Layout
- * - 1024px and up: split screen. Left, the dark violet gradient (the sidebar colours) with the brand mark,
- *   one value line and a soft orange glow at the bottom. Right, the form card.
- * - Below 1024px: only the form card, centred, with the brand mark above it.
+ * - 1024px and up: split screen. Left, the purple-and-orange panel: the logo top left directly on the purple, the person cutout
+ *   (public/brand/signin-photo.png, SignInFigure) filling the lower part, and the headline and subtext at the bottom left on a soft dark
+ *   scrim (clear of her face). Without the png the panel just has no figure. Phones do not draw this panel. Right, the form card.
+ * - Below 1024px: the form comes first, with the logo above it (still visible); the photo panel is not drawn.
+ * Logo: public/brand/god-logo.png (see BrandLogo; a text wordmark shows until the file exists).
  *
  * Behaviour (unchanged): POST /auth/admin/login through loginAdmin() (src/lib/api.ts), which also checks the
  * admin role and throws the server's message for every error path (wrong credentials, non-admin role, rate
@@ -18,8 +20,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, ShieldCheck } from "lucide-react";
-import { BRAND, BRAND_ADMIN_TITLE } from "@/config/brand";
-import { BrandMark } from "@/components/BrandMark";
+import { BrandLogo } from "@/components/BrandLogo";
+import { SignInFigure } from "@/components/SignInFigure";
 import { loginAdmin } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/form/Field";
@@ -54,17 +56,24 @@ export default function LoginPage() {
   return (
     <div className="flex flex-1 lg:grid lg:grid-cols-2">
       {/* Brand panel: 1024px and up only */}
-      <aside className="dark-feature dark-surface relative hidden flex-col justify-between p-12 lg:flex">
-        <div className="flex items-center gap-3">
-          <BrandMark size={44} />
-          <div>
-            <p className="brand-name text-sb-text">{BRAND.name}</p>
-            <p className="brand-sub">{BRAND.sub}</p>
-          </div>
+      <aside className="signin-panel dark-surface relative hidden flex-col justify-between overflow-hidden lg:flex">
+        {/* The logo directly on the purple, top left, natural aspect ratio (about 250px wide, height auto). */}
+        <div className="relative z-20 self-start px-10 pt-10">
+          <BrandLogo className="max-w-62" />
         </div>
-        <div className="max-w-md pb-12">
-          <p className="hero-title text-sb-text">Keep every opportunity on the platform trusted.</p>
-          <p className="body-sm mt-4 text-sb-muted">Review verifications, moderate postings and look after your community from one desk.</p>
+        {/* Decorative cutout: about 60% of the panel height (head top near 45% down, as in the reference), bottom-anchored, face at about 67% of the panel width (bottom right), cropped by the panel edge. */}
+        <SignInFigure
+          className="absolute bottom-0 h-[60%]"
+          // Her face (0.535 of the figure's width; the figure is 60% of the panel height x 1.32 wide, and the panel is one screen tall)
+          // sits at 67% of the panel width: bottom RIGHT, her right shoulder cropped by the panel edge. Data-driven, so inline.
+          style={{ left: "calc(67% - 42.4vh)" }}
+        />
+        {/* The text sits at the bottom left, over the lower part of the figure, on a soft dark scrim (not over her face). */}
+        <div className="signin-scrim relative z-10 px-10 pb-10 pt-16">
+          <div className="max-w-md">
+            <p className="hero-title text-sb-text">Keep every opportunity on the platform trusted.</p>
+            <p className="body-sm mt-4 text-sb-muted">Review verifications, moderate postings and look after your community from one desk.</p>
+          </div>
         </div>
       </aside>
 
@@ -72,9 +81,9 @@ export default function LoginPage() {
       <main className="flex flex-1 items-center justify-center px-4 py-10">
         <div className="w-full max-w-sm">
           <div className="mb-8 flex flex-col items-center text-center lg:items-start lg:text-left">
-            <BrandMark size={56} className="mb-4 lg:hidden" />
-            <h1 data-testid="page-title" className="page-title">{BRAND_ADMIN_TITLE}</h1>
-            <p className="page-subtitle mt-1">{BRAND.sub}: sign in to manage the platform</p>
+            {/* Below 1024px the left panel is gone, so the logo sits above the form. */}
+            <BrandLogo className="mb-6 lg:hidden" />
+            <h1 data-testid="page-title" className="page-title">Admin Portal</h1>
           </div>
 
           <form onSubmit={handleLogin} noValidate className="card-surface space-y-4 p-6">

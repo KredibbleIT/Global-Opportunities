@@ -32,9 +32,10 @@ import { subscribeMockStore } from "@/lib/mock-store";
 import { useListData } from "@/lib/use-list-data";
 import { DataTable } from "@/components/list/DataTable";
 import { ListPage } from "@/components/list/ListPage";
-import { TableToolbar } from "@/components/list/TableToolbar";
+import { EmptyAction } from "@/components/list/EmptyAction";
+import { FilterSelect, TableToolbar } from "@/components/list/TableToolbar";
 import type { Column } from "@/components/list/types";
-import { Select, type SelectOption } from "@/components/ui/form/Select";
+import { type SelectOption } from "@/components/ui/form/Select";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 
 /** The tabs. "Other" holds every type that has no tab of its own (scholarships, fellowships, competitions, trainings...). */
@@ -131,13 +132,14 @@ export default function OpportunitiesQueuePage() {
           )}
           <TableToolbar filters={{ options, value: tab, onChange: setTab, label: "Filter by type" }}>
             <SegmentedControl options={SOURCES} value={source} onChange={setSource} ariaLabel="Filter by source" />
-            <Select options={countryOptions} value={country} onChange={setCountry} ariaLabel="Filter by country" sheetTitle="Country" className="w-fit" />
-            <Select options={STATUS_OPTIONS} value={status} onChange={setStatus} ariaLabel="Filter by status" sheetTitle="Status" className="w-fit" />
+            <FilterSelect options={countryOptions} value={country} onChange={setCountry} ariaLabel="Filter by country" sheetTitle="Country" />
+            <FilterSelect options={STATUS_OPTIONS} value={status} onChange={setStatus} ariaLabel="Filter by status" sheetTitle="Status" />
           </TableToolbar>
         </div>
       }
     >
       <DataTable
+        onClearFilters={() => { setTab("all"); setSource("all"); setCountry(ALL); setStatus(ALL); }}
         label="Opportunities"
         columns={COLUMNS}
         rows={visible}
@@ -148,7 +150,7 @@ export default function OpportunitiesQueuePage() {
         onRetry={retry}
         isFiltered={filtered}
         resetKey={`${tab}|${source}|${country}|${status}`}
-        emptyNoData={{ icon: Briefcase, title: "No opportunities yet", description: "Postings from hirers and the desk's own listings appear here." }}
+        emptyNoData={{ icon: Briefcase, title: "No opportunities yet", description: "Postings from hirers and the desk's own listings appear here.", action: can("listings_curate", "edit") ? <EmptyAction href="/opportunities/new" label="Add your first listing" /> : undefined }}
         emptyNoResults={{ icon: Briefcase, title: "No opportunities match these filters", description: "Try another type, source, country or status." }}
       />
     </ListPage>

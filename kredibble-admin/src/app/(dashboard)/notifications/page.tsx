@@ -10,6 +10,7 @@
  *   Both panels are always rendered; CSS hides the inactive one below 1024px, so a half-written message
  *   survives a switch of tab and nothing depends on a JS breakpoint.
  */
+import { PageHeader } from "@/components/ui/PageHeader";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { NotificationComposer } from "@/components/notifications/NotificationComposer";
 import { NotificationHistory } from "@/components/notifications/NotificationHistory";
@@ -28,10 +29,7 @@ export default function NotificationsPage() {
 
   return (
     <div className="space-y-4">
-      <header>
-        <h1 data-testid="page-title" className="page-title">Notifications</h1>
-        <p className="page-subtitle mt-1">Send a broadcast message into the recipients&apos; in-app notification feed.</p>
-      </header>
+      <PageHeader title="Notifications" subtitle="Send a broadcast message into the recipients' in-app notification feed." />
 
       {/* Below 1024px only: the two panels become tabs. */}
       <Tabs

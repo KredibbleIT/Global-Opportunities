@@ -115,8 +115,8 @@ export const PARTNER_STAGE_LABELS: Record<PartnerStage, string> = {
   outreach: "Outreach",
   proposal: "Proposal",
   mou: "MOU",
-  onboard: "Onboard",
-  renew: "Renew",
+  onboard: "Onboarded",
+  renew: "Renewed",
 };
 
 /** The stages in which a deal is closed. */

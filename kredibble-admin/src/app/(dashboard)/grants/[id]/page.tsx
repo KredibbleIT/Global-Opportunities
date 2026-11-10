@@ -14,6 +14,7 @@ import { useCallback } from "react";
 import { useParams } from "next/navigation";
 import { Check, HandCoins, X } from "lucide-react";
 import { useBreadcrumbLabel } from "@/lib/breadcrumb-label";
+import { formatMoney } from "@/lib/format";
 import { grantRecords, type GrantApplication } from "@/lib/mock-grant-ops";
 import { useDetailData } from "@/lib/use-detail-data";
 import { DetailHeader } from "@/components/detail/DetailHeader";
@@ -29,8 +30,6 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useToast } from "@/components/ui/Toast";
 import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 
-const money = (amount: number) => `$${amount.toLocaleString()}`;
-
 export default function GrantDetailPage() {
   const { id } = useParams<{ id: string }>();
   const load = useCallback(() => Promise.resolve(grantRecords.find((g) => g.id === id)), [id]);
@@ -44,6 +43,7 @@ export default function GrantDetailPage() {
   if (status === "error") return <DetailError message={error ?? "Could not load this grant."} onRetry={retry} />;
   if (!grant) return <DetailNotFound noun="Grant" listLabel="Grants" listHref="/grants" />;
 
+  const money = (amount: number) => formatMoney(amount, grant.currency); // always with the currency code (USD 5,000)
   const pct = Math.round((grant.allocated / grant.fundingPool) * 100);
   const remaining = grant.fundingPool - grant.allocated;
 
@@ -165,8 +165,7 @@ export default function GrantDetailPage() {
                 items={[
                   { label: "Hirer", value: grant.hirer },
                   { label: "Sector", value: grant.sector },
-                  { label: "Funding pool", value: money(grant.fundingPool) },
-                  { label: "Remaining", value: money(remaining) },
+                  { label: "Currency", value: grant.currency }, // the pool and what remains are in the Funding Pool card: one place each
                 ]}
               />
             </InfoCard>
