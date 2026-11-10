@@ -34,8 +34,9 @@ if [ -n "$project_name" ]; then
     echo "::error title=VERCEL_ORG_ID is not the project's team::Project $project_name belongs to team $project_owner, but VERCEL_ORG_ID is a different value. Set VERCEL_ORG_ID to $project_owner. Nothing was deployed."
     exit 1
   fi
-  team_answer=$(vercel_api "/v2/teams/$VERCEL_ORG_ID" | jq -r '.slug // .error.code // "unknown"')
-  if [ "$team_answer" = "forbidden" ] || [ "$team_answer" = "not_found" ] || [ "$team_answer" = "unknown" ]; then
+  team_response=$(vercel_api "/v2/teams/$VERCEL_ORG_ID")
+  team_answer=$(jq -r '.slug // .error.code // "unknown"' <<<"$team_response")
+  if [ "$(jq -r '.id // empty' <<<"$team_response")" = "" ]; then
     echo "::error title=VERCEL_TOKEN cannot read the team::The token can open the project but Vercel answered '$team_answer' when asked for the team in VERCEL_ORG_ID, and vercel pull needs both. Create the token under Account Settings > Tokens with this team as its scope (or Full Account). Nothing was deployed."
     exit 1
   fi
