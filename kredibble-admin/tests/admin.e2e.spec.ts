@@ -2202,10 +2202,10 @@ test.describe('Touch targets and the skip link (desktop)', () => {
     await expect(page.locator('main#main-content')).toBeFocused();
   });
 
-  test('Published switch shows "Published" or "Draft" next to it', async ({ page }) => {
+  test('the Publishing switch shows "Published" or "Draft" next to it', async ({ page }) => {
     await page.goto(`${BASE_URL}/content/articles/new`, { timeout: 30_000 });
     await expect(page.getByTestId('switch-status')).toHaveText('Draft');
-    await page.getByRole('switch', { name: 'Published' }).click();
+    await page.getByRole('switch', { name: 'Visible to seekers' }).click(); // GOD-T41: the label stays; only the status word changes
     await expect(page.getByTestId('switch-status')).toHaveText('Published');
   });
 });
@@ -13049,7 +13049,7 @@ test.describe('Real-API mode: the screen never shows the server\'s own words (AP
     await page.goto(`${BASE_URL}/hirers`, { timeout: 30_000 });
     const row = page.getByTestId('table-row').filter({ hasText: 'Fresh Co' });
     await expect(row).toBeVisible();
-    await expect(row.getByTestId('status-badge')).toHaveText('Not submitted');
+    await expect(row.getByTestId('status-badge').first()).toHaveText('Not submitted'); // the verification column (the account status follows)
     await expect(page.locator('main')).not.toContainText('Not specified');
     await expect(page.getByText('1 hirer/company account registered on the platform.')).toBeVisible();
   });
