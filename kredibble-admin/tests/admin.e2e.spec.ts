@@ -5042,9 +5042,9 @@ test.describe('Not connected yet', () => {
     await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
   });
 
-  test('the screens that still show only sample data say so in the real run: Insights, Events, Grants and Career Resources, lists and records', async ({ page }) => {
+  test('the screens that still show only sample data say so in the real run: Events, Grants and Career Resources, lists and records', async ({ page }) => {
     test.skip(MOCK_RUN, 'the notice only shows outside mock mode');
-    for (const path of ['/analytics', '/events', '/events/event-1', '/grants', '/grants/grant-1', '/content/articles', '/content/articles/new']) {
+    for (const path of ['/events', '/events/event-1', '/grants', '/grants/grant-1', '/content/articles', '/content/articles/new']) {
       await page.goto(`${BASE_URL}${path}`);
       await expect(page.getByTestId('page-title').first(), path).toBeVisible();
       await expect(page.getByTestId('not-connected-notice'), path).toBeVisible();
@@ -5088,6 +5088,21 @@ test.describe('Reports Queue: the real API, the same count as the Overview', () 
     await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
     await expect(page.locator('main tbody tr')).toHaveCount(overviewOpen); // the default filter is Open
     await expect(page.getByText(`${overviewOpen} open report${overviewOpen === 1 ? '' : 's'} awaiting review`)).toBeVisible();
+  });
+
+  test('GOD-T29: Insights reads the same records: its open reports equal the Overview\'s, no sample-data notice, and the seeded report reason is charted', async ({ page }) => {
+    await page.goto(`${BASE_URL}/`);
+    const openLink = page.getByRole('region', { name: 'Needs your attention' }).getByRole('link', { name: /Open reports/ });
+    await expect(openLink).toContainText(/\d/);
+    const overviewOpen = /(\d+)/.exec((await openLink.textContent()) ?? '')![1];
+    await page.goto(`${BASE_URL}/analytics`);
+    await expect(page.getByTestId('page-title')).toHaveText('Insights');
+    await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
+    const stat = page.locator('.stat-value').nth(1); // the second stat card: Open reports
+    await expect(stat).toHaveText(overviewOpen);
+    await expect(page.getByText(/Guaranteed Visa Sponsorship/)).toHaveCount(0);
+    // the one seeded reason: "Not enough variety to chart" names it
+    await expect(page.getByRole('region', { name: 'Reports by reason' })).toContainText('Scam / Fraud');
   });
 
   test('a report opens from the API, and Mark resolved is saved (it stays resolved after a reload); a sample id is "not found"', async ({ page }) => {

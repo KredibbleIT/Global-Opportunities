@@ -4,24 +4,26 @@
  * Insights (/analytics): charts only. The Overview owns the headline KPIs, so this page keeps just one
  * stat row (total applications, open reports) and the charts below.
  *
- * Charts (every number comes from fields that already exist in the mock files; nothing is invented):
- * - Postings by type          segmented bar    postedOpportunities[].type
- * - Verification status       segmented bar    pendingCompanies[].overallStatus
- * - Reports by reason         highlight bar    reports[].reason (sorted so the most common is last, which is
+ * Charts:
+ * - Postings by type          segmented bar    the Opportunities Queue's rows, by type
+ * - Verification status       segmented bar    the Verification Queue's rows, by decision
+ * - Reports by reason         highlight bar    the Reports Queue's rows, by reason (sorted so the most common is last, which is
  *                                              the bar the chart highlights in orange)
  * Each chart has a visually hidden text-alternative table and an empty state.
  *
- * The month selector in the header keeps the month in the URL (useMonth). These charts do not change by month yet,
- * so choosing a past month shows a note that says so. The records are the mock lists WITH this session's changes laid over
- * them (mock-store.ts), so approving a company or resolving a report changes these charts too.
- * There is no loading or error state: the data is in memory and cannot fail.
+ * Data (GOD-T29): lib/services/insights.ts reads each figure from the SAME loader as the page it summarises, so Insights agrees with
+ * the queues and the Overview by construction: the API in real mode, the sample lists (with this session's changes) in mock mode.
+ * The month selector keeps the month in the URL (useMonth). These charts do not change by month yet, so choosing a past month
+ * shows a note that says so. A skeleton while loading; an error with Try again.
  */
 import { BarChart3, Briefcase, Flag } from "lucide-react";
-import { pendingCompanies } from "@/lib/mock-data";
-import { overlayRows, useMockStoreVersion } from "@/lib/mock-store";
-import { postedOpportunities, type OpportunityType } from "@/lib/mock-opportunities";
-import { reports } from "@/lib/mock-reports";
-import { seekerAccounts } from "@/lib/mock-seekers";
+import { useCallback } from "react";
+import { useMockStoreVersion } from "@/lib/mock-store";
+import type { OpportunityType } from "@/lib/mock-opportunities";
+import { loadInsights } from "@/lib/services/insights";
+import { useAsync } from "@/lib/use-async";
+import { Button } from "@/components/ui/Button";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { getStatusMeta } from "@/lib/status-map";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -31,7 +33,6 @@ import { MonthSelect } from "@/components/ui/MonthSelect";
 import { formatMonth } from "@/lib/format";
 import { useMonth } from "@/lib/use-month";
 import { SegmentedBar } from "@/components/ui/SegmentedBar";
-import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 
 const TYPE_LABELS: Record<OpportunityType, string> = {
   jobs: "Jobs",
@@ -43,14 +44,45 @@ const TYPE_LABELS: Record<OpportunityType, string> = {
 const VERIFICATION_ORDER = ["approved", "pending", "rejected"] as const;
 
 export default function InsightsPage() {
-  useMockStoreVersion(); // re-render when a decision elsewhere changes the records
+  const version = useMockStoreVersion(); // load again when a decision elsewhere changes the records (mock mode)
   const { month, isCurrent } = useMonth();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const load = useCallback(() => loadInsights(), [version]);
+  const { data, error, isLoading, reload } = useAsync(load);
 
-  const opportunities = overlayRows("opportunities", postedOpportunities);
-  const companies = overlayRows("verification", pendingCompanies);
-  const reportRows = overlayRows("reports", reports);
+  const header = (
+    <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <div>
+        <h1 data-testid="page-title" className="page-title">Insights</h1>
+        <p className="page-subtitle mt-1">How postings, verification and reports break down across the platform.</p>
+      </div>
+      <MonthSelect />
+    </header>
+  );
+  if (error && !isLoading) {
+    return (
+      <div className="space-y-4">
+        {header}
+        <Card>
+          <EmptyState icon={BarChart3} tone="danger" title="Could not load Insights" description="Please try again." action={<Button variant="secondary" onClick={reload}>Try again</Button>} />
+        </Card>
+      </div>
+    );
+  }
+  if (!data) {
+    return (
+      <div className="space-y-4" aria-busy="true">
+        {header}
+        <div data-testid="insights-skeleton" className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Skeleton className="h-24 rounded-control" />
+          <Skeleton className="h-24 rounded-control" />
+        </div>
+        <Skeleton className="h-chart w-full rounded-control" />
+      </div>
+    );
+  }
 
-  const totalApplications = seekerAccounts.reduce((sum, seeker) => sum + seeker.applicationsCount, 0);
+  const { totalApplications, postings: opportunities, companies, reports: reportRows } = data;
   const openReports = reportRows.filter((report) => report.status === "open").length;
 
   const postingsByType = (Object.keys(TYPE_LABELS) as OpportunityType[]).map((type) => ({
@@ -70,17 +102,10 @@ export default function InsightsPage() {
 
   return (
     <div className="space-y-4">
-      <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 data-testid="page-title" className="page-title">Insights</h1>
-          <p className="page-subtitle mt-1">How postings, verification and reports break down across the platform.</p>
-        </div>
-        <MonthSelect />
-      </header>
-      <NotConnectedNotice />
+      {header}
       {!isCurrent && (
         <p className="caption" role="status">
-          {formatMonth(month)}: the figures below are mock data and do not change by month yet.
+          {formatMonth(month)}: the figures below are totals to date and do not change by month yet.
         </p>
       )}
 
