@@ -137,7 +137,7 @@ export default function NotificationsScreen() {
   );
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.white }} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.white }} edges={['top', 'left', 'right', 'bottom']}>
       <Header title="Notifications" showBack />
 
       {/* Filter chips */}

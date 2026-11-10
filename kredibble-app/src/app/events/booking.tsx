@@ -6,6 +6,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Colors, FontSize, FontWeight, Radius } from '../../constants/design';
 import { bookEvent, getEventById, EventItem } from '../../lib/api';
+import { BottomSafeBar } from '../../components/ui/BottomSafeBar';
 
 export default function TicketBookingScreen() {
   const router = useRouter();
@@ -93,7 +94,7 @@ export default function TicketBookingScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen, justifyContent: 'center', alignItems: 'center' }} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen, justifyContent: 'center', alignItems: 'center' }} edges={['top', 'left', 'right', 'bottom']}>
         <ActivityIndicator size="large" color={Colors.primary} />
         <Text style={{ marginTop: 12, color: Colors.textMuted, fontSize: 14 }} className="font-sans">Loading event details...</Text>
       </SafeAreaView>
@@ -102,7 +103,7 @@ export default function TicketBookingScreen() {
 
   if (!event) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }} edges={['top', 'left', 'right', 'bottom']}>
         <Text style={{ fontSize: 16, color: Colors.textHeading, fontWeight: '600', marginBottom: 8 }} className="font-sans">Event not found</Text>
         <TouchableOpacity
           onPress={() => router.canGoBack() ? router.back() : router.replace('/events')}
@@ -115,7 +116,7 @@ export default function TicketBookingScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen }} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen }} edges={['top', 'left', 'right', 'bottom']}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -272,7 +273,7 @@ export default function TicketBookingScreen() {
       </ScrollView>
 
       {/* Footer bar */}
-      <View style={styles.footer}>
+      <BottomSafeBar style={styles.footer}>
         <View style={styles.footerLeft}>
           <Text style={styles.totalLabel} className="font-sans">Total</Text>
           <Text style={styles.totalPrice} className="font-sans">
@@ -305,7 +306,7 @@ export default function TicketBookingScreen() {
             <ExternalLink size={16} color={Colors.white} style={{ marginLeft: 8 }} />
           </TouchableOpacity>
         )}
-      </View>
+      </BottomSafeBar>
     </SafeAreaView>
   );
 }
