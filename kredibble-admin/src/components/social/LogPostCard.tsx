@@ -14,8 +14,9 @@
  * savePost (the API in real mode); a failure shows an error toast and keeps what was typed.
  *
  * Props: onLogged?(post): called after a save (the page uses it to follow the month of the post when it is in another month)
+ *        plain?: draw the form without the card frame (it sits inside the "Add post" dialog, which has its own title)
  */
-import { useRef, useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Field } from "@/components/ui/form/Field";
@@ -37,7 +38,7 @@ const PLATFORM_OPTIONS: SelectOption<PostPlatform>[] = SOCIAL_POST_PLATFORMS.map
 
 const emptyForm = (): PostFormState => ({ platform: "", title: "", url: "", reach: "", engagement: "", listingId: NONE, postedAt: todayIsoDate() });
 
-export function LogPostCard({ onLogged }: { onLogged?: (post: SocialPost) => void }) {
+export function LogPostCard({ onLogged, plain = false }: { onLogged?: (post: SocialPost) => void; plain?: boolean }) {
   const { data: loadedOpportunities } = useAsync(loadPostOpportunityOptions);
   const opportunities = loadedOpportunities ?? [];
   const [form, setForm] = useState<PostFormState>(emptyForm);
@@ -93,8 +94,8 @@ export function LogPostCard({ onLogged }: { onLogged?: (post: SocialPost) => voi
   };
 
   return (
-    <Card as="section" ariaLabel="Log a post" className="flex flex-1 flex-col">
-      <CardHeader title="Log a post" subtitle="Add a post you published. It counts in the month of its date." />
+    <Wrapper plain={plain}>
+      {!plain && <CardHeader title="Log a post" subtitle="Add a post you published. It counts in the month of its date." />}
       <form ref={formRef} onSubmit={submit} noValidate className="flex flex-1 flex-col gap-4">
         <Field label="Platform" error={show("platform") ? errors.platform : undefined}>
           <Select options={PLATFORM_OPTIONS} value={form.platform} onChange={(value) => set("platform", value)} onBlur={() => touch("platform")} placeholder="Choose a platform" sheetTitle="Platform" />
@@ -126,6 +127,19 @@ export function LogPostCard({ onLogged }: { onLogged?: (post: SocialPost) => voi
         </div>
       </form>
       {guard.dialog}
+    </Wrapper>
+  );
+}
+
+/** The card frame, or (inside the dialog) a plain labelled section. */
+function Wrapper({ plain, children }: { plain: boolean; children: ReactNode }) {
+  return plain ? (
+    <section aria-label="Log a post" className="flex flex-col">
+      {children}
+    </section>
+  ) : (
+    <Card as="section" ariaLabel="Log a post" className="flex flex-1 flex-col">
+      {children}
     </Card>
   );
 }

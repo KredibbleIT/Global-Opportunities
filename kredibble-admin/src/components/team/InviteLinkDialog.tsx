@@ -13,8 +13,8 @@ import { Check, Copy } from "lucide-react";
 import { INVITE_HOURS } from "@/lib/accounts";
 import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
+import { formatDateTime } from "@/lib/format";
 
-const WHEN = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
 interface InviteLinkDialogProps {
   name: string;
@@ -56,7 +56,7 @@ export function InviteLinkDialog({ name, link, expiresAt, onClose }: InviteLinkD
     >
       <div className="space-y-3">
         <p className="body-sm">
-          This link is shown <span className="font-semibold">once</span>. It expires in {INVITE_HOURS} hours ({WHEN.format(new Date(expiresAt))}) and can be used one time.
+          This link is shown <span className="font-semibold">once</span>. It expires in {INVITE_HOURS} hours ({formatDateTime(expiresAt)}) and can be used one time.
         </p>
         <p className="body-sm break-all rounded-control bg-surface-2 p-3 font-mono" data-testid="invite-link-text" tabIndex={0} aria-label="Invite link">
           {link}

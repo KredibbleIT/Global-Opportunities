@@ -4,7 +4,8 @@
  * Event detail: one event's attendance and capacity.
  * Built on the shared detail template.
  *
- * Fields: title, hirer, location, date & time, status, attendance (count, capacity, percent), capacity input.
+ * Each fact appears ONCE: the header holds the one concise summary (when and where), the Attendance card holds the figures (spots filled,
+ * percent, spots left), the capacity input adjusts it, and the side panel holds the extra info (hirer, status).
  * Actions: Save capacity (cannot go below the current attendee count) and Cancel event (danger zone,
  * confirm dialog; hidden once cancelled).
  * Data: mock events (src/lib/mock-events.ts), changed in LOCAL state only.
@@ -23,7 +24,6 @@ import { InfoCard } from "@/components/detail/InfoCard";
 import { Button } from "@/components/ui/Button";
 import { useConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { KeyValueList } from "@/components/ui/KeyValueList";
-import { MiniStat } from "@/components/ui/MiniStat";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useToast } from "@/components/ui/Toast";
 import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
@@ -82,7 +82,8 @@ export default function EventDetailPage() {
             leading={{ icon: CalendarDays }}
             title={event.title}
             badges={<StatusBadge status={event.status} />}
-            meta={`${event.hirer} · ${event.location} · ${event.dateTime}`}
+            // The one concise summary: when and where. The hirer is in the side panel; the figures are in the Attendance card.
+            meta={`${event.dateTime} · ${event.location}`}
           />
         }
         main={
@@ -92,7 +93,7 @@ export default function EventDetailPage() {
                 <div className="h-full rounded-pill bg-purple-600 transition-all" style={{ width: `${Math.min(pct, 100)}%` }} />
               </div>
               <p className="body-sm mt-2 text-muted">
-                {event.attendeesCount} of {event.capacity} spots filled ({pct}%)
+                {event.attendeesCount} of {event.capacity} spots filled ({pct}%) · {event.capacity - event.attendeesCount} left
               </p>
             </InfoCard>
 
@@ -120,16 +121,8 @@ export default function EventDetailPage() {
           <>
             <InfoCard title="Details">
               <KeyValueList
-                items={[
-                  { label: "Hirer", value: event.hirer },
-                  { label: "Location", value: event.location },
-                  { label: "Date & Time", value: event.dateTime },
-                  { label: "Capacity", value: String(event.capacity) },
-                ]}
+                items={[{ label: "Hirer", value: event.hirer }]}
               />
-            </InfoCard>
-            <InfoCard title="Activity">
-              <MiniStat value={event.attendeesCount} label="Attendees" />
             </InfoCard>
           </>
         }

@@ -14,10 +14,10 @@ import { Button } from "@/components/ui/Button";
 import { Dialog } from "@/components/ui/Dialog";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { History } from "lucide-react";
+import { formatDateTime } from "@/lib/format";
 
 const noServerLoad = (): Promise<AuditEntry[] | null> => Promise.resolve(null);
 
-const WHEN = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 
 interface HistoryProps {
   onClose: () => void;
@@ -60,7 +60,7 @@ export function AmbassadorHistoryDialog({
             <li key={entry.id} className="rounded-control border border-line p-4" data-testid="history-entry">
               <p className="body-sm font-semibold text-ink">{entry.summary}</p>
               <p className="caption mt-1">
-                {WHEN.format(new Date(entry.at))} · {entry.actor}
+                {formatDateTime(entry.at)} · {entry.actor}
               </p>
               <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
                 {Object.entries(entry.details).map(([key, value]) => (

@@ -20,11 +20,12 @@ import { Check, Network as NetworkIcon, Plus } from "lucide-react";
 import { useRoles } from "@/components/access/RoleProvider";
 import { DataTable } from "@/components/list/DataTable";
 import { ListPage } from "@/components/list/ListPage";
-import { TableToolbar } from "@/components/list/TableToolbar";
+import { EmptyAction } from "@/components/list/EmptyAction";
+import { FilterSelect, TableToolbar } from "@/components/list/TableToolbar";
 import type { Column } from "@/components/list/types";
 import { AmbassadorBulkActions } from "@/components/network/AmbassadorBulkActions";
 import { NetworkSummary } from "@/components/network/NetworkSummary";
-import { Select, type SelectOption } from "@/components/ui/form/Select";
+import { type SelectOption } from "@/components/ui/form/Select";
 import { AMBASSADOR_STATUSES, AMBASSADOR_TIERS, AMBASSADOR_TIER_LABELS, AMBASSADOR_TIER_SHORT_LABELS, type AmbassadorStatus, type AmbassadorTier } from "@/lib/mock-entities";
 import { useMockCollection } from "@/lib/mock-store";
 import { loadAmbassadorRows, subscribeNetwork, type AmbassadorRow } from "@/lib/services/network";
@@ -100,10 +101,8 @@ export default function NetworkPage() {
           <TableToolbar
             search={{ value: search, onChange: setSearch, placeholder: "Search by name or campus", label: "Search ambassadors" }}
             filters={{ options, value: status, onChange: setStatus, label: "Filter by status" }}
-          >
-            <Select options={tierOptions} value={tier} onChange={setTier} ariaLabel="Filter by tier" sheetTitle="Tier" className="w-fit" />
-            <Select options={countryOptions} value={country} onChange={setCountry} ariaLabel="Filter by country" sheetTitle="Country" className="w-fit" />
-            {/* Export, Import and History: each only for a role that has the permission (see AmbassadorBulkActions). */}
+            // Export, Import and History: each only for a role that has the permission (see AmbassadorBulkActions).
+            actions={
             <AmbassadorBulkActions
               allRows={all}
               filteredRows={visible}
@@ -111,11 +110,16 @@ export default function NetworkPage() {
               filters={{ status, tier, country, search: term }}
               onClearSelection={() => setSelected(new Set())}
             />
+            }
+          >
+            <FilterSelect options={tierOptions} value={tier} onChange={setTier} ariaLabel="Filter by tier" sheetTitle="Tier" />
+            <FilterSelect options={countryOptions} value={country} onChange={setCountry} ariaLabel="Filter by country" sheetTitle="Country" />
           </TableToolbar>
         </div>
       }
     >
       <DataTable
+        onClearFilters={() => { setStatus(ALL); setTier(ALL); setCountry(ALL); setSearch(""); }}
         label="Ambassadors"
         columns={COLUMNS}
         rows={visible}
@@ -131,7 +135,7 @@ export default function NetworkPage() {
             ? { selected, onChange: (next) => setSelected(next), itemLabel: (row) => `Select ${row.name}` }
             : undefined
         }
-        emptyNoData={{ icon: NetworkIcon, title: "No ambassadors yet", description: "People who share listings with their referral code appear here." }}
+        emptyNoData={{ icon: NetworkIcon, title: "No ambassadors yet", description: "People who share listings with their referral code appear here.", action: can("network", "edit") ? <EmptyAction href="/network/new" label="Add your first ambassador" /> : undefined }}
         emptyNoResults={{ icon: NetworkIcon, title: "No ambassadors match these filters", description: "Try another status, tier, country or search." }}
       />
     </ListPage>

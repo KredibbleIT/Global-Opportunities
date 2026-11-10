@@ -15,7 +15,7 @@
  */
 import { PipelineHealthCard } from "@/components/partners/PipelineHealthCard";
 import { RecordsPaceCard } from "@/components/database/RecordsPaceCard";
-import { StatusChip } from "@/components/kpi/KpiStatus";
+import { StatusChip, TargetBar } from "@/components/kpi/KpiStatus";
 import { Scorecard } from "@/components/scorecard/Scorecard";
 import { MiniStat } from "@/components/ui/MiniStat";
 import { KPIS } from "@/config/kpis";
@@ -59,7 +59,11 @@ export function TeamReport({ data, month, toDate, sample }: { data: TeamReportDa
                 <td data-testid="team-kpi-value" className="table-text px-3 py-2 text-right tabular-nums print:py-1">{card.value === null ? "—" : format(card.value)}</td>
                 <td className="table-text px-3 py-2 text-right tabular-nums print:py-1">{card.target ? format(card.target) : "—"}</td>
                 <td className="py-2 pl-3 print:py-1">
-                  <StatusChip status={card.status} />
+                  {/* The verdict, and the share of the monthly target as a bar BELOW it. */}
+                  <div className="flex w-28 flex-col gap-1.5">
+                    <StatusChip status={card.status} />
+                    <TargetBar card={card} label={KPIS[card.key].label} showPace={false} />
+                  </div>
                 </td>
               </tr>
             ))}
@@ -70,7 +74,7 @@ export function TeamReport({ data, month, toDate, sample }: { data: TeamReportDa
       {/* Side by side in print (two cards that each need half the width), one under the other on screen. */}
       <div className="space-y-8 print:grid print:grid-cols-2 print:items-start print:gap-4 print:space-y-0">
       <ReportSection title="Partner pipeline" subtitle="Is the open pipeline big enough for the Partners onboarded target?" testId="team-pipeline">
-        <PipelineHealthCard health={data.pipeline} target={data.pipelineTarget} />
+        <PipelineHealthCard health={data.pipeline} target={data.pipelineTarget} standalone />
       </ReportSection>
       <ReportSection title="Database" subtitle="Verification pace this month and the records verified by source" testId="team-database">
         <RecordsPaceCard pace={data.pace} sources={data.sources} />

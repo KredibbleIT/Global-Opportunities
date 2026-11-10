@@ -1,6 +1,6 @@
 /**
  * ScoreRing: the composite score as a ring (a track, a status-coloured arc and the number in the middle). A role="meter" from 0 to 100,
- * so a screen reader hears "72 out of 100, Behind". Colour is never the only signal: the status word is in the meter's text and the
+ * so a screen reader hears "72 out of 100, At risk". Colour is never the only signal: the status word is in the meter's text and the
  * page puts a status chip beside the ring.
  *
  * Structure (an SVG track, a range arc and a centred value) follows the 21st.dev "Circular Progress" candidates; the look is the brand's:

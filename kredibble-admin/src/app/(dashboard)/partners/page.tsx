@@ -9,7 +9,7 @@
  * - Pipeline health card (a three-zone gauge): open deals against the deals needed to hit next month's "Partners onboarded" target
  *   (pipelineHealth(), counted on ALL partners so a filter does not change it). In mock mode outside production,
  *   ?health=healthy|thin|critical|nodata|capped feeds it demo inputs so every state can be seen (lib/pipeline-health-demo.ts).
- * - Toolbar: search, Owner, Type and Country (the custom Select). "New partner" (primary) needs edit access on partners.
+ * - Toolbar: search, Owner, Type and Country (the custom Select). "Add partner" (primary) needs edit access on partners.
  * - The board (KanbanBoard): Prospect, Outreach, Proposal, MOU, Onboard, Renew. The KEYS are fixed; the LABELS come from the
  *   store (usePartnerStageLabels), so Settings can rename them later. Onboard and Renew carry a "Closed" marker.
  *   A card moves by drag and drop, or with its "Move to…" menu (keyboard, touch and phones). Moving into Onboard or
@@ -27,14 +27,15 @@ import { useSearchParams } from "next/navigation";
 import { Handshake, Plus, SearchX } from "lucide-react";
 import { useRoles } from "@/components/access/RoleProvider";
 import { ListPage } from "@/components/list/ListPage";
-import { TableToolbar } from "@/components/list/TableToolbar";
+import { EmptyAction } from "@/components/list/EmptyAction";
+import { FilterSelect, TableToolbar } from "@/components/list/TableToolbar";
 import { PartnerCard } from "@/components/partners/PartnerCard";
 import { PartnerSummary } from "@/components/partners/PartnerSummary";
 import { PipelineHealthCard } from "@/components/partners/PipelineHealthCard";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Select, type SelectOption } from "@/components/ui/form/Select";
+import { type SelectOption } from "@/components/ui/form/Select";
 import { KanbanBoard, type KanbanColumn } from "@/components/ui/KanbanBoard";
 import { useToast } from "@/components/ui/Toast";
 import { CLOSED_STAGES, PARTNER_STAGES, PARTNER_TYPES, PARTNER_TYPE_LABELS, type PartnerStage, type PartnerType } from "@/lib/mock-entities";
@@ -119,19 +120,19 @@ export default function PartnersPage() {
     <ListPage
       title="Partners"
       subtitle="Organisations in the six-stage partner pipeline."
-      action={canEdit ? { label: "New partner", href: "/partners/new", icon: Plus } : undefined}
+      action={canEdit ? { label: "Add partner", href: "/partners/new", icon: Plus } : undefined}
       toolbar={
         <div className="space-y-4">
-          {/* From 1280px: the two tiles stacked in a 240px column on the left, the health card taking the rest, in ONE row
-              (so the board starts higher). Below 1280px they stack. */}
-          <div className="space-y-4 xl:grid xl:grid-cols-[15rem_1fr] xl:items-stretch xl:gap-4 xl:space-y-0">
-            <PartnerSummary partners={rows} className="xl:max-w-none xl:grid-cols-1" />
-            <PipelineHealthCard health={health} target={shownTarget} demo={override ?? undefined} />
+          {/* From 1280px: the three aligned cards (Open deals, Closed this month, Next month's target) on the left and the health card
+              taking the rest, in ONE row (so the board starts higher). Below 1280px they stack. */}
+          <div className="space-y-4 xl:grid xl:grid-cols-[2fr_3fr] xl:items-stretch xl:gap-4 xl:space-y-0">
+            <PartnerSummary partners={rows} target={isLoading ? null : shownTarget} />
+            <PipelineHealthCard health={health} demo={override ?? undefined} />
           </div>
-          <TableToolbar search={{ value: search, onChange: setSearch, placeholder: "Search partners", label: "Search partners" }}>
-            <Select options={ownerOptions} value={owner} onChange={setOwner} ariaLabel="Filter by owner" sheetTitle="Owner" className="w-fit" />
-            <Select options={typeOptions} value={type} onChange={setType} ariaLabel="Filter by type" sheetTitle="Type" className="w-fit" />
-            <Select options={countryOptions} value={country} onChange={setCountry} ariaLabel="Filter by country" sheetTitle="Country" className="w-fit" />
+          <TableToolbar inline search={{ value: search, onChange: setSearch, placeholder: "Search partners", label: "Search partners" }}>
+            <FilterSelect options={ownerOptions} value={owner} onChange={setOwner} ariaLabel="Filter by owner" sheetTitle="Owner" />
+            <FilterSelect options={typeOptions} value={type} onChange={setType} ariaLabel="Filter by type" sheetTitle="Type" />
+            <FilterSelect options={countryOptions} value={country} onChange={setCountry} ariaLabel="Filter by country" sheetTitle="Country" />
           </TableToolbar>
         </div>
       }
@@ -148,7 +149,7 @@ export default function PartnersPage() {
         </Card>
       ) : !isLoading && all.length === 0 ? (
         <Card as="section" ariaLabel="Partners">
-          <EmptyState icon={Handshake} title="No partners yet" description="Organisations you reach out to appear here, from Prospect to Renew." />
+          <EmptyState icon={Handshake} title="No partners yet" description="Organisations you reach out to appear here, from Prospect to Renewed." action={canEdit ? <EmptyAction href="/partners/new" label="Add your first partner" /> : undefined} />
         </Card>
       ) : !isLoading && filtered && visible.length === 0 ? (
         <Card as="section" ariaLabel="Partners">
@@ -175,6 +176,7 @@ export default function PartnersPage() {
           onMove={onMove}
           canMove={canEdit}
           itemNoun="partners"
+          itemNounOne="partner"
           loading={isLoading}
         />
       )}

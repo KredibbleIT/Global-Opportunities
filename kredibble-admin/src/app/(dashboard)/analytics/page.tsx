@@ -16,6 +16,7 @@
  * them (mock-store.ts), so approving a company or resolving a report changes these charts too.
  * There is no loading or error state: the data is in memory and cannot fail.
  */
+import { PageHeader } from "@/components/ui/PageHeader";
 import { BarChart3, Briefcase, Flag } from "lucide-react";
 import { pendingCompanies } from "@/lib/mock-data";
 import { overlayRows, useMockStoreVersion } from "@/lib/mock-store";
@@ -70,13 +71,7 @@ export default function InsightsPage() {
 
   return (
     <div className="space-y-4">
-      <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 data-testid="page-title" className="page-title">Insights</h1>
-          <p className="page-subtitle mt-1">How postings, verification and reports break down across the platform.</p>
-        </div>
-        <MonthSelect />
-      </header>
+      <PageHeader title="Insights" subtitle="How postings, verification and reports break down across the platform." actions={<MonthSelect />} />
       <NotConnectedNotice />
       {!isCurrent && (
         <p className="caption" role="status">

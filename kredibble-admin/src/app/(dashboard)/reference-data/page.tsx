@@ -11,6 +11,7 @@
  * In mock mode: State stays in memory.
  * In live mode: Fetches from /admin/reference-data and persists changes via PUT /admin/reference-data/:group/:key.
  */
+import { PageHeader } from "@/components/ui/PageHeader";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { REFERENCE_GROUPS, type ReferenceGroupKey } from "@/lib/reference-data";
@@ -69,10 +70,7 @@ export default function ReferenceDataPage() {
 
   return (
     <div className="space-y-4">
-      <header>
-        <h1 data-testid="page-title" className="page-title">Reference data</h1>
-        <p className="page-subtitle mt-1">{group.description}</p>
-      </header>
+      <PageHeader title="Reference Data" subtitle={group.description} />
 
       <NotConnectedNotice />
 

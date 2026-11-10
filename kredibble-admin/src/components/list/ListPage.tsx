@@ -12,7 +12,8 @@
  * Props:
  * - title: the h1 (Jakarta 700 24/30; 22/28 below 640px)
  * - subtitle: one muted line, including the live-count text ("5 seeker accounts registered...")
- * - action: optional { label, href, icon } rendered as the orange primary button
+ * - action: optional { label, href, icon } rendered as the orange primary button, beside the heading
+ * - actions: optional node instead of `action` (a button that opens a dialog); the page's ONE primary action, beside the heading
  * - toolbar: optional node (usually <TableToolbar />)
  * - children: the table
  */
@@ -20,34 +21,37 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import { buttonClasses } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 interface ListPageProps {
   title: string;
   subtitle: string;
   action?: { label: string; href: string; icon?: LucideIcon };
+  actions?: ReactNode;
   toolbar?: ReactNode;
   /** Shown between the header and the toolbar: the "sample data" notice of a page that is not connected to the API yet (NotConnectedNotice). */
   notice?: ReactNode;
   children: ReactNode;
 }
 
-export function ListPage({ title, subtitle, action, toolbar, notice, children }: ListPageProps) {
+export function ListPage({ title, subtitle, action, actions, toolbar, notice, children }: ListPageProps) {
   const ActionIcon = action?.icon;
 
   return (
     <div className="space-y-4">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h1 data-testid="page-title" className="page-title">{title}</h1>
-          <p className="page-subtitle mt-1">{subtitle}</p>
-        </div>
-        {action && (
-          <Link href={action.href} className={buttonClasses("primary")}>
-            {ActionIcon && <ActionIcon size={16} strokeWidth={2} aria-hidden="true" />}
-            {action.label}
-          </Link>
-        )}
-      </header>
+      <PageHeader
+        title={title}
+        subtitle={subtitle}
+        actions={
+          actions ??
+          (action && (
+            <Link href={action.href} className={buttonClasses("primary")}>
+              {ActionIcon && <ActionIcon size={16} strokeWidth={2} aria-hidden="true" />}
+              {action.label}
+            </Link>
+          ))
+        }
+      />
 
       {notice}
       {toolbar}

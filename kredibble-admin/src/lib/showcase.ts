@@ -109,9 +109,9 @@ export interface Verdict {
 
 /** A category can be deleted only when it is a custom one with nothing in it. The built-in four can be hidden, never deleted. */
 export function canDeleteCategory(category: ShowcaseCategory, entries: readonly ShowcaseEntry[]): Verdict {
-  if (category.key !== "custom") return { allowed: false, reason: "The built-in categories cannot be deleted. Hide the category instead." };
+  if (category.key !== "custom") return { allowed: false, reason: "Built-in: hide it instead." };
   const count = entries.filter((entry) => entry.categoryId === category.id).length;
-  if (count > 0) return { allowed: false, reason: `Move or delete its ${count} ${count === 1 ? "entry" : "entries"} first.` };
+  if (count > 0) return { allowed: false, reason: `Has ${count} ${count === 1 ? "entry" : "entries"}: move them first.` };
   return { allowed: true };
 }
 

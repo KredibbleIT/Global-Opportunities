@@ -23,11 +23,13 @@ import { Button } from "@/components/ui/Button";
 import { Switch } from "@/components/ui/form/Switch";
 import { Textarea } from "@/components/ui/form/Textarea";
 import { useToast } from "@/components/ui/Toast";
+import { formatDate, formatTime } from "@/lib/format";
 
 const POLL_MS = 4000;
 
-const timeOf = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-const dayOf = (iso: string) => new Date(iso).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
+// The shared date style ("5 Nov 2026") and time style ("2:05 PM"): see lib/format.ts.
+const timeOf = (iso: string) => formatTime(iso);
+const dayOf = (iso: string) => formatDate(iso);
 
 export function ChannelChat({ channelId }: { channelId: string }) {
   const toast = useToast();
@@ -98,11 +100,13 @@ export function ChannelChat({ channelId }: { channelId: string }) {
   let lastDay = "";
 
   return (
-    <div className="flex h-[620px] flex-col">
-      <div className="flex-1 space-y-4 overflow-y-auto rounded-control border border-line bg-surface-2 p-4" aria-live="polite" aria-label="Posts">
+    // With no posts yet the area is compact (one short message), so the composer is not pushed far down the page; once there are
+    // posts it is the tall scrolling chat, with the composer at its bottom.
+    <div className={cn("flex flex-col", posts?.length ? "h-[620px]" : "")}>
+      <div className={cn("space-y-4 overflow-y-auto rounded-control border border-line bg-surface-2 p-4", posts?.length ? "flex-1" : "")} aria-live="polite" aria-label="Posts">
         {posts === null && !error && <p className="body-sm text-muted">Loading posts…</p>}
         {error && <p className="body-sm text-danger">{error}</p>}
-        {posts?.length === 0 && <p className="body-sm text-muted">No posts yet. Write the first one below. Members can read it, and reply only if you allow it.</p>}
+        {posts?.length === 0 && <p className="body-sm text-muted">No posts yet. Write the first one below.</p>}
         {posts?.map((post) => {
           const day = dayOf(post.createdAt);
           const showDay = day !== lastDay;
