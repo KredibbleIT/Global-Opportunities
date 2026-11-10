@@ -27,6 +27,19 @@ project_response=$(vercel_api "/v9/projects/$VERCEL_PROJECT_ID?teamId=$VERCEL_OR
 project_name=$(jq -r '.name // empty' <<<"$project_response")
 if [ -n "$project_name" ]; then
   echo "Vercel opens the project: $project_name"
+  # `vercel pull` also reads the team itself (getOrgById) and fails with the
+  # same "Could not retrieve Project Settings" if that answer is forbidden.
+  project_owner=$(jq -r '.accountId // empty' <<<"$project_response")
+  if [ -n "$project_owner" ] && [ "$project_owner" != "$VERCEL_ORG_ID" ]; then
+    echo "::error title=VERCEL_ORG_ID is not the project's team::Project $project_name belongs to team $project_owner, but VERCEL_ORG_ID is a different value. Set VERCEL_ORG_ID to $project_owner. Nothing was deployed."
+    exit 1
+  fi
+  team_answer=$(vercel_api "/v2/teams/$VERCEL_ORG_ID" | jq -r '.slug // .error.code // "unknown"')
+  if [ "$team_answer" = "forbidden" ] || [ "$team_answer" = "not_found" ] || [ "$team_answer" = "unknown" ]; then
+    echo "::error title=VERCEL_TOKEN cannot read the team::The token can open the project but Vercel answered '$team_answer' when asked for the team in VERCEL_ORG_ID, and vercel pull needs both. Create the token under Account Settings > Tokens with this team as its scope (or Full Account). Nothing was deployed."
+    exit 1
+  fi
+  echo "Vercel opens the team: $team_answer"
   exit 0
 fi
 
