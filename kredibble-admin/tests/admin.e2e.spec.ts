@@ -4665,12 +4665,38 @@ test.describe('Opportunities Queue: memory note', () => {
     await expect(page.getByTestId('curated-memory-note')).toHaveCount(0);
   });
 
-  test('real-API run: the muted note says curated listings are kept in memory, and no sample listing is listed', async ({ page }) => {
-    test.skip(MOCK_RUN, 'the note only shows outside mock mode');
-    await page.goto(`${BASE_URL}/opportunities`, { timeout: 30_000 });
-    await expect(page.locator('main tbody tr').first()).toBeVisible();
-    await expect(page.getByText('Graduate Software Engineer')).toHaveCount(0); // a seeded sample listing never shows next to real postings
-    await expect(page.getByTestId('curated-memory-note')).toHaveText('Curated listings are saved in memory until the backend supports them.');
+  test('real-API run (GOD-T31): a curated listing is saved on the server: after a reload it is still listed as curated and opens as one; no sample listing, no memory note', async ({ page }) => {
+    test.skip(MOCK_RUN, 'real API only');
+    test.setTimeout(90_000);
+    const title = `E2E curated ${Date.now()}`;
+    await page.goto(`${BASE_URL}/opportunities/new`, { timeout: 30_000 });
+    await page.getByTestId('sidebar-toggle').waitFor();
+    await page.getByLabel('Title', { exact: true }).fill(title);
+    await page.getByLabel('Description', { exact: true }).fill('A listing saved on the server by a test.');
+    await page.getByLabel('Offering organisation').fill('Test Organisation');
+    await page.getByRole('combobox', { name: 'Opportunity type' }).click();
+    await page.getByRole('option', { name: 'Fellowship' }).click();
+    await page.getByRole('combobox', { name: 'Country' }).click();
+    await page.getByRole('option', { name: 'Ghana' }).click();
+    await page.getByLabel('Application deadline').fill('2099-12-31');
+    await page.getByLabel('Official application link').fill('https://example.org/apply');
+    const saved = page.waitForResponse((response) => response.url().endsWith('/admin/opportunities') && response.request().method() === 'POST');
+    await page.getByRole('button', { name: 'Save draft' }).click();
+    expect((await saved).status()).toBe(201);
+    await expect(page).toHaveURL(/\/opportunities\/[0-9a-f]{24}$/, { timeout: 15_000 }); // the server's id, not a temporary one
+    const id = /([0-9a-f]{24})$/.exec(page.url())![1];
+    try {
+      await page.goto(`${BASE_URL}/opportunities`, { timeout: 30_000 });
+      await expect(page.getByTestId('curated-memory-note')).toHaveCount(0);
+      await expect(page.getByText('Graduate Software Engineer')).toHaveCount(0); // a seeded sample listing never shows next to real postings
+      await expect(page.locator('main tbody tr').filter({ hasText: title })).toHaveCount(1);
+      // a fresh load of its page (nothing in this tab's memory) opens the curated listing, not the hirer review
+      await page.goto(`${BASE_URL}/opportunities/${id}`, { timeout: 30_000 });
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText(title);
+      await expect(page.getByRole('button', { name: 'Approve' })).toHaveCount(0);
+    } finally {
+      await page.evaluate(async ({ api, id }) => { await fetch(`${api}/admin/opportunities/${id}`, { method: 'DELETE', credentials: 'include' }); }, { api: API_URL, id });
+    }
   });
 });
 
@@ -9951,6 +9977,10 @@ test.describe('DateTimeField: in the Listing form', () => {
 
   test('the event date and time is an optional group with a Date and a Time part, and no native date-time input is on the page', async ({ page }) => {
     await page.goto(`${BASE_URL}/opportunities/new`, { timeout: 30_000 });
+    // GOD-T31: the field is for events only, so it shows once the type is Event
+    await expect(page.getByRole('group', { name: 'Event date and time' })).toHaveCount(0);
+    await page.getByRole('combobox', { name: 'Opportunity type' }).click();
+    await page.getByRole('option', { name: 'Event' }).click();
     const group = page.getByRole('group', { name: 'Event date and time' });
     await expect(group).toBeVisible();
     await expect(group.getByText('Optional')).toBeVisible();
@@ -10078,7 +10108,7 @@ test.describe('Settings: the rules (no browser)', () => {
     expect(thresholdExample(95, 70, 20000, 4000, 15, 30)).toBe('With a target of 20,000, an output of 4,000 is Off track on the 15th of a 30-day month');
   });
 
-  test('saving a target adds history and never rewrites the past: last month keeps its target and its status, this month changes', () => {
+  test('saving a target adds history and never rewrites the past: last month keeps its target and its status, this month changes', async () => {
     const snapshot = getMockCollection('targetHistory');
     try {
       const now = currentMonth();
@@ -10088,7 +10118,7 @@ test.describe('Settings: the rules (no browser)', () => {
       const before = { last: kpiTarget(key, undefined, last), now: kpiTarget(key, undefined, now), lastStatus: kpiMonthStatus(key, last, today), nowStatus: kpiMonthStatus(key, now, today) };
       expect(before.last).toBe(15);
       expect(before.now).toBe(15);
-      expect(saveTargets([{ kpi: key, value: 5000 }], now)).toBe(1);
+      expect(await saveTargets([{ kpi: key, value: 5000 }], now)).toBe(1); // (async since GOD-T47; local-only outside a browser)
       expect(kpiTarget(key, undefined, last)).toBe(15); // the past keeps the target that applied then
       expect(kpiTarget(key, undefined, now)).toBe(5000);
       expect(kpiTarget(key)).toBe(5000); // (this month is the default)
@@ -10107,7 +10137,7 @@ test.describe('Settings: the rules (no browser)', () => {
       expect(kpiTarget(key, undefined, monthsBefore(now, -1))).toBe(9000);
       expect(kpiTarget(key, undefined, monthsBefore(now, -2))).toBe(9000);
       expect(getMockCollection('targets').find((t) => t.kpi === key)?.target).toBe(15); // the first target is never edited
-      expect(saveTargets([], now)).toBe(0);
+      expect(await saveTargets([], now)).toBe(0);
     } finally {
       setMockCollection('targetHistory', snapshot, { always: true });
     }
@@ -10775,6 +10805,58 @@ test.describe('Settings: Integrations', () => {
     await wordpress(page).getByRole('textbox', { name: 'Site address' }).fill('https://www.example.org');
     await wordpress(page).getByRole('button', { name: 'Save', exact: true }).click();
     await expect(page.getByTestId('toast').filter({ hasText: 'site address was saved' })).toBeVisible();
+  });
+});
+
+test.describe('Settings against the real API (GOD-T47)', () => {
+  test.skip(MOCK_RUN, 'real API only');
+  test.use({ viewport: { width: 1440, height: 900 } });
+  type P = import('@playwright/test').Page;
+  const fail = (page: P, pattern: string, method: string, message: string, status = 500) =>
+    page.route(pattern, (route) => (route.request().method() === method ? route.fulfill({ status, contentType: 'application/json', body: JSON.stringify({ success: false, message }) }) : route.continue()));
+
+  test('My account is the signed-in account (not the sample Super Admin), with no sample-data notice; a refused save and a wrong current password are said in words', async ({ page }) => {
+    await page.goto(`${BASE_URL}/settings`, { timeout: 30_000 });
+    await expect(page.getByTestId('account-email')).toHaveValue(getAdminCredentials().email);
+    await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
+    // a refused name change: an error, and the saved name stays
+    await fail(page, '**/admin/settings/account', 'PUT', 'E2E profile failure');
+    const name = page.getByRole('textbox', { name: 'Name' });
+    const before = await name.inputValue();
+    await name.fill(`${before} Changed`);
+    await page.getByRole('button', { name: 'Save profile' }).click();
+    await expect(page.getByTestId('toast').filter({ hasText: 'Your profile was not saved' })).toBeVisible();
+    await name.fill(before);
+    // a wrong current password (the server answers 400): no "changed" message, still signed in
+    await fail(page, '**/admin/settings/password', 'POST', 'Current password is incorrect', 400);
+    await page.getByLabel('Current password', { exact: true }).fill('not-the-password');
+    await page.getByLabel('New password', { exact: true }).fill('An0ther-good-one!');
+    await page.getByLabel('Confirm new password', { exact: true }).fill('An0ther-good-one!');
+    await page.getByRole('button', { name: 'Change password' }).click();
+    await expect(page.getByTestId('toast').filter({ hasText: 'Your password was not changed: Current password is incorrect' })).toBeVisible();
+    await expect(page).toHaveURL(`${BASE_URL}/settings`);
+  });
+
+  test('Targets show the server\'s targets, under named columns; a refused save keeps the fields and says so', async ({ page }) => {
+    await page.goto(`${BASE_URL}/settings/targets`, { timeout: 30_000 });
+    await expect(page.getByTestId('targets-columns')).toHaveText('MetricOwnersMonthly target');
+    const server = await page.evaluate(async (api) => {
+      const response = await fetch(`${api}/admin/targets`, { credentials: 'include' });
+      return ((await response.json()) as { data: { kpi: string; target?: number; value?: number }[] }).data;
+    }, API_URL);
+    const reach = server.find((row) => row.kpi === 'social_reach')!;
+    await expect(page.getByTestId('target-input-social_reach')).toHaveValue(String(reach.target ?? reach.value));
+    await fail(page, '**/admin/targets', 'POST', 'E2E targets failure');
+    await page.getByTestId('target-input-social_reach').fill('123456');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByTestId('toast').filter({ hasText: 'The changes were not saved' })).toBeVisible();
+    await expect(page.getByTestId('target-input-social_reach')).toHaveValue('123456'); // kept as typed
+  });
+
+  test('Integrations say what is true with Mock data off, and that the app has no analytics integration yet', async ({ page }) => {
+    await page.goto(`${BASE_URL}/settings/integrations`, { timeout: 30_000 });
+    await expect(page.getByTestId('credentials-note')).toHaveText('Credentials are stored on the server, encrypted, and never shown again: only their last four characters appear here.');
+    await expect(page.getByTestId('app-analytics-note')).toContainText('no integration is set up for the mobile app yet');
   });
 });
 

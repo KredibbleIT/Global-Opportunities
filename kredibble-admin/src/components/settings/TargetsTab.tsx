@@ -111,15 +111,18 @@ export function TargetsTab() {
       return;
     }
     setSaving(true);
-    // TODO(backend): persist this change (the new targets with their effective-from month, and the thresholds)
-    await new Promise((resolve) => setTimeout(resolve, 400));
     const changes = changedKeys.map((key) => ({ kpi: key, value: parseTarget(values[key]) }));
-    saveTargets(changes, effectiveFrom);
-    setBaseline((current) => ({ ...current, ...Object.fromEntries(changes.map((change) => [change.kpi, change.value])) }));
-    if (thresholdsChanged) {
-      saveThresholds(Number(green), Number(amber), effectiveFrom);
-      setSavedThresholds({ green: Number(green), amber: Number(amber) });
+    // GOD-T47: real mode waits for the server; a refusal keeps the fields as typed and says so (nothing is half-saved here).
+    try {
+      await saveTargets(changes, effectiveFrom);
+      if (thresholdsChanged) await saveThresholds(Number(green), Number(amber), effectiveFrom);
+    } catch (error) {
+      setSaving(false);
+      toast.error(`The changes were not saved: ${error instanceof Error ? error.message : "Please try again."}`);
+      return;
     }
+    setBaseline((current) => ({ ...current, ...Object.fromEntries(changes.map((change) => [change.kpi, change.value])) }));
+    if (thresholdsChanged) setSavedThresholds({ green: Number(green), amber: Number(amber) });
     // the fields show what was saved (numbers without stray spaces or commas)
     setValues((current) => Object.fromEntries(saved.map((row) => [row.key, changes.some((c) => c.kpi === row.key) ? String(parseTarget(current[row.key])) : current[row.key]])));
     resetTouched();
@@ -141,6 +144,12 @@ export function TargetsTab() {
               New targets apply from
             </span>
             <Select options={options} value={effectiveFrom} onChange={setEffectiveFrom} ariaLabel="New targets apply from" sheetTitle="New targets apply from" className="w-fit" />
+          </div>
+          {/* GOD-T47: the three columns are named once, so each row reads Metric / Owners / Monthly target (from 640px; a phone stacks them) */}
+          <div aria-hidden="true" data-testid="targets-columns" className="table-head mb-2 hidden gap-x-4 border-b border-line pb-2 sm:grid sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1.2fr)_minmax(0,1fr)]">
+            <span>Metric</span>
+            <span>Owners</span>
+            <span>Monthly target</span>
           </div>
           <ul data-testid="targets-list" className="divide-y divide-line">
             {saved.map((row) => {

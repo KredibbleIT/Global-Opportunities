@@ -86,10 +86,13 @@ export function CuratedListingDetail({ id }: { id: string }) {
         </>
       ),
       confirmLabel: "Unpublish listing",
-      onConfirm: () => {
-        // TODO(backend): persist this change
-        unpublishListing(listing.id);
-        toast.success(`${listing.title} was unpublished.`);
+      onConfirm: async () => {
+        try {
+          await unpublishListing(listing.id);
+          toast.success(`${listing.title} was unpublished.`);
+        } catch (error) {
+          toast.error(error instanceof Error ? `${listing.title} was not unpublished: ${error.message}` : `${listing.title} was not unpublished.`);
+        }
       },
     });
 

@@ -5,8 +5,9 @@
  * in-memory mock store (mock-store.ts), so the list, the detail page, the form, the KPIs and the Overview see the
  * same listings.
  *
- * In real mode, reads and writes are connected to the live backend API (/admin/opportunities).
- * Local store updates are kept for optimistic feedback and backward-compatible synchronous returns.
+ * In real mode (GOD-T31) the listings are the API's: a curated listing is an Opportunity a staff member created and no hirer owns
+ * (isCuratedRecord). Writes wait for /admin/opportunities and resolve with what the server saved (a failure rejects; nothing changes);
+ * the shared store only caches what the API returned, for the pages that read it. Mock mode: the shared store only.
  *
  * Rules kept here, not in the pages:
  * - Publishing needs a vetted listing; it sets status "published" and the published date.
@@ -75,10 +76,10 @@ export async function loadListing(id: string): Promise<Listing | undefined> {
   if (!isMockMode()) {
     try {
       const res = await getOpportunityById(id);
-      if (res?.id) {
+      // only a curated listing (a hirer's posting has its own review page)
+      if (res?.id && isCuratedRecord(res)) {
         const item = toListing(res);
-        const existing = getMockCollection("listings");
-        setMockCollection("listings", [item, ...existing.filter((l) => l.id !== item.id)], { always: true });
+        cacheListing(item);
         return item;
       }
     } catch {
@@ -125,70 +126,82 @@ export const staffName = (id: string | undefined): string | undefined =>
 
 const write = (listings: Listing[]) => setMockCollection("listings", listings, { always: true });
 
-/** Creates a listing as a draft, or published when `publish` is true (the form only allows that when vetted). */
-export function createListing(fields: ListingFields, publish: boolean): Listing {
+/** GOD-T31: a staff-curated listing on the API is one a staff member created that no hirer owns (hirer postings set hirerId). */
+export const isCuratedRecord = (record: Pick<OpportunityRecord, "createdBy" | "hirerId">): boolean => Boolean(record.createdBy) && !record.hirerId;
+
+/** Keeps a listing the API returned in this browser's store, so the detail page, the form and the queue show it at once. */
+export function cacheListing(listing: Listing): void {
+  write([listing, ...getMockCollection("listings").filter((existing) => existing.id !== listing.id)]);
+}
+
+/** A database id. The form's vetter and writer come from the staff list, which can still be sample people (ids like "staff-1"). */
+const isObjectId = (value: string | undefined): value is string => !!value && /^[0-9a-f]{24}$/i.test(value);
+
+/** The body the API takes for a listing's fields. A vetter or writer that is not a real account is left out (the API refuses it). */
+const apiBody = (fields: ListingFields, status: Listing["status"], publish: boolean) => ({
+  title: fields.title,
+  type: fields.type,
+  company: fields.organisation,
+  organisation: fields.organisation,
+  location: fields.location || "Online",
+  country: fields.country,
+  description: fields.description,
+  status,
+  publish,
+  vetted: fields.vetted,
+  vettedById: isObjectId(fields.vettedById) ? fields.vettedById : undefined,
+  vettedOn: fields.vettedOn,
+  closesAt: fields.closesAt,
+  applyUrl: fields.applyUrl,
+  costLabel: fields.costLabel,
+  durationLabel: fields.durationLabel,
+  format: fields.format,
+  eventAt: fields.eventAt,
+  logoUrl: fields.logoUrl,
+  imageUrl: fields.imageUrl,
+  writerId: isObjectId(fields.writerId) ? fields.writerId : undefined,
+  referralOnApply: fields.referralOnApply,
+});
+
+/**
+ * Creates a listing as a draft, or published when `publish` is true (the form only allows that when vetted).
+ * Real mode (GOD-T31): waits for POST /admin/opportunities and resolves with the listing as the server saved it (its real id), so it
+ * survives a reload; a failure rejects and nothing is added. Mock mode: the shared store only.
+ */
+export async function createListing(fields: ListingFields, publish: boolean): Promise<Listing> {
+  if (!isMockMode()) {
+    const saved = toListing(await createOpportunityApi(apiBody(fields, publish ? "published" : "draft", publish)));
+    cacheListing(saved);
+    if (saved.status === "published") startMetrics(saved.id);
+    return saved;
+  }
   const today = todayIsoDate();
-  const tempId = `lst-new-${Date.now()}`;
   const listing: Listing = {
     ...fields,
-    id: tempId,
+    id: `lst-new-${Date.now()}`,
     status: publish ? "published" : "draft",
     createdAt: today,
     publishedAt: publish ? today : undefined,
   };
   write([listing, ...getMockCollection("listings")]);
   if (publish) startMetrics(listing.id);
-
-  if (!isMockMode()) {
-    createOpportunityApi({
-      title: fields.title,
-      type: fields.type,
-      company: fields.organisation,
-      organisation: fields.organisation,
-      location: fields.location || "Online",
-      country: fields.country,
-      description: fields.description,
-      status: publish ? "published" : "draft",
-      publish,
-      vetted: fields.vetted,
-      vettedById: fields.vettedById,
-      vettedOn: fields.vettedOn,
-      closesAt: fields.closesAt,
-      applyUrl: fields.applyUrl,
-      costLabel: fields.costLabel,
-      durationLabel: fields.durationLabel,
-      format: fields.format,
-      eventAt: fields.eventAt,
-      logoUrl: fields.logoUrl,
-      imageUrl: fields.imageUrl,
-      writerId: fields.writerId,
-      referralOnApply: fields.referralOnApply,
-    }).then((res) => {
-      if (res?.id) {
-        const realId = res.id;
-        const mapped = toListing(res);
-        const currentList = getMockCollection("listings");
-        write(currentList.map((l) => (l.id === tempId ? mapped : l)));
-        const metrics = getMockCollection("listingMetrics");
-        setMockCollection(
-          "listingMetrics",
-          metrics.map((m) => (m.listingId === tempId ? { ...m, listingId: realId } : m)),
-          { always: true },
-        );
-      }
-    }).catch(() => {
-      // Background persistence catch
-    });
-  }
-
   return listing;
 }
 
-/** Saves the form over an existing listing. `publish` moves a draft to published (and sets the published date). */
-export function updateListing(id: string, fields: ListingFields, publish = false): Listing | undefined {
+/**
+ * Saves the form over an existing listing. `publish` moves a draft to published (and sets the published date).
+ * Real mode: waits for PATCH /admin/opportunities/:id and resolves with what the server saved; a failure rejects and the listing is unchanged.
+ */
+export async function updateListing(id: string, fields: ListingFields, publish = false): Promise<Listing | undefined> {
   const current = getMockCollection("listings").find((listing) => listing.id === id);
   if (!current) return undefined;
   const publishing = publish && current.status !== "published";
+  if (!isMockMode()) {
+    const saved = toListing(await updateOpportunityApi(id, apiBody(fields, publish ? "published" : current.status, publish)));
+    cacheListing(saved);
+    if (publishing) startMetrics(id);
+    return saved;
+  }
   const next: Listing = {
     ...current,
     ...fields,
@@ -197,52 +210,21 @@ export function updateListing(id: string, fields: ListingFields, publish = false
   };
   write(getMockCollection("listings").map((listing) => (listing.id === id ? next : listing)));
   if (publishing) startMetrics(id);
-
-  if (!isMockMode()) {
-    updateOpportunityApi(id, {
-      title: fields.title,
-      type: fields.type,
-      company: fields.organisation,
-      organisation: fields.organisation,
-      location: fields.location,
-      country: fields.country,
-      description: fields.description,
-      status: publish ? "published" : current.status,
-      publish,
-      vetted: fields.vetted,
-      vettedById: fields.vettedById,
-      vettedOn: fields.vettedOn,
-      closesAt: fields.closesAt,
-      applyUrl: fields.applyUrl,
-      costLabel: fields.costLabel,
-      durationLabel: fields.durationLabel,
-      format: fields.format,
-      eventAt: fields.eventAt,
-      logoUrl: fields.logoUrl,
-      imageUrl: fields.imageUrl,
-      writerId: fields.writerId,
-      referralOnApply: fields.referralOnApply,
-    }).catch(() => {
-      // Background persistence catch
-    });
-  }
-
   return next;
 }
 
-/** Takes a published listing back to a draft (it stays vetted). */
-export function unpublishListing(id: string) {
+/** Takes a published listing back to a draft (it stays vetted). Real mode: waits for the API; a failure rejects and nothing changes. */
+export async function unpublishListing(id: string): Promise<void> {
+  if (!isMockMode()) {
+    const saved = await unpublishOpportunityApi(id);
+    cacheListing(saved?.id ? toListing(saved) : { ...getMockCollection("listings").find((listing) => listing.id === id)!, status: "draft", publishedAt: undefined });
+    return;
+  }
   write(
     getMockCollection("listings").map((listing) =>
       listing.id === id ? { ...listing, status: "draft" as const, publishedAt: undefined } : listing,
     ),
   );
-
-  if (!isMockMode()) {
-    unpublishOpportunityApi(id).catch(() => {
-      // Background persistence catch
-    });
-  }
 }
 
 /** A newly published listing starts with no views and no applications (a known zero, not an unknown). */
