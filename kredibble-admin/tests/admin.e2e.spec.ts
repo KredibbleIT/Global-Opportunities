@@ -2017,6 +2017,28 @@ const trackProblems = (page: import('@playwright/test').Page) => {
   return problems;
 };
 
+// GOD-T49: the review's coverage gaps included tablet widths (the phone passes run at 434, 390 and 360px). The main screens at 768px
+// (portrait tablet) and 1024px (landscape): a title, and nothing wider than the screen.
+const TABLET_ROUTES = ['/', '/analytics', '/monthly-report/partner', '/scorecard', '/opportunities', '/events', '/grants', '/programs', '/partners', '/network',
+  '/ambassador-applications', '/leaderboard', '/seekers', '/hirers', '/community', '/database', '/verification', '/reports', '/content/articles',
+  '/reference-data', '/social', '/testimonials', '/showcase', '/notifications', '/team', '/settings'];
+test.describe('Tablet widths (768 and 1024px): every main screen fits (GOD-T49)', () => {
+  for (const width of [768, 1024]) {
+    test(`${width}px: a title and no sideways scroll on the ${TABLET_ROUTES.length} main screens`, async ({ page }) => {
+      test.setTimeout(240_000);
+      await page.setViewportSize({ width, height: 1024 });
+      const problems: string[] = [];
+      for (const path of TABLET_ROUTES) {
+        await page.goto(`${BASE_URL}${path}`, { timeout: 30_000 });
+        await expect(page.getByTestId('page-title').first(), path).toBeVisible();
+        const wide = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+        if (wide > 0) problems.push(`${path}: ${wide}px wider than the screen`);
+      }
+      expect(problems).toEqual([]);
+    });
+  }
+});
+
 test.describe('Smoke: every audited route renders its title with no console errors', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
   for (const { path, mockOnly } of AUDIT_ROUTES) {
@@ -4310,7 +4332,7 @@ test.describe('Opportunities: the listing form', () => {
     await expect(publishButton(page)).toBeDisabled();
     await expect(page.getByRole('switch', { name: 'Referral code on apply' })).toBeVisible();
     // required fields carry no "Optional" tag; the optional ones do
-    await expect(page.getByText('Optional', { exact: true })).toHaveCount(7); // logo, cost, location, event date, duration, image, writer
+    await expect(page.getByText('Optional', { exact: true })).toHaveCount(6); // logo, cost, location, duration, image, writer (the event date shows for events only: GOD-T31)
     // the vetting card is visually distinct: a 2px warning-tinted border
     expect(await vetting.evaluate((el) => getComputedStyle(el).borderTopWidth)).toBe('2px');
   });
@@ -10813,7 +10835,8 @@ test.describe('Settings against the real API (GOD-T47)', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
   type P = import('@playwright/test').Page;
   const fail = (page: P, pattern: string, method: string, message: string, status = 500) =>
-    page.route(pattern, (route) => (route.request().method() === method ? route.fulfill({ status, contentType: 'application/json', body: JSON.stringify({ success: false, message }) }) : route.continue()));
+    // the server's error shape: { error: { message } } (lib/api.ts apiErrorFrom reads error.message)
+    page.route(pattern, (route) => (route.request().method() === method ? route.fulfill({ status, contentType: 'application/json', body: JSON.stringify({ error: { message } }) }) : route.continue()));
 
   test('My account is the signed-in account (not the sample Super Admin), with no sample-data notice; a refused save and a wrong current password are said in words', async ({ page }) => {
     await page.goto(`${BASE_URL}/settings`, { timeout: 30_000 });
@@ -12908,6 +12931,26 @@ test.describe('Monthly report: Download PDF and printing (mock mode)', () => {
       expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.innerWidth);
       expect(geometry.shadow).toBe('none');
       expect(geometry.radius).toBe('0px');
+      await page.emulateMedia({ media: 'screen' });
+    }
+  });
+
+  test('GOD-T22: what a partner reads in the PDF: the source label, the comparison period, the chart with its legend and the daily-figures note, for a complete month and for the month to date', async ({ page, context }) => {
+    for (const month of [defaultMonth(), currentMonth()]) {
+      await open(page, context, 'desk_lead', `/monthly-report/partner?month=${month}`);
+      await page.emulateMedia({ media: 'print' });
+      const paper = page.getByTestId('partner-report');
+      await expect(paper.getByTestId('sample-report-badge'), month).toBeVisible(); // sample figures say so in the PDF
+      await expect(paper.getByTestId('report-source'), month).toBeVisible();
+      await expect(paper.getByTestId('report-metrics').getByText(comparisonLine(month), { exact: true }), month).toBeVisible(); // the period, once
+      const legend = paper.getByTestId('platform-legend');
+      if (await paper.getByTestId('audience-none').count() === 0) {
+        await expect(legend, month).toBeVisible();
+        await expect(legend, month).toContainText('Website');
+        await expect(legend, month).toContainText('App');
+      }
+      await expect(paper.getByTestId('daily-definition'), month).toBeVisible();
+      await expect(page.getByTestId('download-pdf'), month).toBeHidden(); // controls never print
       await page.emulateMedia({ media: 'screen' });
     }
   });
