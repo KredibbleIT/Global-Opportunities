@@ -158,5 +158,3 @@ export const REFERENCE_GROUPS: ReferenceGroup[] = [
   },
 ];
 
-/** A list with more than this many items gets a search box. */
-export const SEARCH_THRESHOLD = 12;

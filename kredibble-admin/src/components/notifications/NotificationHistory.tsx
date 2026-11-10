@@ -2,12 +2,14 @@
 
 /**
  * Notification history: every broadcast sent, newest first, with its audience and time.
- * Data: the in-memory notification store (src/lib/notification-store.ts). It is live: a notification
- * sent from the composer appears at the top straight away (the store's subscription).
- * States: an empty list shows an empty state (there is no loading or error: the data is in memory).
+ * Data: the notification store (src/lib/notification-store.ts): the server's broadcasts in live mode, the sample ones in mock
+ * mode. A notification sent from the composer appears at the top straight away (the store's subscription).
+ * States: a skeleton while the live history loads, an error with Try again, an empty state for no broadcasts.
  */
 import { useSyncExternalStore } from "react";
 import { BellOff } from "lucide-react";
+import { Button } from "@/components/ui/Button";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { AUDIENCE_ICON, AUDIENCE_LABEL } from "@/components/notifications/audience";
 import { formatDateTime } from "@/lib/format";
 import { notificationBroadcastStore } from "@/lib/notification-store";
@@ -15,12 +17,38 @@ import { Card, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { TagPill } from "@/components/ui/TagPill";
 
-// The store replaces its `history` array on every change, so the array itself is a valid snapshot.
+// The store replaces its snapshot object on every change, so the object itself is a valid snapshot.
 const subscribe = (notify: () => void) => notificationBroadcastStore.subscribe(notify);
-const getSnapshot = () => notificationBroadcastStore.history;
+const getSnapshot = () => notificationBroadcastStore.snapshot;
 
 export function NotificationHistory() {
-  const history = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const { history, status } = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+
+  if (status === "loading") {
+    return (
+      <Card as="section" ariaLabel="History">
+        <CardHeader title="History" />
+        <div data-testid="history-loading" aria-busy="true" className="space-y-3">
+          <Skeleton className="h-20 w-full rounded-control" />
+          <Skeleton className="h-20 w-full rounded-control" />
+        </div>
+      </Card>
+    );
+  }
+  if (status === "error") {
+    return (
+      <Card as="section" ariaLabel="History">
+        <CardHeader title="History" />
+        <EmptyState
+          icon={BellOff}
+          tone="danger"
+          title="Could not load the history"
+          description="Please try again."
+          action={<Button variant="secondary" onClick={() => void notificationBroadcastStore.load()}>Try again</Button>}
+        />
+      </Card>
+    );
+  }
 
   return (
     <Card as="section" ariaLabel="History">

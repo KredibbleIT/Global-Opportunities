@@ -1163,6 +1163,18 @@ test.describe('Progress cells never truncate', () => {
 test.describe('Forms: article editor', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
+  test('GOD-T41: the body says it is plain text, and the preview shows it as seekers will (line breaks kept)', async ({ page }) => {
+    await page.goto(`${BASE_URL}/content/articles/new`, { timeout: 30_000 });
+    await expect(page.getByText('Plain text, shown as typed', { exact: false })).toBeVisible();
+    await expect(page.getByTestId('body-preview')).toHaveCount(0); // nothing to preview yet
+    await page.getByLabel('Body').fill('First paragraph.\n\n1. A point\n2. Another');
+    const preview = page.getByTestId('body-preview');
+    await preview.locator('summary').click();
+    const text = preview.locator('p');
+    await expect(text).toHaveText('First paragraph.\n\n1. A point\n2. Another', { useInnerText: true });
+    expect(await text.evaluate((el) => getComputedStyle(el).whiteSpace)).toBe('pre-line');
+  });
+
   test('errors show after blur and on submit, then a valid save shows a toast and returns to the list', async ({ page }) => {
     await page.goto(`${BASE_URL}/content/articles/new`, { timeout: 30_000 });
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('New article');
@@ -1199,7 +1211,7 @@ test.describe('Forms: article editor', () => {
   test('Read time is optional; the Publishing switch changes the save label', async ({ page }) => {
     await page.goto(`${BASE_URL}/content/articles/new`, { timeout: 30_000 });
     await expect(page.getByText('Optional').first()).toBeVisible();
-    const published = page.getByRole('switch', { name: 'Published' });
+    const published = page.getByRole('switch', { name: 'Visible to seekers' }); // GOD-T41: one status word, beside the switch
     await published.click();
     await expect(published).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByRole('button', { name: 'Publish article' })).toBeVisible();
@@ -1351,7 +1363,7 @@ test.describe('Reference data', () => {
     await expect(page.getByText('"test university" is already in this list.')).toBeVisible();
     await expect(page.getByText('22 items')).toBeVisible();
 
-    // Search appears for lists over 12 items and filters the chips.
+    // The search filters the chips.
     const search = page.getByRole('searchbox', { name: 'Search universities' });
     await search.fill('Ghana');
     await expect(page.getByRole('list', { name: 'Universities' }).getByRole('listitem')).toHaveCount(1);
@@ -1363,7 +1375,27 @@ test.describe('Reference data', () => {
     await expect(tabs.getByRole('tab', { name: /^Universities/ })).toContainText('21');
   });
 
-  test('every list uses its own singular in the placeholder; short lists have no search', async ({ page }) => {
+  test('GOD-T42: with Mock data off the lists come from the server (no sample-data notice); a failed load says so with Try again, and a failed save puts the list back', async ({ page }) => {
+    test.skip(MOCK_RUN, 'real API only');
+    await page.goto(`${BASE_URL}/reference-data`, { timeout: 30_000 });
+    await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
+    await expect(page.getByRole('tab', { name: /^Universities/ })).toContainText(/\d/);
+    // a failed save: the chip goes away again and an error toast explains
+    await page.route('**/admin/reference-data/seeker/**', (route) => (route.request().method() === 'PUT' ? route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ success: false, message: 'E2E save failure' }) }) : route.continue()));
+    const add = page.getByRole('textbox', { name: 'Add a new university' });
+    await add.fill('E2E Never Saved University');
+    await add.press('Enter');
+    await expect(page.getByTestId('toast').filter({ hasText: 'The list could not be saved' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Remove E2E Never Saved University' })).toHaveCount(0);
+    // a failed load
+    await page.route('**/admin/reference-data', (route) => route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ success: false, message: 'E2E load failure' }) }));
+    await page.reload();
+    await expect(page.getByText('Could not load the reference lists')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
+    await expect(page.getByText('Ashesi University')).toHaveCount(0); // never the sample lists
+  });
+
+  test('every list uses its own singular in the placeholder; every list has a search (GOD-T42)', async ({ page }) => {
     await page.goto(`${BASE_URL}/reference-data?tab=hirer`, { timeout: 30_000 });
     await expect(page.getByRole('radio', { name: 'Hirers' })).toBeChecked();
     const expected: [RegExp, string][] = [
@@ -1374,7 +1406,7 @@ test.describe('Reference data', () => {
     for (const [tab, placeholder] of expected) {
       await page.getByRole('tab', { name: tab }).click();
       await expect(page.getByPlaceholder(placeholder)).toBeVisible();
-      await expect(page.getByRole('searchbox')).toHaveCount(0); // 10 items or fewer
+      await expect(page.getByRole('searchbox')).toHaveCount(1); // GOD-T42: short lists too, so the page works the same everywhere
     }
     await page.getByRole('radio', { name: 'Grants' }).click();
     await expect(page).toHaveURL(`${BASE_URL}/reference-data?tab=grants`);
@@ -1385,14 +1417,19 @@ test.describe('Reference data', () => {
 });
 
 test.describe('Notifications', () => {
-  test('1024px and up: composer and history side by side; below: Compose and History tabs', async ({ page }) => {
+  test('1024px and up: Compose and Preview side by side, History in its own section below; below 1024px: Compose and History tabs (GOD-T45)', async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.goto(`${BASE_URL}/notifications`, { timeout: 30_000 });
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Notifications');
-    const compose = await page.getByRole('heading', { name: 'Compose' }).boundingBox();
-    const history = await page.getByRole('heading', { name: 'History' }).boundingBox();
-    expect(history!.x).toBeGreaterThan(compose!.x + 300); // second column
-    expect(Math.abs(history!.y - compose!.y)).toBeLessThan(40); // same row
+    await expect(page.getByTestId('not-connected-notice')).toHaveCount(0); // connected in the real run; sample on purpose in mock mode
+    const compose = (await page.getByRole('heading', { name: 'Compose' }).boundingBox())!;
+    const preview = (await page.getByRole('heading', { name: 'Preview' }).boundingBox())!;
+    const history = (await page.getByRole('heading', { name: 'History' }).boundingBox())!;
+    expect(preview.x).toBeGreaterThan(compose.x + 300); // the preview is beside what it previews
+    expect(Math.abs(preview.y - compose.y)).toBeLessThan(4);
+    const composeCard = (await page.getByRole('heading', { name: 'Compose' }).locator('xpath=ancestor::div[contains(@class,"card-surface")][1]').boundingBox())!;
+    expect(history.y).toBeGreaterThan(composeCard.y + composeCard.height); // below, in its own section
+    expect(Math.abs(history.x - compose.x)).toBeLessThan(4);
     await expect(page.getByRole('tablist', { name: 'Notifications sections' })).toBeHidden();
 
     await page.setViewportSize({ width: 900, height: 900 });
@@ -1403,6 +1440,32 @@ test.describe('Notifications', () => {
     await expect(page).toHaveURL(`${BASE_URL}/notifications?tab=history`);
     await expect(page.getByRole('heading', { name: 'History' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Compose' })).toBeHidden();
+  });
+
+  test('GOD-T45 (real API): a broadcast is saved on the server (it is in the history after a reload), and a failed send says so and keeps the text', async ({ page }) => {
+    test.skip(MOCK_RUN, 'real API only');
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const title = `E2E broadcast ${Date.now()}`;
+    await page.goto(`${BASE_URL}/notifications`, { timeout: 30_000 });
+    await expect(page.getByText(`Welcome to ${BRAND.name}`)).toHaveCount(0); // never the sample history
+    await page.getByLabel('Title').fill(title);
+    await page.getByRole('textbox', { name: 'Message' }).fill('Saved on the server.');
+    const saved = page.waitForResponse((response) => response.url().endsWith('/admin/notifications') && response.request().method() === 'POST');
+    await page.getByRole('button', { name: 'Send notification' }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Send notification' }).click();
+    expect((await saved).status()).toBe(201);
+    await expect(page.getByText('The notification was sent to Everyone.')).toBeVisible();
+    await page.reload();
+    await expect(page.getByRole('region', { name: 'History' }).getByText(title)).toBeVisible();
+    // a failed send
+    await page.route('**/admin/notifications', (route) => (route.request().method() === 'POST' ? route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ success: false, message: 'E2E send failure' }) }) : route.continue()));
+    await page.getByLabel('Title').fill('Never sent');
+    await page.getByRole('textbox', { name: 'Message' }).fill('This one fails.');
+    await page.getByRole('button', { name: 'Send notification' }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Send notification' }).click();
+    await expect(page.getByTestId('toast').filter({ hasText: 'The notification was not sent' })).toBeVisible();
+    await expect(page.getByLabel('Title')).toHaveValue('Never sent'); // the text is kept
+    await expect(page.getByRole('region', { name: 'History' }).getByText('Never sent')).toHaveCount(0);
   });
 
   test('Send is disabled until filled, confirms the audience, then toasts, clears and adds to the top of history', async ({ page }) => {
@@ -1660,14 +1723,30 @@ test.describe('Mock copy uses the brand', () => {
 test.describe('Forms: wording and layout fixes', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
+  test('GOD-T41: Career Resources has a search and a status filter whose counts follow the search; one draft is singular', async ({ page }) => {
+    await page.goto(`${BASE_URL}/content/articles`, { timeout: 30_000 });
+    await expect(page.getByTestId('table-row').first()).toBeVisible();
+    const radio = (name: string) => page.getByRole('radiogroup', { name: 'Filter by status' }).getByRole('radio', { name: new RegExp(`^${name}`) });
+    await expect(radio('All')).toContainText('4');
+    await expect(radio('Published')).toContainText('3');
+    await expect(radio('Draft')).toContainText('1');
+    await expect(page.getByText('1 draft not yet published.', { exact: false })).toBeVisible();
+    await radio('Draft').click();
+    await expect(page.getByTestId('table-row')).toHaveCount(1);
+    await radio('All').click();
+    await page.getByRole('searchbox', { name: 'Search articles' }).fill('zzz-nothing');
+    await expect(page.getByText('No articles match')).toBeVisible();
+  });
+
   test('article: Published switch label and helper; Summary placeholder differs from its helper', async ({ page }) => {
     await page.goto(`${BASE_URL}/content/articles/new`, { timeout: 30_000 });
-    const published = page.getByRole('switch', { name: 'Published' });
+    const published = page.getByRole('switch', { name: 'Visible to seekers' }); // GOD-T41: one status word, beside the switch
     await expect(published).toHaveAttribute('aria-checked', 'false');
-    await expect(page.getByText('Visible to seekers when on. Saved as a draft when off.')).toBeVisible();
+    await expect(page.getByText('On: published in the app. Off: kept as a draft.')).toBeVisible();
     await published.click();
     await expect(published).toHaveAttribute('aria-checked', 'true');
-    await expect(page.getByRole('switch', { name: 'Published' })).toBeVisible(); // the label never changes to "Draft"
+    await expect(page.getByRole('switch', { name: 'Visible to seekers' })).toBeVisible(); // the label never changes; only the status word does
+    await expect(page.getByTestId('switch-status')).toHaveText('Published');
     await expect(page.getByRole('button', { name: 'Publish article' })).toBeVisible();
     const summary = page.getByRole('textbox', { name: 'Summary' });
     await expect(summary).toHaveAttribute('placeholder', 'e.g. Practical tips for a resume that stands out');
@@ -2367,10 +2446,10 @@ for (const width of [434, 390]) {
 
     test('Article editor: the Publishing switch and its status text share one centred row; the helper uses the full width', async ({ page }) => {
       await page.goto(`${BASE_URL}/content/articles/new`, { timeout: 30_000 });
-      const sw = (await page.getByRole('switch', { name: 'Published' }).boundingBox())!;
+      const sw = (await page.getByRole('switch', { name: 'Visible to seekers' }).boundingBox())!;
       const status = (await page.getByTestId('switch-status').boundingBox())!;
       expect(Math.abs(sw.y + sw.height / 2 - (status.y + status.height / 2))).toBeLessThanOrEqual(2);
-      const helper = page.getByText('Visible to seekers when on. Saved as a draft when off.');
+      const helper = page.getByText('On: published in the app. Off: kept as a draft.');
       const card = page.getByRole('heading', { name: 'Publishing' }).locator('xpath=ancestor::div[contains(@class,"card-surface")][1]');
       const helperBox = (await helper.boundingBox())!;
       const cardBox = (await card.boundingBox())!;
@@ -6570,6 +6649,16 @@ test.describe('Network: the list', () => {
   test('?state=empty and ?state=error show their states; the tiles show "—" while loading', async ({ page }) => {
     await page.goto(`${BASE_URL}/network?state=empty`, { timeout: 30_000 });
     await expect(page.getByText('No ambassadors yet')).toBeVisible();
+    // GOD-T35: an empty network shows its 0 once, and every export option is disabled with the reason
+    await expect(page.getByTestId('network-size')).toContainText('Add or import ambassadors to start');
+    await expect(page.getByTestId('network-active').locator('.ministat-value')).toHaveText('—');
+    await page.getByRole('button', { name: /^Export/ }).click();
+    for (const name of ['Export filtered results', 'Export selected', 'Export all']) {
+      const item = page.getByRole('menuitem', { name: new RegExp(`^${name}`) });
+      await expect(item, name).toBeDisabled();
+      await expect(item, name).toContainText('The network is empty.');
+    }
+    await page.keyboard.press('Escape');
     await page.goto(`${BASE_URL}/network?state=error`);
     await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
     await page.goto(`${BASE_URL}/network?state=loading`);
