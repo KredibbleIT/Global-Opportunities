@@ -106,7 +106,7 @@ function TestimonialsContent() {
   return (
     <ListPage
       title="Testimonials"
-      subtitle="Stories from seekers, hirers and partners, waiting for a decision."
+      subtitle="Review and manage testimonials from seekers, hirers and partners."
       toolbar={
         <div className="space-y-4">
           <Tabs tabs={tabs} value={tab} onChange={setTab} ariaLabel="Testimonial status" idPrefix={ID_PREFIX} />

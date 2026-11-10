@@ -22,7 +22,10 @@
  * - notConnected: real-API mode: a calm "Not available yet" while the figures have no live source (the page shows the sample-data notice above)
  */
 import { useId, useMemo, useState } from "react";
+import Link from "next/link";
 import { ChevronDown, ListChecks, Users } from "lucide-react";
+import { useRoles } from "@/components/access/RoleProvider";
+import { buttonClasses } from "@/components/ui/Button";
 import { NotAvailableYet } from "@/components/overview/NotAvailableYet";
 import { StatusChip } from "@/components/kpi/KpiStatus";
 import { Avatar } from "@/components/ui/Avatar";
@@ -68,13 +71,32 @@ function PastNote({ month }: { month: MonthKey }) {
   );
 }
 
+/**
+ * The next step from an empty scorecard (GOD-T30). Metrics belong to roles (config/kpis.ts), so the way to give someone metrics is
+ * a role on Team: a role that can open Team gets the link, everyone else is told who to ask.
+ */
+function ManageTeamAction() {
+  const { can } = useRoles();
+  if (!can("team", "view")) return null;
+  return (
+    <Link href="/team" data-testid="scorecard-manage-team" className={buttonClasses("secondary")}>
+      Manage team roles
+    </Link>
+  );
+}
+
 // ---- my scorecard -------------------------------------------------------------------------------------------------------
 
 function MyScorecard({ person, series, month, isPast }: { person: ScorecardPerson; series: CompositePoint[] | null; month: MonthKey; isPast: boolean }) {
   if (person.metrics.length === 0) {
     return (
       <Card as="section" ariaLabel="My scorecard" testId="my-scorecard">
-        <EmptyState icon={ListChecks} title="No metrics are assigned to your role" description="A Desk Lead can assign metrics." />
+        <EmptyState
+          icon={ListChecks}
+          title="No metrics are assigned to your role"
+          description="Metrics follow roles: a role that owns a metric gives you its target. A Desk Lead or Super Admin can change your roles on Team."
+          action={<ManageTeamAction />}
+        />
       </Card>
     );
   }
@@ -223,7 +245,7 @@ function TeamScorecard({ people, month, isPast, tooEarly }: { people: ScorecardP
   if (people.length === 0) {
     return (
       <Card as="section" ariaLabel="Team scorecard" testId="team-scorecard">
-        <EmptyState icon={Users} title="No one to score yet" description="People appear here once they are added to the team." />
+        <EmptyState icon={Users} title="No one to score yet" description="People appear here once they are added to the team." action={<ManageTeamAction />} />
       </Card>
     );
   }

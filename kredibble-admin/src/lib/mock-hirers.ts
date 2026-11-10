@@ -6,7 +6,8 @@
  */
 
 export type AccountStatus = 'active' | 'suspended';
-export type VerificationSummary = 'verified' | 'pending' | 'rejected';
+/** 'not_submitted': the company has no verification case yet (no documents to review), so it is not "Pending" (GOD-T39). */
+export type VerificationSummary = 'verified' | 'pending' | 'rejected' | 'not_submitted';
 
 export interface HirerAccount {
   id: string;

@@ -3985,7 +3985,10 @@ test.describe('Roles fix pass: Scorecard copy and the empty state', () => {
       await page.goto(`${BASE_URL}/scorecard`, { timeout: 30_000 });
       const card = page.getByRole('region', { name: 'My scorecard' });
       await expect(card).toContainText('No metrics are assigned to your role');
-      await expect(card).toContainText('A Desk Lead can assign metrics.');
+      await expect(card).toContainText('Metrics follow roles: a role that owns a metric gives you its target. A Desk Lead or Super Admin can change your roles on Team.');
+      // GOD-T30: the next step, for a role that can open Team (Super Admin); the others are told who to ask
+      if (role === 'super_admin') await expect(card.getByTestId('scorecard-manage-team')).toHaveAttribute('href', '/team');
+      if (role === 'moderator' || role === 'support') await expect(card.getByTestId('scorecard-manage-team')).toHaveCount(0);
       await expect(card).not.toContainText(/\b0\b/);
     });
   }
@@ -11662,7 +11665,7 @@ test.describe('Scorecard: My scorecard and Team (mock mode)', () => {
     for (const role of ['moderator', 'support', 'admin_support', 'super_admin']) {
       await asRole(page, context, role);
       await expect(page.getByText('No metrics are assigned to your role'), role).toBeVisible();
-      await expect(page.getByText('A Desk Lead can assign metrics.'), role).toBeVisible();
+      await expect(page.getByText('Metrics follow roles: a role that owns a metric gives you its target. A Desk Lead or Super Admin can change your roles on Team.'), role).toBeVisible();
       await expect(page.getByTestId('score-ring'), role).toHaveCount(0);
       await expect(page.getByTestId('metric-row'), role).toHaveCount(0);
       await expect(page.getByTestId('composite-trend'), role).toHaveCount(0);
@@ -11830,6 +11833,7 @@ test.describe('Scorecard: My scorecard and Team (mock mode)', () => {
     await expect(page.getByTestId('scorecard-skeleton')).toBeVisible();
     await page.goto(`${BASE_URL}/scorecard?tab=team&state=empty`, { timeout: 30_000 });
     await expect(page.getByText('No one to score yet')).toBeVisible();
+    await expect(page.getByTestId('scorecard-manage-team')).toHaveAttribute('href', '/team'); // GOD-T30: a Desk Lead can open Team
     expect(problems).toEqual([]);
   });
 });
@@ -12809,6 +12813,28 @@ test.describe('Footer links (GOD-T20)', () => {
   });
 });
 
+test.describe('Details lists in a narrow card (GOD-T38)', () => {
+  test.skip(!MOCK_RUN, 'uses the mock record seeker-1');
+  test('in the side card a label sits above its value, so a long email keeps to one or two lines; a wide card keeps two columns', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${BASE_URL}/seekers/seeker-1`, { timeout: 30_000 });
+    const list = page.getByTestId('key-value-list').first();
+    await expect(list).toBeVisible();
+    const email = list.locator('dd').filter({ hasText: '@' }).first();
+    await expect(email).toBeVisible();
+    const label = email.locator('xpath=preceding-sibling::dt[1]');
+    const [dd, dt] = [(await email.boundingBox())!, (await label.boundingBox())!];
+    const width = (await list.boundingBox())!.width;
+    if (width < 384) {
+      expect(dd.y).toBeGreaterThanOrEqual(dt.y + dt.height - 1); // stacked: the value starts under its label
+      expect(Math.abs(dd.x - dt.x)).toBeLessThanOrEqual(1);
+    } else {
+      expect(Math.abs(dd.y - dt.y)).toBeLessThanOrEqual(4); // side by side
+    }
+    expect(dd.height).toBeLessThanOrEqual(44); // at most two lines of 20px
+  });
+});
+
 test.describe('Plural helper (no browser)', () => {
   test('pluralize: 0 and 2 take the plural, exactly 1 the singular; thousands get separators; an irregular plural can be given', () => {
     expect(pluralize(0, 'share')).toBe('0 shares');
@@ -12879,6 +12905,16 @@ test.describe('Real-API mode: the screen never shows the server\'s own words (AP
     await page.goto(`${BASE_URL}/hirers`, { timeout: 30_000 });
     await expect(page.getByText('We could not load this list. Please try again.')).toBeVisible();
     await expect(page.getByText(/MongoServerError|pool destroyed/)).toHaveCount(0);
+  });
+
+  test('GOD-T39: a hirer with no verification case is "Not submitted" (not Pending), "Not specified" reads like other missing values, and one account is singular', async ({ page }) => {
+    await stub(page, '**/admin/hirers**', 200, { success: true, data: [{ id: 'h1', companyName: 'Fresh Co', industry: 'Not specified', location: 'Not specified', recruiterEmail: 'hr@fresh.example', createdAt: '2026-11-01', overallStatus: null, linkedVerificationId: null }], meta: { page: 1, limit: 100, total: 1, pages: 1 } });
+    await page.goto(`${BASE_URL}/hirers`, { timeout: 30_000 });
+    const row = page.getByTestId('table-row').filter({ hasText: 'Fresh Co' });
+    await expect(row).toBeVisible();
+    await expect(row.getByTestId('status-badge')).toHaveText('Not submitted');
+    await expect(page.locator('main')).not.toContainText('Not specified');
+    await expect(page.getByText('1 hirer/company account registered on the platform.')).toBeVisible();
   });
 
   test('a verification request with no submitted date reads "Not recorded", never "undefined"', async ({ page }) => {

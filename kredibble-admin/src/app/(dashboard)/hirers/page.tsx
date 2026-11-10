@@ -6,6 +6,7 @@
  * Data: mock hirer accounts (src/lib/mock-hirers.ts), unchanged.
  */
 import { useState } from "react";
+import { pluralize } from "@/lib/plural";
 import { Building2 } from "lucide-react";
 import type { HirerAccount } from "@/lib/mock-hirers";
 import { subscribeMockStore } from "@/lib/mock-store";
@@ -40,7 +41,7 @@ export default function HirersDirectoryPage() {
   return (
     <ListPage
       title="Hirers Directory"
-      subtitle={rows ? `${rows.length} hirer/company accounts registered on the platform.` : "Hirer/company accounts registered on the platform."}
+      subtitle={rows ? `${pluralize(rows.length, "hirer/company account")} registered on the platform.` : "Hirer/company accounts registered on the platform."}
       toolbar={
         <TableToolbar
           search={{ value: query, onChange: setQuery, placeholder: "Search by company, recruiter, industry...", label: "Search hirers" }}

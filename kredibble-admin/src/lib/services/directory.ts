@@ -33,17 +33,23 @@ function toSeeker(profile: SeekerProfile): SeekerAccount {
   };
 }
 
+/** Sign-up stores "Not specified" for an industry or location left blank: shown like any other missing value (GOD-T39). */
+const orMissingText = (value: string | undefined): string => (!value || value.trim().toLowerCase() === "not specified" ? MISSING : value);
+
 function toHirer(account: ApiHirer): HirerAccount {
   // The review page approves a case as "approved"; on a hirer that reads "verified".
   const caseStatus = account.overallStatus === "approved" ? "verified" : account.overallStatus;
-  const summary = caseStatus === "verified" || caseStatus === "rejected" || caseStatus === "pending" ? caseStatus : account.verified ? "verified" : "pending";
+  // No verification case at all: nothing was submitted, so the company is not waiting for a review ("Not submitted", not "Pending").
+  const noCase = !account.linkedVerificationId && !account.overallStatus;
+  const summary =
+    caseStatus === "verified" || caseStatus === "rejected" || caseStatus === "pending" ? caseStatus : account.verified ? "verified" : noCase ? "not_submitted" : "pending";
   return {
     id: account.id,
     companyName: account.companyName,
     recruiterName: account.recruiterName || account.user?.name || MISSING,
     recruiterEmail: account.recruiterEmail || account.companyEmail,
-    industry: account.industry || MISSING,
-    location: account.location || MISSING,
+    industry: orMissingText(account.industry),
+    location: orMissingText(account.location),
     joinedDate: account.createdAt,
     postingsCount: account.postingsCount ?? 0,
     verification: summary,
