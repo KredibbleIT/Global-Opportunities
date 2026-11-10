@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Colors } from '../../constants/design';
 import {
   View,
@@ -13,14 +13,16 @@ import {
   useWindowDimensions,
   Image,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Eye, EyeOff, ChevronDown, ChevronLeft, Search, Upload, Check } from 'lucide-react-native';
+import { Eye, EyeOff, ChevronDown, ChevronLeft, Search, Upload, Check, Plus } from 'lucide-react-native';
 import { authStore } from '../../constants/authStore';
 import { profileStore } from '../../constants/mockProfile';
-import { signupMobile, uploadFile } from '../../lib/api';
+import { fetchReferenceList, addReferenceListItem, signupMobile, uploadFile } from '../../lib/api';
 import { pickDocument, pickImage, PickedFile } from '../../lib/file-picker';
 import { openPrivacyPolicy, openTermsOfService } from '../../lib/legal';
+
+type AddableListKey = 'universities' | 'programs' | 'skills' | 'career-interests';
 
 type Country = { name: string; code: string; dialCode: string };
 type PickerType =
@@ -404,6 +406,7 @@ const RoleCard = ({ label, active, onSelect }: { label: string; active: boolean;
 export default function SignupScreen() {
   const router = useRouter();
   const { height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const sheetHeight = windowHeight - LOGO_CLEARANCE;
 
   const [step, setStep] = useState(1);
@@ -418,6 +421,18 @@ export default function SignupScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [selectedCountry, setSelectedCountry] = useState<Country | null>(null);
   const [phone, setPhone] = useState('');
+
+  // User-submitted entries for the four seeker lists; the fetched list replaces the compiled snapshot on mount.
+  const [referenceLists, setReferenceLists] = useState<Record<AddableListKey, string[]>>({
+    universities: UNIVERSITIES,
+    programs: PROGRAMS,
+    skills: SKILLS,
+    'career-interests': CAREER_INTERESTS,
+  });
+  const [referenceListErrors, setReferenceListErrors] = useState<Partial<Record<AddableListKey, string>>>({});
+  const [isSavingReference, setIsSavingReference] = useState(false);
+  const [referenceSuggestion, setReferenceSuggestion] = useState<{ key: AddableListKey; label: string; matches: string[] } | null>(null);
+  const [referenceNotice, setReferenceNotice] = useState('');
 
   // Step 2 (seeker)
   const [university, setUniversity] = useState('');
@@ -483,6 +498,157 @@ export default function SignupScreen() {
     }).start(() => setActivePicker(null));
   };
 
+  const addableListForPicker = (picker: PickerType): AddableListKey | null => {
+    if (picker === 'university') return 'universities';
+    if (picker === 'program') return 'programs';
+    if (picker === 'skills') return 'skills';
+    if (picker === 'interest') return 'career-interests';
+    return null;
+  };
+
+  const addableMeta = (key: AddableListKey) => ({
+    universities: { label: 'university', singular: 'university' },
+    programs: { label: 'program', singular: 'program' },
+    skills: { label: 'skill', singular: 'skill' },
+    'career-interests': { label: 'career interest', singular: 'career interest' },
+  }[key]);
+
+  useEffect(() => {
+    if (role !== 'seeker') return;
+
+    let cancelled = false;
+    const keys: AddableListKey[] = ['universities', 'programs', 'skills', 'career-interests'];
+
+    void Promise.allSettled(keys.map(key => fetchReferenceList('seeker', key))).then(results => {
+      if (cancelled) return;
+
+      setReferenceLists(previous => {
+        const next = { ...previous };
+        results.forEach((result, index) => {
+          if (result.status === 'fulfilled' && Array.isArray(result.value.items)) {
+            next[keys[index]] = result.value.items;
+          }
+        });
+        return next;
+      });
+
+      const failures = results
+        .map((result, index) => result.status === 'rejected' ? keys[index] : null)
+        .filter((key): key is AddableListKey => Boolean(key));
+      if (failures.length > 0) {
+        setReferenceListErrors(previous => {
+          const next = { ...previous };
+          for (const key of failures) next[key] = 'Could not refresh this list; showing the saved copy.';
+          return next;
+        });
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, [role]);
+
+  const applyReferenceItem = (key: AddableListKey, item: string) => {
+    if (key === 'universities') {
+      setUniversity(item);
+      closePicker();
+      return;
+    }
+    if (key === 'programs') {
+      setProgram(item);
+      closePicker();
+      return;
+    }
+    if (key === 'skills') {
+      setSelectedSkills(previous => previous.includes(item) ? previous : [...previous, item]);
+      return;
+    }
+    setCareerInterest(item);
+    closePicker();
+  };
+
+  const upsertReferenceListItem = (key: AddableListKey, item: string) => {
+    setReferenceLists(previous => ({
+      ...previous,
+      [key]: previous[key].some(existing => existing.toLowerCase() === item.toLowerCase())
+        ? previous[key]
+        : [...previous[key], item],
+    }));
+  };
+
+  const submitReferenceSuggestion = async () => {
+    if (!activePicker) return;
+    const key = addableListForPicker(activePicker);
+    if (!key) return;
+
+    const value = searchQuery.trim();
+    if (value.length < 2) return;
+    setIsSavingReference(true);
+    setReferenceListErrors(previous => ({ ...previous, [key]: undefined }));
+    setReferenceNotice('');
+
+    try {
+      const result = await addReferenceListItem('seeker', key, value);
+      if (result.action === 'similar') {
+        setReferenceSuggestion({ key, label: value, matches: result.matches });
+        return;
+      }
+
+      // `use_existing` and `aliased` may reference an item not currently visible; appending is idempotent.
+      upsertReferenceListItem(key, result.item);
+      setReferenceSuggestion(null);
+      setReferenceNotice(result.action === 'created' ? `"${result.item}" added to the list.` : `Using "${result.item}".`);
+      applyReferenceItem(key, result.item);
+      setSearchQuery('');
+    } catch (error) {
+      setReferenceListErrors(previous => ({
+        ...previous,
+        [key]: error instanceof Error ? error.message : 'Could not save that entry. Try again.',
+      }));
+    } finally {
+      setIsSavingReference(false);
+    }
+  };
+
+  const saveReferenceAlias = async (item: string) => {
+    if (!referenceSuggestion) return;
+    const { key, label } = referenceSuggestion;
+    if (!label) return;
+
+    setIsSavingReference(true);
+    setReferenceListErrors(previous => ({ ...previous, [key]: undefined }));
+
+    try {
+      const result = await addReferenceListItem('seeker', key, label, item);
+      if (result.action === 'similar') {
+        setReferenceSuggestion({ key, label, matches: result.matches });
+        return;
+      }
+      upsertReferenceListItem(key, result.item);
+      setReferenceSuggestion(null);
+      setReferenceNotice('Alias saved; everyone now sees the canonical entry.');
+      applyReferenceItem(key, result.item);
+      setSearchQuery('');
+    } catch (error) {
+      setReferenceListErrors(previous => ({
+        ...previous,
+        [key]: error instanceof Error ? error.message : 'Could not save that alias. Try again.',
+      }));
+    } finally {
+      setIsSavingReference(false);
+    }
+  };
+
+  const selectExistingReferenceItem = (item: string) => {
+    if (!activePicker) return;
+    const key = addableListForPicker(activePicker);
+    if (!key) return;
+    upsertReferenceListItem(key, item);
+    setReferenceSuggestion(null);
+    setReferenceNotice(`Using "${item}".`);
+    applyReferenceItem(key, item);
+    setSearchQuery('');
+  };
+
   const handlePickerSelect = (item: Country | string) => {
     if (activePicker === 'country') {
       const c = item as Country;
@@ -529,12 +695,12 @@ export default function SignupScreen() {
       case 'country':
       case 'prefCountries':
         return COUNTRIES.filter(c => c.name.toLowerCase().includes(q));
-      case 'university':  return UNIVERSITIES.filter(u => u.toLowerCase().includes(q));
-      case 'program':     return PROGRAMS.filter(p => p.toLowerCase().includes(q));
+      case 'university':  return referenceLists.universities.filter(u => u.toLowerCase().includes(q));
+      case 'program':     return referenceLists.programs.filter(p => p.toLowerCase().includes(q));
       case 'year':        return GRADUATION_YEARS;
       case 'status':      return STATUSES;
-      case 'skills':      return SKILLS.filter(s => s.toLowerCase().includes(q));
-      case 'interest':    return CAREER_INTERESTS.filter(i => i.toLowerCase().includes(q));
+      case 'skills':      return referenceLists.skills.filter(s => s.toLowerCase().includes(q));
+      case 'interest':    return referenceLists['career-interests'].filter(i => i.toLowerCase().includes(q));
       case 'industry':    return INDUSTRIES.filter(i => i.toLowerCase().includes(q));
       case 'companySize': return COMPANY_SIZES;
       case 'positionRole': return POSITION_ROLES.filter(p => p.toLowerCase().includes(q));
@@ -746,7 +912,7 @@ export default function SignupScreen() {
   // ─── Render ───────────────────────────────────────────────────────────────────
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#F7F7F9' }} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F7F7F9' }} edges={['top', 'left', 'right', 'bottom']}>
 
 
       {/* Progress bar */}
@@ -1294,9 +1460,87 @@ export default function SignupScreen() {
               })}
             </ScrollView>
 
+            {/* User-submitted entries: no free-text writes until the duplicate check passes */}
+            {(() => {
+              const addableKey = activePicker ? addableListForPicker(activePicker) : null;
+              if (!addableKey) return null;
+
+              const trimmedQuery = searchQuery.trim();
+              const keyMeta = addableMeta(addableKey);
+              const suggestion = referenceSuggestion?.key === addableKey ? referenceSuggestion : null;
+              const error = referenceListErrors[addableKey];
+
+              if (suggestion) {
+                return (
+                  <View style={{ paddingHorizontal: 24, paddingBottom: 12, borderTopWidth: 1, borderTopColor: '#EBEBEE', paddingTop: 12 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#4A4D5F', marginBottom: 8 }} className="font-sans">
+                      “{suggestion.label}” looks similar to an existing {keyMeta.singular}. Use one of these, or save it as an alias:
+                    </Text>
+                    <View style={{ gap: 8 }}>
+                      {suggestion.matches.map(match => (
+                        <View key={match} style={{ flexDirection: 'row', gap: 8 }}>
+                          <TouchableOpacity
+                            onPress={() => selectExistingReferenceItem(match)}
+                            style={{ flex: 1, minHeight: 44, borderWidth: 1, borderColor: '#D8DAE0', borderRadius: 10, justifyContent: 'center', paddingHorizontal: 12 }}
+                          >
+                            <Text style={{ fontSize: 13, color: '#1A1A1A' }} numberOfLines={2} className="font-sans">{match}</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            disabled={isSavingReference}
+                            onPress={() => saveReferenceAlias(match)}
+                            style={{ width: 76, minHeight: 44, borderRadius: 10, backgroundColor: Colors.primaryTransparent, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 }}
+                          >
+                            {isSavingReference ? (
+                              <ActivityIndicator size="small" color={Colors.primary} />
+                            ) : (
+                              <Text style={{ fontSize: 12, fontWeight: '600', color: Colors.primary }} className="font-sans">Alias</Text>
+                            )}
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                      <TouchableOpacity onPress={() => setReferenceSuggestion(null)} style={{ alignSelf: 'flex-start', paddingVertical: 4 }}>
+                        <Text style={{ fontSize: 13, color: '#8A8D9F' }} className="font-sans">Cancel</Text>
+                      </TouchableOpacity>
+                    </View>
+                    {error && <Text style={{ marginTop: 8, fontSize: 12, color: '#DC2626' }} className="font-sans">{error}</Text>}
+                  </View>
+                );
+              }
+
+              if (trimmedQuery.length < 2) {
+                return referenceNotice || error ? (
+                  <View style={{ paddingHorizontal: 24, paddingBottom: 12 }}>
+                    {referenceNotice ? <Text style={{ fontSize: 12, color: '#16A34A' }} className="font-sans">{referenceNotice}</Text> : null}
+                    {error ? <Text style={{ fontSize: 12, color: '#DC2626' }} className="font-sans">{error}</Text> : null}
+                  </View>
+                ) : null;
+              }
+
+              return (
+                <View style={{ paddingHorizontal: 24, paddingBottom: 12, borderTopWidth: 1, borderTopColor: '#EBEBEE', paddingTop: 12 }}>
+                  <TouchableOpacity
+                    disabled={isSavingReference}
+                    onPress={submitReferenceSuggestion}
+                    style={{ minHeight: 44, borderWidth: 1, borderColor: Colors.primary, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 12 }}
+                  >
+                    {isSavingReference ? (
+                      <ActivityIndicator size="small" color={Colors.primary} />
+                    ) : (
+                      <>
+                        <Plus size={15} color={Colors.primary} />
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.primary }} className="font-sans">Add “{trimmedQuery}” as a new {keyMeta.singular}</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                  {referenceNotice ? <Text style={{ marginTop: 8, fontSize: 12, color: '#16A34A' }} className="font-sans">{referenceNotice}</Text> : null}
+                  {error ? <Text style={{ marginTop: 8, fontSize: 12, color: '#DC2626' }} className="font-sans">{error}</Text> : null}
+                </View>
+              );
+            })()}
+
             {/* Done button for multi-select pickers */}
             {isMulti(activePicker) && (
-              <View style={{ paddingHorizontal: 24, paddingTop: 12, paddingBottom: 24 }}>
+              <View style={{ paddingHorizontal: 24, paddingTop: 12, paddingBottom: Math.max(24, insets.bottom + 16) }}>
                 <TouchableOpacity
                   onPress={closePicker}
                   style={{

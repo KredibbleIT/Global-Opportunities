@@ -922,6 +922,20 @@ const referenceDataListSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    // SEC/BE: normalized view of items plus aliases, kept in sync for duplicate checks.
+    normalizedItems: {
+      type: [String],
+      default: [],
+    },
+    aliases: {
+      type: [{
+        alias: { type: String, required: true, trim: true, maxlength: 80 },
+        normalized: { type: String, required: true, trim: true, maxlength: 80 },
+        item: { type: String, required: true, trim: true, maxlength: 80 },
+        source: { type: String, enum: ['seed', 'user'], default: 'user' },
+      }],
+      default: [],
+    },
     updatedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
