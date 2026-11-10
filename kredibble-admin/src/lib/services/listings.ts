@@ -129,9 +129,19 @@ const write = (listings: Listing[]) => setMockCollection("listings", listings, {
 /** GOD-T31: a staff-curated listing on the API is one a staff member created that no hirer owns (hirer postings set hirerId). */
 export const isCuratedRecord = (record: Pick<OpportunityRecord, "createdBy" | "hirerId">): boolean => Boolean(record.createdBy) && !record.hirerId;
 
-/** Keeps a listing the API returned in this browser's store, so the detail page, the form and the queue show it at once. */
+/**
+ * Keeps the listings the API returned in this browser's store, so the detail page, the form and the queue show them at once.
+ * Only a real change is written: every write notifies the store's subscribers, and the pages that subscribe reload, so writing the
+ * same rows again would make them load forever (Insights and the listing page did, right after GOD-T31).
+ */
+export function cacheListings(listings: Listing[]): void {
+  if (JSON.stringify(getMockCollection("listings")) === JSON.stringify(listings)) return;
+  write(listings);
+}
+
+/** cacheListings for one listing: it replaces the cached copy of the same id (first in the list). */
 export function cacheListing(listing: Listing): void {
-  write([listing, ...getMockCollection("listings").filter((existing) => existing.id !== listing.id)]);
+  cacheListings([listing, ...getMockCollection("listings").filter((existing) => existing.id !== listing.id)]);
 }
 
 /** A database id. The form's vetter and writer come from the staff list, which can still be sample people (ids like "staff-1"). */

@@ -1670,9 +1670,15 @@ test.describe('Tabs: no scrollbar, nothing overflows', () => {
 
   test('keyboard still moves between tabs', async ({ page }) => {
     await page.goto(`${BASE_URL}/team`, { timeout: 30_000 });
-    await page.getByRole('tab', { name: 'Members' }).focus();
-    await page.keyboard.press('ArrowRight');
-    await expect(page.getByRole('tab', { name: 'Roles & permissions' })).toHaveAttribute('aria-selected', 'true');
+    const members = page.getByRole('tab', { name: 'Members' });
+    await expect(members).toHaveAttribute('aria-selected', 'true');
+    // (a key pressed before the page is interactive is lost: focus, then press, until the selection moves)
+    await expect(async () => {
+      await members.focus();
+      await expect(members).toBeFocused();
+      await page.keyboard.press('ArrowRight');
+      await expect(page.getByRole('tab', { name: 'Roles & permissions' })).toHaveAttribute('aria-selected', 'true', { timeout: 1_000 });
+    }).toPass({ timeout: 15_000 });
   });
 });
 

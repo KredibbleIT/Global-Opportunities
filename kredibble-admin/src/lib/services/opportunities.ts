@@ -16,9 +16,9 @@
  * The queue loader returns ALL rows once; the page filters and counts on the client.
  */
 import { getOpportunityById, getOpportunityPage, moderateOpportunity, type OpportunityRecord } from "@/lib/api";
-import { getMockCollection, overlayRows, setMockCollection } from "@/lib/mock-store";
+import { getMockCollection, overlayRows } from "@/lib/mock-store";
 import type { Listing, ListingType } from "@/lib/mock-entities";
-import { isCuratedRecord, toListing } from "./listings";
+import { cacheListings, isCuratedRecord, toListing } from "./listings";
 import { postedOpportunities, type PostedOpportunity } from "@/lib/mock-opportunities";
 import { fetchAll, orMissing } from "./api-helpers";
 import { isMockMode } from "./mock-mode";
@@ -140,7 +140,7 @@ export async function loadOpportunityRows(): Promise<OpportunityRow[]> {
   if (isMockMode()) return afterDelay([...curatedRows(), ...overlayRows("opportunities", postedOpportunities).map(toRow)]);
   const records = await fetchAll((page, limit) => getOpportunityPage({ page, limit }));
   const curated = records.filter(isCuratedRecord).map(toListing);
-  setMockCollection("listings", curated, { always: true });
+  cacheListings(curated); // only when it changed: a write reloads every subscribed page
   return [...curatedRows(curated), ...records.filter((record) => !isCuratedRecord(record)).map((record) => toRow(toOpportunity(record)))];
 }
 
