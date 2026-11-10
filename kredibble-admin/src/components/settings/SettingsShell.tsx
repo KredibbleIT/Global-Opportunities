@@ -13,13 +13,19 @@
  *   only the account page), and the pages themselves show the no-access state if someone opens the address directly.
  * - Each tab is its own address, so a tab can be opened (and shared) directly and the browser's Back button works.
  * - A tab with unsaved changes tells the shell (useSettingsDirty); switching away then asks first ("Discard unsaved changes?").
- * Outside mock mode a notice says the settings are sample data (nothing is saved to the server yet).
+ * Real mode (GOD-T47): the shell reads the settings from the server first (hydrateSettings) and shows the tab only then: a skeleton while
+ * loading, an error with Try again when the server cannot be reached. Every tab then saves to the server (lib/services/settings.ts).
  */
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Settings as SettingsIcon } from "lucide-react";
 import { useRoles } from "@/components/access/RoleProvider";
-import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { hydrateSettings } from "@/lib/services/settings";
+import { isMockMode } from "@/lib/services/mock-mode";
 import { useConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Tabs, tabId, tabPanelId } from "@/components/ui/Tabs";
 
@@ -51,6 +57,17 @@ export function SettingsShell({ children }: { children: ReactNode }) {
   const { confirm, dialog } = useConfirmDialog();
   const [dirty, setDirty] = useState(false);
   const admin = can("settings_admin", "edit");
+  const live = !isMockMode();
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">(live ? "loading" : "ready");
+  // State changes happen when the request settles, never synchronously in the effect.
+  useEffect(() => {
+    if (!live) return;
+    hydrateSettings(admin).then(() => setLoadState("ready"), () => setLoadState("error"));
+  }, [live, admin]);
+  const retry = () => {
+    setLoadState("loading");
+    hydrateSettings(admin).then(() => setLoadState("ready"), () => setLoadState("error"));
+  };
 
   const current: TabValue = TABS.find((tab) => tab.href !== "/settings" && pathname.startsWith(tab.href))?.value ?? "account";
   const tabs = TABS.filter((tab) => tab.value === "account" || admin).map(({ value, label }) => ({ value, label }));
@@ -87,14 +104,24 @@ export function SettingsShell({ children }: { children: ReactNode }) {
             <p className="page-subtitle mt-1">Your own settings and, for admins, the desk&apos;s.</p>
           </div>
         </header>
-        <NotConnectedNotice className="mb-4" />
         {admin && (
           <div className="mb-4">
             <Tabs tabs={tabs} value={current} onChange={go} ariaLabel="Settings sections" idPrefix={ID_PREFIX} />
           </div>
         )}
         <div role={admin ? "tabpanel" : undefined} id={admin ? tabPanelId(ID_PREFIX, current) : undefined} aria-labelledby={admin ? tabId(ID_PREFIX, current) : undefined} className="flex flex-1 flex-col">
-          {children}
+          {loadState === "ready" ? (
+            children
+          ) : loadState === "loading" ? (
+            <div data-testid="settings-loading" aria-busy="true" className="max-w-240 space-y-4">
+              <Skeleton className="h-40 w-full rounded-control" />
+              <Skeleton className="h-40 w-full rounded-control" />
+            </div>
+          ) : (
+            <Card className="max-w-240">
+              <EmptyState icon={SettingsIcon} tone="danger" title="Could not load the settings" description="Please try again." action={<Button variant="secondary" onClick={retry}>Try again</Button>} />
+            </Card>
+          )}
         </div>
       </div>
       {dialog}

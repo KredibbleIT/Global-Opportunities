@@ -10,14 +10,15 @@
  *   Errors reject with the server's message; a missing posting resolves with undefined (the page shows "not found").
  *
  * The queue is ONE list for two sources: postings submitted by hirers (the rows above, moderated here) and listings the
- * desk curates (services/listings.ts, kept in the shared store). Curated listings have no backend yet, so in real mode
- * only the ones created in this session are listed: the seeded sample listings never appear next to real postings.
+ * desk curates (services/listings.ts). In real mode both come from the same API read and are told apart by who owns them
+ * (isCuratedRecord); the seeded sample listings never appear next to real postings.
  *
  * The queue loader returns ALL rows once; the page filters and counts on the client.
  */
 import { getOpportunityById, getOpportunityPage, moderateOpportunity, type OpportunityRecord } from "@/lib/api";
-import { getMockCollection, overlayRows } from "@/lib/mock-store";
-import type { ListingType } from "@/lib/mock-entities";
+import { getMockCollection, overlayRows, setMockCollection } from "@/lib/mock-store";
+import type { Listing, ListingType } from "@/lib/mock-entities";
+import { isCuratedRecord, toListing } from "./listings";
 import { postedOpportunities, type PostedOpportunity } from "@/lib/mock-opportunities";
 import { fetchAll, orMissing } from "./api-helpers";
 import { isMockMode } from "./mock-mode";
@@ -108,11 +109,10 @@ const toRow = ({ id, type, title, company, date, moderationStatus, applicantsCou
   applicantsCount,
 });
 
-/** The desk's curated listings as rows, newest first. In real mode only those created in this session. */
-function curatedRows(): OpportunityRow[] {
+/** The desk's curated listings as rows, newest first: the shared store's (in real mode, what the API returned, cached by loadOpportunityRows). */
+function curatedRows(listings: readonly Listing[] = getMockCollection("listings")): OpportunityRow[] {
   const metrics = getMockCollection("listingMetrics");
-  return getMockCollection("listings")
-    .filter((listing) => isMockMode() || listing.id.startsWith("lst-new-"))
+  return listings
     .map((listing): OpportunityRow => {
       const reach = metrics.find((entry) => entry.listingId === listing.id);
       return {
@@ -131,10 +131,17 @@ function curatedRows(): OpportunityRow[] {
     .sort((a, b) => b.date.localeCompare(a.date));
 }
 
+/**
+ * Every row of the queue. Real mode (GOD-T31): ONE read of /admin/opportunities, split by who owns each record. A staff-curated listing
+ * (isCuratedRecord) becomes a curated row and is cached in the shared store (replacing the sample listings), so its detail page and form
+ * open at once; the rest are hirer postings. Curated listings are therefore saved on the server and survive a reload.
+ */
 export async function loadOpportunityRows(): Promise<OpportunityRow[]> {
   if (isMockMode()) return afterDelay([...curatedRows(), ...overlayRows("opportunities", postedOpportunities).map(toRow)]);
   const records = await fetchAll((page, limit) => getOpportunityPage({ page, limit }));
-  return [...curatedRows(), ...records.map((record) => toRow(toOpportunity(record)))];
+  const curated = records.filter(isCuratedRecord).map(toListing);
+  setMockCollection("listings", curated, { always: true });
+  return [...curatedRows(curated), ...records.filter((record) => !isCuratedRecord(record)).map((record) => toRow(toOpportunity(record)))];
 }
 
 /** One posting, or undefined when it does not exist. */

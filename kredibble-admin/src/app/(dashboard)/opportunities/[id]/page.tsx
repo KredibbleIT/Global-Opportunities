@@ -16,9 +16,11 @@
  * Data: src/lib/services/opportunities.ts: mock postings (src/lib/mock-opportunities.ts) kept in the shared mock
  * store in mock mode, the admin API otherwise.
  */
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useMockCollection } from "@/lib/mock-store";
+import { loadListing } from "@/lib/services/listings";
+import { isMockMode } from "@/lib/services/mock-mode";
 import { useRoles, VIEW_ONLY_TOOLTIP } from "@/components/access/RoleProvider";
 import { CuratedListingDetail } from "@/components/opportunities/CuratedListingDetail";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -41,10 +43,29 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TagPill } from "@/components/ui/TagPill";
 import { useToast } from "@/components/ui/Toast";
 
+/**
+ * Which page an id opens. Mock mode: a curated listing is one in the shared store. Real mode (GOD-T31): curated listings live on the
+ * server, so a direct link or a reload asks the API (loadListing answers only for a staff-curated record); anything else is a hirer's
+ * posting, whose review page handles "not found" and errors itself.
+ */
 export default function OpportunityPage() {
   const { id } = useParams<{ id: string }>();
   const listings = useMockCollection("listings");
-  return listings.some((listing) => listing.id === id) ? <CuratedListingDetail id={id} /> : <HirerPostingReview />;
+  const live = !isMockMode();
+  const [liveKind, setLiveKind] = useState<{ id: string; curated: boolean } | null>(null);
+  useEffect(() => {
+    if (!live) return;
+    let cancelled = false;
+    loadListing(id)
+      .then((listing) => !cancelled && setLiveKind({ id, curated: Boolean(listing) }))
+      .catch(() => !cancelled && setLiveKind({ id, curated: false }));
+    return () => {
+      cancelled = true;
+    };
+  }, [live, id]);
+  if (!live) return listings.some((listing) => listing.id === id) ? <CuratedListingDetail id={id} /> : <HirerPostingReview />;
+  if (!liveKind || liveKind.id !== id) return <DetailSkeleton />;
+  return liveKind.curated ? <CuratedListingDetail id={id} /> : <HirerPostingReview />;
 }
 
 function HirerPostingReview() {

@@ -1,7 +1,10 @@
 /**
  * Settings service: what the Settings screen reads and writes. One function per need; the screen never touches the store or the seed.
- * Everything lives in the shared in-memory mock store (or, for the secrets, in the module below), so a change shows everywhere in the same
- * render. TODO(backend): every write below must be persisted by the API.
+ * Everything is read from the shared in-memory store (or, for the secrets, the module below), so a change shows everywhere in the same render.
+ * GOD-T47, real mode: hydrateSettings() first fills that store from the API (targets, thresholds and their history, stage names,
+ * integrations, the signed-in account), and every write WAITS for the API before it changes anything: a failed save rejects and leaves
+ * what is shown as it was, so the screen never says "saved" for something the server refused. Mock mode never calls the API (a signed-in
+ * session used to send mock edits to the server too).
  *
  * - TARGETS. A save never rewrites the past: it ADDS {kpi, value, effectiveFrom} rows to the target history (a second save for the same
  *   KPI and month is another row, and the later one wins; no row is ever edited), and kpiTarget(key, data, month) (lib/kpi.ts) reads the one
@@ -15,8 +18,9 @@
  *   at most 24 characters. Reset puts the defaults back.
  * - INTEGRATIONS: the WordPress credential and the Google Analytics connection are WRITE-ONLY. saveCredential() reads the secret, keeps
  *   NOTHING of it except the last four characters (so the screen can say "Saved · ends in ••••3f9a") and forgets the rest. No function here
- *   returns, logs or stores the value, and testConnection() never uses it: it is a mock that succeeds after 800 ms.
- * - MY ACCOUNT: the person's name and the notification preferences (mock saves), the password check (never stored).
+ *   returns, logs or stores the value. testConnection() asks the server in real mode; in mock mode it succeeds after 800 ms.
+ * - MY ACCOUNT: the signed-in person's name, email, roles and notification preferences (the server's in real mode), and the password
+ *   change (POST /admin/settings/password in real mode; the values are never stored or logged).
  */
 import { KPI_KEYS, KPIS, type KpiKey } from "@/config/kpis";
 import { ROLES, type Role } from "@/config/roles";
@@ -30,14 +34,22 @@ import {
   saveTargetsApi,
   saveThresholdsApi,
   updatePipelineStagesApi,
-  hasAdminSession,
   getIntegrationsSettingsApi,
+  getAccountProfileApi,
+  getPipelineStagesApi,
+  getTargetHistory,
+  getTargets,
+  getThresholdHistory,
+  getThresholds,
   updateIntegrationApi,
   testIntegrationApi,
   updateAccountProfileApi,
   changePasswordApi,
 } from "@/lib/api";
 import { isMockMode } from "@/lib/services/mock-mode";
+
+/** Real mode in a browser: reads and writes go to the API. In mock mode, and outside a browser (the unit tests), the store only. */
+const usesServer = (): boolean => typeof window !== "undefined" && !isMockMode();
 
 // ---- targets ----------------------------------------------------------------------------------------------------------
 
@@ -92,8 +104,10 @@ const changer = (): string => currentStaffMember()?.name ?? "Unknown";
  * Saves changed targets from a month. Returns how many were saved. Rows are only ever APPENDED: none is edited, so every earlier month keeps
  * the target it had, and the Change history shows each save (with the target that was in force before it, who saved it and when).
  */
-export function saveTargets(changes: { kpi: KpiKey; value: number }[], effectiveFrom: MonthKey): number {
+export async function saveTargets(changes: { kpi: KpiKey; value: number }[], effectiveFrom: MonthKey): Promise<number> {
   if (changes.length === 0) return 0;
+  // Real mode: the server first; a refusal rejects before anything changes here.
+  if (usesServer()) await saveTargetsApi(effectiveFrom, changes.map((c) => ({ kpi: c.kpi, value: c.value })));
   const history = getMockCollection("targetHistory");
   const base = nextSeq();
   const added: TargetChange[] = changes.map((change, index) => ({
@@ -107,14 +121,6 @@ export function saveTargets(changes: { kpi: KpiKey; value: number }[], effective
     seq: base + index,
   }));
   setMockCollection("targetHistory", [...history, ...added], { always: true });
-
-  // BE-002: Persist to backend API when connected or in real mode
-  if (typeof window !== "undefined" && (!isMockMode() || hasAdminSession())) {
-    saveTargetsApi(effectiveFrom, changes.map((c) => ({ kpi: c.kpi, value: c.value }))).catch((err) => {
-      console.warn("Could not persist targets to backend API", err);
-    });
-  }
-
   return changes.length;
 }
 
@@ -149,7 +155,8 @@ export function validateThresholds(green: string, amber: string): { green?: stri
  * Saves new thresholds from a month (the same month as the targets of the same save). It APPENDS a row to the threshold history and never edits
  * an earlier one, so a past month is judged with the thresholds it had.
  */
-export function saveThresholds(green: number, amber: number, effectiveFrom: MonthKey): void {
+export async function saveThresholds(green: number, amber: number, effectiveFrom: MonthKey): Promise<void> {
+  if (usesServer()) await saveThresholdsApi(green, amber, effectiveFrom);
   const history = getMockCollection("thresholdHistory");
   const row: ThresholdChange = {
     id: `thr-${history.length + 1}-${effectiveFrom}`,
@@ -162,13 +169,6 @@ export function saveThresholds(green: number, amber: number, effectiveFrom: Mont
     seq: nextSeq(),
   };
   setMockCollection("thresholdHistory", [...history, row], { always: true });
-
-  // BE-003: Persist to backend API when connected or in real mode
-  if (typeof window !== "undefined" && (!isMockMode() || hasAdminSession())) {
-    saveThresholdsApi(green, amber, effectiveFrom).catch((err) => {
-      console.warn("Could not persist thresholds to backend API", err);
-    });
-  }
 }
 
 /** The thresholds already saved to start in a LATER month (the newest of them), or undefined. */
@@ -294,24 +294,16 @@ export function validateStageLabels(labels: Record<PartnerStage, string>): Parti
   return errors;
 }
 
-export function saveStageLabels(labels: Record<PartnerStage, string>): void {
+/** Saves the six stage names. Real mode: waits for the API (a refusal rejects and the names stay as they were). */
+export async function saveStageLabels(labels: Record<PartnerStage, string>): Promise<void> {
+  if (usesServer()) await updatePipelineStagesApi(labels);
   setPartnerStageLabels(labels);
-
-  if (typeof window !== "undefined" && (!isMockMode() || hasAdminSession())) {
-    updatePipelineStagesApi(labels).catch((err) => {
-      console.warn("Could not persist stage labels to backend API", err);
-    });
-  }
 }
 
-export function resetStageLabels(): void {
+/** Puts the default stage names back, on the server too in real mode. */
+export async function resetStageLabels(): Promise<void> {
+  if (usesServer()) await updatePipelineStagesApi(undefined, true);
   setPartnerStageLabels({ ...PARTNER_STAGE_LABELS });
-
-  if (typeof window !== "undefined" && (!isMockMode() || hasAdminSession())) {
-    updatePipelineStagesApi(undefined, true).catch((err) => {
-      console.warn("Could not reset stage labels on backend API", err);
-    });
-  }
 }
 
 // ---- integrations (write-only credentials) ---------------------------------------------------------------------------
@@ -346,10 +338,10 @@ export const subscribeIntegrations = (listener: () => void) => {
 export const getIntegrationsVersion = () => integrationVersion;
 export const getIntegration = (kind: IntegrationKind): IntegrationStatus => integrations[kind];
 
-/** Refreshes integration statuses from backend API in real mode. */
+/** Reads the integration statuses from the server (real mode; part of hydrateSettings). A failure rejects. */
 export async function refreshIntegrations(): Promise<void> {
-  if (typeof window === "undefined" || (isMockMode() && !hasAdminSession())) return;
-  try {
+  if (!usesServer()) return;
+  {
     const data = await getIntegrationsSettingsApi();
     if (data.wordpress) {
       integrations.wordpress = {
@@ -366,8 +358,6 @@ export async function refreshIntegrations(): Promise<void> {
       };
     }
     emitIntegrations();
-  } catch (err) {
-    console.warn("Could not load integrations from backend API", err);
   }
 }
 
@@ -378,28 +368,19 @@ export const maskedTail = (tail: string): string => `••••${tail}`;
  * Saves a credential. Returns nothing: the value is read here, only its last four characters are kept, and everything else is forgotten when
  * this function returns. (A credential of fewer than four characters keeps what it has.) Persists to backend API when connected.
  */
-export function saveCredential(kind: IntegrationKind, secret: string): void {
+export async function saveCredential(kind: IntegrationKind, secret: string): Promise<void> {
   const tail = secret.slice(-4);
+  // Real mode: the server stores it (encrypted); this screen keeps only the tail. A refusal rejects and nothing changes here.
+  if (usesServer()) await updateIntegrationApi(kind, { secret });
   integrations[kind] = { ...integrations[kind], saved: secret.length > 0, tail };
   emitIntegrations();
-
-  if (typeof window !== "undefined" && (!isMockMode() || hasAdminSession())) {
-    updateIntegrationApi(kind, { secret }).catch((err) => {
-      console.warn(`Could not persist ${kind} credential to backend API`, err);
-    });
-  }
 }
 
 /** Saves the non-secret setting (the site address or the property ID). */
-export function saveIdentifier(kind: IntegrationKind, identifier: string): void {
+export async function saveIdentifier(kind: IntegrationKind, identifier: string): Promise<void> {
+  if (usesServer()) await updateIntegrationApi(kind, { identifier: identifier.trim() });
   integrations[kind] = { ...integrations[kind], identifier: identifier.trim() };
   emitIntegrations();
-
-  if (typeof window !== "undefined" && (!isMockMode() || hasAdminSession())) {
-    updateIntegrationApi(kind, { identifier: identifier.trim() }).catch((err) => {
-      console.warn(`Could not persist ${kind} identifier to backend API`, err);
-    });
-  }
 }
 
 /** Tests integration connection: calls backend in real mode, or mocks after 800 ms. */
@@ -459,25 +440,28 @@ export function validatePasswordChange(form: PasswordForm): Partial<Record<keyof
   return errors;
 }
 
-/** The signed-in person (the dev user in mock mode), for the profile. */
+/** The signed-in account as the server knows it (real mode, filled by hydrateSettings). */
+let liveProfile: { id: string; name: string; email: string } | undefined;
+
+/** The signed-in person, for the profile: the server's account in real mode, the dev user in mock mode (never the sample Super Admin in real mode). */
 export const currentProfile = (): { id: string; name: string; email: string } | undefined => {
+  if (usesServer()) return liveProfile;
   const person = currentStaffMember();
   return person ? { id: person.id, name: person.name, email: person.email } : undefined;
 };
 
-/** Saves the person's name. Persists to team record and backend API. */
-export function saveProfileName(id: string, name: string): void {
+/** Saves the person's name: PUT /admin/settings/account in real mode (a refusal rejects), the team record in mock mode. */
+export async function saveProfileName(id: string, name: string): Promise<void> {
+  if (usesServer()) {
+    const saved = await updateAccountProfileApi({ name: name.trim() });
+    liveProfile = liveProfile ? { ...liveProfile, name: saved?.name ?? name.trim() } : liveProfile;
+    return;
+  }
   setMockCollection(
     "staff",
     getMockCollection("staff").map((person) => (person.id === id ? { ...person, name: name.trim() } : person)),
     { always: true },
   );
-
-  if (typeof window !== "undefined" && (!isMockMode() || hasAdminSession())) {
-    updateAccountProfileApi({ name: name.trim() }).catch((err) => {
-      console.warn("Could not persist profile name to backend API", err);
-    });
-  }
 }
 
 export const NOTIFICATION_PREFERENCES = [
@@ -491,22 +475,81 @@ export type NotificationKey = (typeof NOTIFICATION_PREFERENCES)[number]["key"];
 let preferences: Record<NotificationKey, boolean> = { digest: true, verifications: true, reports: true, testimonials: false };
 export const getNotificationPreferences = (): Record<NotificationKey, boolean> => ({ ...preferences });
 
-/** Saves the preferences. Persists to store and backend API. */
-export function saveNotificationPreferences(next: Record<NotificationKey, boolean>): void {
+/** Saves the preferences: on the server in real mode (a refusal rejects and they stay as they were). */
+export async function saveNotificationPreferences(next: Record<NotificationKey, boolean>): Promise<void> {
+  if (usesServer()) await updateAccountProfileApi({ notificationPreferences: next });
   preferences = { ...next };
-
-  if (typeof window !== "undefined" && (!isMockMode() || hasAdminSession())) {
-    updateAccountProfileApi({ notificationPreferences: next }).catch((err) => {
-      console.warn("Could not persist notification preferences to backend API", err);
-    });
-  }
 }
 
-/** Changes password via backend API or mock. */
-export async function changePassword(current: string, next: string): Promise<{ success: boolean; message: string }> {
-  if (typeof window !== "undefined" && (!isMockMode() || hasAdminSession())) {
-    return changePasswordApi({ currentPassword: current, newPassword: next });
-  }
-  return { success: true, message: "Password updated successfully" };
+/**
+ * Changes the password: POST /admin/settings/password in real mode, which rejects a wrong current password and, on success, ends every
+ * session (the account's token version moves on), so the caller signs the person out. Mock mode: nothing is sent. Never stores the values.
+ */
+export async function changePassword(current: string, next: string): Promise<void> {
+  if (!usesServer()) return;
+  await changePasswordApi({ currentPassword: current, newPassword: next });
+}
+
+// ---- real mode: read everything from the API once -------------------------------------------------------------------
+
+/** A threshold as the API sends it: a percentage (95) or a ratio (0.95). */
+const asRatio = (value: number): number => (value > 2 ? value / 100 : value);
+
+/**
+ * GOD-T47: fills what Settings reads from the server (real mode). The account for everyone; the desk's targets, thresholds, their history,
+ * the stage names and the integrations for a role that manages them (`admin`). Rejects on the first failure (the shell shows Try again).
+ */
+export async function hydrateSettings(admin: boolean): Promise<void> {
+  if (!usesServer()) return;
+  const account = await getAccountProfileApi();
+  liveProfile = { id: account.id, name: account.name, email: account.email };
+  preferences = { ...preferences, ...account.notificationPreferences } as Record<NotificationKey, boolean>;
+  if (!admin) return;
+  const month = currentMonth();
+  const [targets, targetHistory, thresholds, thresholdHistory, stages] = await Promise.all([
+    getTargets(month),
+    getTargetHistory(),
+    getThresholds(month),
+    getThresholdHistory(),
+    getPipelineStagesApi(),
+    refreshIntegrations(),
+  ]);
+  const known = new Set<string>(KPI_KEYS);
+  setMockCollection(
+    "targets",
+    (targets ?? []).filter((row) => known.has(row.kpi)).map((row) => ({ id: `tgt-${row.kpi}`, kpi: row.kpi as KpiKey, target: row.target ?? row.value })),
+    { always: true },
+  );
+  setMockCollection(
+    "targetHistory",
+    (targetHistory ?? []).filter((row) => known.has(row.kpi) && !row.replaced).map((row): TargetChange => ({
+      id: row.id,
+      kpi: row.kpi as KpiKey,
+      value: row.value,
+      effectiveFrom: row.effectiveFrom,
+      previous: row.previous ?? undefined,
+      changedBy: row.changedByName ?? row.changedBy,
+      changedAt: row.changedAt?.slice(0, 10),
+      seq: row.seq,
+    })),
+    { always: true },
+  );
+  const thresholdRows = (thresholdHistory ?? []).filter((row) => !row.replaced).map((row): ThresholdChange => ({
+    id: row.id,
+    green: asRatio(row.green),
+    amber: asRatio(row.amber),
+    effectiveFrom: row.effectiveFrom,
+    previous: row.previous ? { green: asRatio(row.previous.green), amber: asRatio(row.previous.amber) } : undefined,
+    changedBy: row.changedByName ?? row.changedBy,
+    changedAt: row.changedAt?.slice(0, 10),
+    seq: row.seq,
+  }));
+  // With no saved change yet, the thresholds in force are the server's defaults: one row from the first month on record.
+  setMockCollection(
+    "thresholdHistory",
+    thresholdRows.length > 0 ? thresholdRows : [{ id: "thr-server", green: thresholds.greenRatio ?? asRatio(thresholds.green), amber: thresholds.amberRatio ?? asRatio(thresholds.amber), effectiveFrom: thresholds.effectiveFrom || "2000-01" }],
+    { always: true },
+  );
+  if (stages) setPartnerStageLabels({ ...PARTNER_STAGE_LABELS, ...stages });
 }
 

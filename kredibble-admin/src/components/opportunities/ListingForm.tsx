@@ -193,8 +193,6 @@ export function ListingForm({ listing }: { listing?: Listing }) {
     }
     if (mode === "publish" && !form.vetted) return; // the button is disabled; this guards the Enter key
     setSaving(mode);
-    // TODO(backend): persist this change (create or update the listing, and publish it).
-    await new Promise((resolve) => setTimeout(resolve, 600));
     const fields: ListingFields = {
       title: form.title.trim(),
       description: form.description.trim(),
@@ -216,7 +214,15 @@ export function ListingForm({ listing }: { listing?: Listing }) {
       vettedById: form.vetted ? form.vettedById : undefined,
       vettedOn: form.vetted ? form.vettedOn : undefined,
     };
-    const saved = listing ? updateListing(listing.id, fields, mode === "publish" && !isPublished) : createListing(fields, mode === "publish");
+    // GOD-T31: real mode waits for the API (the listing is saved on the server); a failure keeps the form as typed and says so.
+    let saved: Awaited<ReturnType<typeof createListing>> | undefined;
+    try {
+      saved = listing ? await updateListing(listing.id, fields, mode === "publish" && !isPublished) : await createListing(fields, mode === "publish");
+    } catch (error) {
+      setSaving(null);
+      toast.error(error instanceof Error ? `The listing was not saved: ${error.message}` : "The listing was not saved.");
+      return;
+    }
     const id = saved?.id ?? listing?.id ?? "";
     toast.success(
       isPublished
@@ -289,7 +295,10 @@ export function ListingForm({ listing }: { listing?: Listing }) {
               <Field label="Country" error={show("country") ? errors.country : undefined}>
                 <Select options={COUNTRY_OPTIONS} value={form.country} onChange={(value) => set("country", value)} onBlur={() => touch("country")} placeholder="Choose a country" sheetTitle="Country" />
               </Field>
-              <DateTimeField label="Event date and time" optional helper="Only for events." value={form.eventAt} onChange={(value) => set("eventAt", value)} />
+              {/* GOD-T31: only for an event (or a listing that already has an event date), so other types get a shorter form */}
+              {(form.type === "event" || form.eventAt) && (
+                <DateTimeField label="Event date and time" optional helper="When the event takes place." value={form.eventAt} onChange={(value) => set("eventAt", value)} />
+              )}
               <Field label="Duration" optional helper={'For example "3 months" or "2 days".'}>
                 <Input value={form.durationLabel} onChange={(e) => set("durationLabel", e.target.value)} placeholder="3 months" autoComplete="off" />
               </Field>
