@@ -167,7 +167,7 @@ ssh -i deploy_key deploy@vps_ip "status staging"
 
 #### What `god-deploy` Executes Automatically:
 1. Validates that `/opt/god/${APP_ENV}/api.env` exists.
-2. Pulls Docker image `ghcr.io/aeomar999/global-opportunities/kredibble-backend:<sha>`.
+2. Pulls Docker image `ghcr.io/kredibbleit/global-opportunities/kredibble-backend:<sha>`.
 3. Starts the compose project with `docker compose -f /opt/god/deploy/compose.yml --project-name god-${APP_ENV} up -d`.
 4. Polls `/api/v1/health` inside the container every 3 seconds for up to 60 seconds.
 5. Verifies that `release` matches `<sha>` and `environment` matches `${APP_ENV}`.

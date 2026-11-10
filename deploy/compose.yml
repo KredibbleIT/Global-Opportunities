@@ -2,7 +2,7 @@ name: god-${APP_ENV}
 
 services:
   api:
-    image: ${API_IMAGE:-ghcr.io/aeomar999/global-opportunities/kredibble-backend}:${IMAGE_TAG:-latest}
+    image: ${API_IMAGE:-ghcr.io/kredibbleit/global-opportunities/kredibble-backend}:${IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file:
       - ${ENV_FILE:-/opt/god/${APP_ENV}/api.env}

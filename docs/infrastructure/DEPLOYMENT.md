@@ -8,7 +8,7 @@ This document details the deployment architecture, promotion pipeline, rollback 
 
 ### Build Once, Promote Many (D2)
 - Container images and build bundles are created **exactly once per git commit SHA** during CI/CD.
-- Staging and production deploy the **identical image artifact digest** (`ghcr.io/aeomar999/global-opportunities/kredibble-backend:<sha>`).
+- Staging and production deploy the **identical image artifact digest** (`ghcr.io/kredibbleit/global-opportunities/kredibble-backend:<sha>`).
 - We never rebuild from source for production; we promote the artifact that already succeeded in staging and passed all smoke tests.
 
 ### Health-Gated Zero Downtime (SEC-112, D6)
