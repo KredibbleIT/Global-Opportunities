@@ -99,6 +99,7 @@ import {
   passwordChangeSchema,
   staffInviteSchema,
   staffUpdateSchema,
+  accountStatusSchema,
   notificationBroadcastSchema,
   notificationQuerySchema,
   referenceListUpdateSchema,
@@ -4616,6 +4617,53 @@ const updateStaffRecord = asyncHandler(async (req, res) => {
 
 adminApiRouter.patch('/staff/:id', requireAdminOrStaffAuth, requireScreen('team', 'edit'), validate(staffUpdateSchema), updateStaffRecord);
 adminApiRouter.put('/staff/:id', requireAdminOrStaffAuth, requireScreen('team', 'edit'), validate(staffUpdateSchema), updateStaffRecord);
+
+/**
+ * SEC-147: suspend or reinstate an app account from its Seekers or Hirers page.
+ *
+ * The profile's `status` is what the admin pages show and what POST /auth/login checks. Suspending also signs the
+ * person out of every device (revokeAllSessions: access tokens fail the tokenVersion check, refresh tokens are deleted,
+ * sockets close); it runs on every suspend, so a record marked suspended before this route existed is signed out too.
+ * Reinstating only lifts the block: the person signs in again. Needs edit on the page's screen, which is the matrix's
+ * "suspend" permission (Moderator and Support by toggle; Desk Lead and Super Admin always).
+ *
+ * @param {import('mongoose').Model} Model SeekerProfile or HirerAccount
+ * @param {string} resource the noun for "not found" and the audit entry
+ */
+const changeAccountStatus = (Model, resource) => asyncHandler(async (req, res) => {
+  const profile = await Model.findById(validId(req.params.id, resource));
+  if (!profile) throw notFound(resource);
+
+  const previous = profile.status || 'active';
+  const next = req.body.status;
+  if (previous !== next) {
+    profile.status = next;
+    await profile.save();
+  }
+
+  let signedOut = false;
+  if (next === 'suspended' && profile.userId) {
+    const user = await User.findById(profile.userId);
+    if (user && user.role !== 'deleted') {
+      await revokeAllSessions(user);
+      await user.save();
+      signedOut = true;
+    }
+  }
+
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.ADMIN_USER_UPDATE,
+    resourceType: AUDIT_RESOURCE_TYPES.USER,
+    resourceId: profile.userId || profile._id,
+    outcome: 'success',
+    metadata: { accountStatus: true, profileType: resource, profileId: String(profile._id), previous, status: next, signedOut },
+  });
+
+  itemResponse(res, { id: String(profile._id), status: profile.status });
+});
+
+adminApiRouter.patch('/seekers/:id/status', requireAdminOrStaffAuth, requireScreen('seekers', 'edit'), validate(accountStatusSchema), changeAccountStatus(SeekerProfile, 'Seeker'));
+adminApiRouter.patch('/hirers/:id/status', requireAdminOrStaffAuth, requireScreen('hirers', 'edit'), validate(accountStatusSchema), changeAccountStatus(HirerAccount, 'Hirer'));
 
 // SEC-134: removing someone deactivates their record and signs them out. The
 // record is never deleted: an admin user with no staff record at all counts

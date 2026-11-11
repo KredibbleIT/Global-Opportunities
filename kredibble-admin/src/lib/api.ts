@@ -34,6 +34,8 @@ export type SeekerProfile = {
   user?: { id: string; name: string; email: string; avatarUrl?: string; verified: boolean; emailVerified: boolean; createdAt: string };
   applicationsCount?: number;
   savedCount?: number;
+  /** "suspended" once an admin suspends the account (SEC-147); anything else is active. */
+  status?: string;
 };
 
 export type HirerAccount = {
@@ -53,7 +55,12 @@ export type HirerAccount = {
   recruiterEmail?: string;
   overallStatus?: string;
   linkedVerificationId?: string;
+  /** "suspended" once an admin suspends the account (SEC-147); anything else is active. */
+  status?: string;
 };
+
+/** An app account's access as an admin sets it (SEC-147). */
+export type AccountStatus = "active" | "suspended";
 
 // Record types mirror the backend models in kredibble-backend/src/models/.
 // Keep them in step: a field that isn't on the model never arrives.
@@ -590,6 +597,11 @@ export const getSeekerById = async <T = SeekerProfile>(id: string) => {
   return request<T>(`/admin/seekers/${id}`);
 };
 
+/** SEC-147: suspend (signs them out everywhere, blocks sign-in) or reinstate a seeker's account. */
+export const setSeekerStatus = async (id: string, status: AccountStatus) => {
+  return request<{ id: string; status: AccountStatus }>(`/admin/seekers/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) });
+};
+
 // Hirers
 export const getHirers = async (params?: { page?: number; limit?: number; q?: string; verified?: boolean }) => {
   const query = new URLSearchParams();
@@ -603,6 +615,11 @@ export const getHirers = async (params?: { page?: number; limit?: number; q?: st
 
 export const getHirerById = async <T = HirerAccount>(id: string) => {
   return request<T>(`/admin/hirers/${id}`);
+};
+
+/** SEC-147: suspend (signs them out everywhere, blocks sign-in) or reinstate a hirer's account. */
+export const setHirerStatus = async (id: string, status: AccountStatus) => {
+  return request<{ id: string; status: AccountStatus }>(`/admin/hirers/${id}/status`, { method: "PATCH", body: JSON.stringify({ status }) });
 };
 
 // Events

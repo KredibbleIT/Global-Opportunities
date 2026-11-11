@@ -110,8 +110,9 @@ export const RESOURCE_POLICIES = {
     delete: [HIRER, ADMIN],
     createFields: ['userId', ...HIRER_SELF_FIELDS, 'status'],
     updateFields: HIRER_SELF_FIELDS,
-    // Verification state is awarded by admins, never self-asserted.
-    adminUpdateFields: ['verification', 'verified', 'status'],
+    // Verification state is awarded by admins, never self-asserted. Status (suspension) changes only through
+    // PATCH /admin/hirers/:id/status, which also signs the person out (SEC-147).
+    adminUpdateFields: ['verification', 'verified'],
   },
   candidates: {
     read: AUTHENTICATED, // role-scoped filtering is tracked separately (SEC-019)
