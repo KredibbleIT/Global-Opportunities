@@ -37,7 +37,7 @@ export default function SavedArticlesScreen() {
   const articles = useSavedArticles();
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen }} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen }} edges={['top', 'left', 'right', 'bottom']}>
       <Header title="Saved articles" showBack />
 
       <FlatList

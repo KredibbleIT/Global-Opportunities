@@ -104,7 +104,7 @@ export default function ChannelChatScreen() {
     router.push({ pathname: '/community/thread', params: { channelId, messageId: post.id, name: params.name ? String(params.name) : '' } } as any);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.white }} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.white }} edges={['top', 'left', 'right', 'bottom']}>
       <Header title={params.name ? String(params.name) : 'Channel'} showBack />
       <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.bgScreen }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {posts === null && !failed ? (

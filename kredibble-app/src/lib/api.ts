@@ -319,6 +319,29 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   return payload.data as T;
 }
 
+export type ReferenceListKey = 'universities' | 'programs' | 'skills' | 'career-interests';
+export type ReferenceDataList = {
+  key: string;
+  label: string;
+  singular: string;
+  items: string[];
+};
+export type AddReferenceDataResult =
+  | { action: 'created'; item: string; created: true }
+  | { action: 'use_existing'; item: string; created: false; aliased?: boolean }
+  | { action: 'aliased'; item: string; alias: string; created: boolean }
+  | { action: 'similar'; matches: string[]; created: false };
+
+export const fetchReferenceList = async (group: string, key: string) =>
+  request<ReferenceDataList>(`/reference-data/${encodeURIComponent(group)}/${encodeURIComponent(key)}`);
+
+// Public, rate-limited suggestion endpoint; `item` asks to save `label` as an alias of an existing entry.
+export const addReferenceListItem = async (group: string, key: ReferenceListKey, label: string, item?: string) =>
+  request<AddReferenceDataResult>(`/reference-data/${encodeURIComponent(group)}/${encodeURIComponent(key)}/items`, {
+    method: 'POST',
+    body: JSON.stringify(item ? { label, item } : { label }),
+  });
+
 export const getOpportunities = async (params?: Record<string, any>) => {
   if (params) {
     const query = new URLSearchParams();

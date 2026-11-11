@@ -9,7 +9,7 @@ export default function OrderConfirmationScreen() {
   const router = useRouter();
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen }} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen }} edges={['top', 'left', 'right', 'bottom']}>
       <View style={styles.container}>
         {/* Verification Checkmark Graphic */}
         <View style={styles.checkmarkCircle}>
