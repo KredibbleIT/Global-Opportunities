@@ -118,8 +118,13 @@ jobs:
       - name: Install admin
         run: npm ci
         working-directory: kredibble-admin
+      # No --with-deps: the ubuntu-latest image already ships every library Chromium needs, so that flag only added
+      # optional fonts through apt, and it made this job depend on Ubuntu's package mirrors. On 2026-11-11 the runner
+      # could not resolve them and every run failed here before a test ran. The fonts only matter for the screenshot
+      # test, which skips itself off Windows. If the image ever drops a library, Chromium fails to launch and the
+      # tests fail, so nothing is hidden.
       - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
         working-directory: kredibble-admin
       # A throwaway admin for this run: the in-memory API seeds it and the tests sign in with it. The password is
       # random per run and masked, so nothing secret is stored in the repository.
