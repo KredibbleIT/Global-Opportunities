@@ -23,10 +23,11 @@ export function ProRatingNote({ month, isPast, loading }: { month: MonthKey; isP
   const { dayOfMonth, daysInMonth } = monthProgress(month);
   const expected = Math.round((12000 * dayOfMonth) / daysInMonth / 100) * 100;
   return (
-    <p data-testid="pro-rating-note" className="caption flex flex-wrap items-center gap-x-1.5">
-      Targets are monthly. Status compares each figure with where it should be by today.
+    <p data-testid="pro-rating-note" className="caption">
+      Targets are monthly. Status compares each figure with where it should be by today.{" "}
+      {/* Inline (not a flex item), so the icon stays at the end of the last line instead of wrapping onto a line of its own. */}
       <Tooltip label={`Day ${dayOfMonth} of ${daysInMonth}: a 12,000 target expects about ${expected.toLocaleString("en-US")} by now. Running totals, such as Active ambassadors, are judged against the full target.`} wrap>
-        <button type="button" aria-label="How status is worked out" data-testid="pro-rating-help" className="inline-flex size-6 items-center justify-center rounded-pill text-muted hover:text-ink">
+        <button type="button" aria-label="How status is worked out" data-testid="pro-rating-help" className="-my-1 inline-flex size-6 items-center justify-center rounded-pill align-middle text-muted hover:text-ink">
           <Info size={14} strokeWidth={2} aria-hidden="true" />
         </button>
       </Tooltip>

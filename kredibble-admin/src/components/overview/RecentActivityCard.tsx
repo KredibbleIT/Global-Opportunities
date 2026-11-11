@@ -4,6 +4,10 @@
  * RecentActivityCard: a mixed timeline from the stores, newest first, with 20px between entries (the Timeline's spacing): a new
  * ambassador, a partner moved to a stage, a listing published, a program delivered, a record verified, a testimonial approved.
  *
+ * Beside the programs table (from 1025px) the card takes the table card's height (the page gives it contain: size) and the timeline
+ * scrolls inside it with a fade at the bottom, so the feed never makes its row taller than the programs (owner report 2026-11-11). Stacked,
+ * it keeps its natural height.
+ *
  * Props:
  * - items: the entries, or null when unavailable
  * - loading: show the skeleton with the same size
@@ -16,6 +20,8 @@ import type { Tone } from "@/components/ui/IconTile";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { Timeline } from "@/components/ui/Timeline";
 import type { FeedItem } from "@/lib/services/dashboard-types";
+import { cn } from "@/lib/cn";
+import { useScrollFade } from "@/lib/use-scroll-fade";
 import { NotAvailableYet } from "./NotAvailableYet";
 import { UnavailableNote } from "./UnavailableNote";
 
@@ -42,8 +48,9 @@ function SkeletonItem() {
 }
 
 export function RecentActivityCard({ items, loading, notConnected = false, className }: { items: FeedItem[] | null; loading: boolean; notConnected?: boolean; className?: string }) {
+  const { attach: attachFeed, onScroll: onFeedScroll, style: fadeStyle } = useScrollFade<HTMLDivElement>([items?.length]);
   return (
-    <Card as="section" ariaLabel="Recent activity" testId="recent-activity" className={className}>
+    <Card as="section" ariaLabel="Recent activity" testId="recent-activity" className={cn("flex flex-col", className)}>
       <CardHeader title="Recent activity" subtitle="What happened across the desk lately" />
       {loading ? (
         <div className="space-y-5" aria-busy="true" aria-label="Loading recent activity">
@@ -58,7 +65,9 @@ export function RecentActivityCard({ items, loading, notConnected = false, class
       ) : items.length === 0 ? (
         <EmptyState icon={Activity} title="No recent activity" description="Updates will show up here as they happen." />
       ) : (
-        <Timeline items={items.map((item) => ({ key: item.key, icon: KIND_STYLES[item.kind].icon, tone: KIND_STYLES[item.kind].tone, title: item.title, description: item.description, time: item.time }))} />
+        <div ref={attachFeed} onScroll={onFeedScroll} style={fadeStyle} data-testid="recent-activity-scroll" className="-mr-2 min-h-0 flex-1 overflow-y-auto overscroll-contain pr-2">
+          <Timeline items={items.map((item) => ({ key: item.key, icon: KIND_STYLES[item.kind].icon, tone: KIND_STYLES[item.kind].tone, title: item.title, description: item.description, time: item.time }))} />
+        </div>
       )}
     </Card>
   );

@@ -87,13 +87,15 @@ export default function DatabasePage() {
       width: "12%",
       render: (r) => <TruncatedText text={r.institution} lines={2} className="table-text" />,
     },
-    { key: "source", header: "Source", type: "text", width: "14%", value: (r) => RECORD_SOURCE_LABELS[r.source] },
-    { key: "linked", header: "Linked", type: "custom", width: "15%", render: (r) => <LinkedCell record={r} access={access} /> },
+    { key: "source", header: "Source", type: "text", width: "11%", value: (r) => RECORD_SOURCE_LABELS[r.source] },
+    { key: "linked", header: "Linked", type: "custom", width: "13%", render: (r) => <LinkedCell record={r} access={access} /> },
     {
       key: "verified",
       header: "Verified",
       type: "custom",
-      width: "17%",
+      width: "22%",
+      // The Pending chip and the Verify button side by side; below this the table scrolls inside its card instead of spilling.
+      minWidth: 212,
       render: (r) => (
         <div className="flex items-center gap-2 max-sm:justify-end">
           {/* The badge (the shared StatusBadge) on every row; a pending row (for a role that can edit) also has the Verify button.

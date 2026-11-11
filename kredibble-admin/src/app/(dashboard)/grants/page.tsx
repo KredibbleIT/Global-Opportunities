@@ -19,19 +19,21 @@ import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 const loadGrants = () => Promise.resolve(overlayRows("grants", grantRecords));
 
 const COLUMNS: Column<GrantRecord>[] = [
-  { key: "grant", header: "Grant", type: "primary", width: "32%", title: (r) => r.title, titleLines: 2, leading: () => ({ icon: HandCoins }) },
-  { key: "hirer", header: "Hirer", type: "text", width: "13%", value: (r) => r.hirer },
-  { key: "sector", header: "Sector", type: "text", width: "11%", value: (r) => r.sector },
+  { key: "grant", header: "Grant", type: "primary", width: "30%", title: (r) => r.title, titleLines: 2, leading: () => ({ icon: HandCoins }) },
+  { key: "hirer", header: "Hirer", type: "text", width: "12%", value: (r) => r.hirer },
+  { key: "sector", header: "Sector", type: "text", width: "10%", value: (r) => r.sector },
   {
     key: "budget",
     header: "Budget allocated",
     type: "progress",
-    width: "26%",
+    width: "30%",
+    // "USD 75,000 / USD 200,000" and "38%" on one line: below this the table scrolls inside its card instead of spilling.
+    minWidth: 272,
     // "USD 75,000 / USD 200,000": the code is always explicit.
     label: (r) => `${formatMoney(r.allocated, r.currency)} / ${formatMoney(r.fundingPool, r.currency)}`,
     percent: (r) => Math.round((r.allocated / r.fundingPool) * 100),
   },
-  { key: "status", header: "Status", type: "status", width: "17%", status: (r) => r.status },
+  { key: "status", header: "Status", type: "status", width: "18%", status: (r) => r.status },
 ];
 
 export default function GrantsOpsPage() {

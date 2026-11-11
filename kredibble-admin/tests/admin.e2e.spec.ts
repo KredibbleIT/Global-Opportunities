@@ -37,6 +37,7 @@ import { metricDelta, partnerMetrics, lastCompleteMonth, isMonthToDate, earliest
 import { recordReport } from '../src/lib/services/report';
 import { buildKpiCards } from '../src/lib/services/dashboard';
 import { highlightLabels } from '../src/lib/scorecard';
+import { niceAxis } from '../src/components/ui/chart-axis';
 import { SCORE_FROM_DAY } from '../src/config/scorecard';
 import { eventDayEndsAt, eventStatus } from '../src/lib/event-status';
 import { formatAttainment, isTooEarly, metricResult, compositeSeries, composite, compositeStatus, highlightOf, metricAttainment, ownedMetrics, scorecardFor, strengths, teamScorecards, teamSummary } from '../src/lib/scorecard';
@@ -3071,6 +3072,15 @@ test.describe('KPI status', () => {
     expect(kpiStatus(69, 100, 30, 30, T)).toBe('red');
     expect(kpiStatus(120, 100, 30, 30, T)).toBe('green'); // over target
     expect(kpiStatus(0, 100, 30, 30, T)).toBe('red');
+  });
+
+  test('chart axis: a whole 1, 2 or 5 step, at most four steps, the top just above the tallest bar (SEC-153)', () => {
+    expect(niceAxis(2)).toEqual({ top: 2, lines: 2 }); // 0, 1, 2 (was 0 to 4 with half the chart empty)
+    expect(niceAxis(0)).toEqual({ top: 1, lines: 1 }); // nothing counted still draws an axis
+    expect(niceAxis(7)).toEqual({ top: 8, lines: 4 }); // steps of 2
+    expect(niceAxis(12)).toEqual({ top: 15, lines: 3 }); // steps of 5
+    expect(niceAxis(10_500)).toEqual({ top: 15_000, lines: 3 }); // 0, 5,000, 10,000, 15,000 (not 2,625 steps)
+    expect(niceAxis(100)).toEqual({ top: 100, lines: 2 }); // 0, 50, 100: a step of 25 is not a 1, 2 or 5 step (the Scorecard passes axisMax for its fixed 0-25-50-75-100)
   });
 
   test('pro-rating: day 1 of the month needs only a small share of the target', () => {
@@ -7146,7 +7156,7 @@ test.describe('Visual fixes: tier labels, rows and network tiles', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
   const seed = buildSeed().collections;
 
-  test('Network and Leaderboard show short tier labels in nowrap pills, the full name in the tooltip, and 56px rows', async ({ page }) => {
+  test('Network and Leaderboard show short tier labels as plain text (unslop pass: an attribute, not a pill) and 56px rows', async ({ page }) => {
     for (const path of ['/network', '/leaderboard']) {
       await page.goto(`${BASE_URL}${path}`, { timeout: 30_000 });
       await expect(page.getByTestId('table-row').first()).toBeVisible();
@@ -7155,11 +7165,7 @@ test.describe('Visual fixes: tier labels, rows and network tiles', () => {
       expect(texts.has('Regional Lead')).toBe(true);
       const heights = await page.getByTestId('table-row').evaluateAll((rows) => rows.map((row) => Math.round(row.getBoundingClientRect().height)));
       expect(new Set(heights)).toEqual(new Set([56]));
-      const pill = page.locator('td[data-label="Tier"]').filter({ hasText: 'Regional Lead' }).first().locator('span.badge-text');
-      expect(await pill.evaluate((el) => getComputedStyle(el).whiteSpace)).toBe('nowrap');
-      await pill.hover();
-      await expect(page.getByRole('tooltip')).toHaveText('Campus or Regional Lead');
-      await page.mouse.move(0, 0);
+      await expect(page.locator('td[data-label="Tier"] span.badge-text')).toHaveCount(0);
     }
   });
 
@@ -7983,15 +7989,13 @@ test.describe('Visual fixes: tier pill click and the Move hit area', () => {
   test.skip(!MOCK_RUN, 'the redesign screens run on sample data: see npm run test:e2e:mock');
   test.use({ viewport: { width: 1440, height: 900 } });
 
-  test('clicking the tier pill opens the ambassador like any other part of the row, and hovering it still shows the full name', async ({ page }) => {
+  test('clicking the tier opens the ambassador like any other part of the row', async ({ page }) => {
     await page.goto(`${BASE_URL}/network`, { timeout: 30_000 });
     await expect(page.getByTestId('table-row').first()).toBeVisible();
     const row = page.getByTestId('table-row').filter({ has: page.locator('td[data-label="Tier"]', { hasText: 'Regional Lead' }) }).first();
     const href = await row.getByRole('link').first().getAttribute('href');
-    const pill = row.locator('td[data-label="Tier"] span.badge-text').first();
-    await pill.hover();
-    await expect(page.getByRole('tooltip')).toHaveText('Campus or Regional Lead');
-    await pill.click();
+    // The row's stretched link covers the cell, so a click there lands on it, as it does for a person.
+    await row.locator('td[data-label="Tier"]').click({ force: true });
     await expect(page).toHaveURL(new RegExp(`${href}$`));
   });
 
@@ -11357,7 +11361,7 @@ test.describe('Overview: the prioritised sections', () => {
       await expect(row, key).toContainText(`of ${kpiTarget(key, data, previous).toLocaleString('en-US')}`);
     }
     await expect(page.locator('[data-testid="kpi-pace-tick"]')).toHaveCount(0); // the month is over: no pace tick
-    await expect(page.getByRole('region', { name: 'Priorities' })).toContainText('Ranked by how far each fell short of its full target');
+    await expect(page.getByRole('region', { name: 'Priorities' })).toContainText("Furthest short of the full target first");
     // the trend ends with the month shown
     await expect(page.getByRole('table', { name: /last six months/ }).getByRole('row').last().getByRole('rowheader')).toHaveText(formatMonth(previous));
   });
@@ -11398,6 +11402,45 @@ test.describe('Overview: the prioritised sections', () => {
     await expect(page.getByRole('button', { name: 'Show fewer' })).toHaveAttribute('aria-expanded', 'true');
     await page.getByRole('button', { name: 'Show fewer' }).click();
     await expect(rows).toHaveCount(3);
+  });
+
+  test('priorities: "See all" scrolls inside the card, so the card keeps its size and nothing below it moves', async ({ page }) => {
+    for (const width of [1440, 1180, 390]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await open(page);
+      await expect(page.getByTestId('upcoming-table')).toBeAttached(); // the programs row has its final height
+      const measure = () => page.evaluate(() => ({
+        card: Math.round(document.querySelector('[data-testid="priorities-card"]')!.getBoundingClientRect().height),
+        programs: Math.round(document.querySelector('main section[aria-label="Programs in progress and upcoming"]')!.getBoundingClientRect().top + scrollY),
+        page: document.documentElement.scrollHeight,
+      }));
+      const before = await measure();
+      await page.getByRole('button', { name: 'See all' }).click();
+      await expect(page.getByTestId('priority-row')).toHaveCount(10);
+      expect(await measure(), `${width}px`).toEqual(before);
+      const list = page.getByTestId('priorities-list');
+      expect(await list.evaluate((el) => el.scrollHeight > el.clientHeight), `${width}px: the full list scrolls`).toBe(true);
+    }
+  });
+
+  test('priorities: the tally counts every KPI by status, and a row shows its KPI in the trend', async ({ page }) => {
+    await open(page);
+    const data = seedData();
+    const month = currentMonth();
+    const statuses = KPI_KEYS.map((key) => kpiMonthStatus(key, month, today(), data));
+    const tally = page.getByTestId('priorities-tally');
+    await expect(tally).toContainText(`${statuses.filter((s) => s === 'red').length} off track`);
+    await expect(tally).toContainText(`${statuses.filter((s) => s === 'amber').length} at risk`);
+    await expect(tally).toContainText(`${statuses.filter((s) => s === 'green').length} on track`);
+    const first = page.getByTestId('priority-row').first();
+    const key = (await first.getAttribute('data-kpi')) as keyof typeof KPIS;
+    const pick = first.getByRole('button', { name: new RegExp(KPIS[key].label) });
+    await expect(pick).toHaveAttribute('aria-pressed', key === 'opportunities_published' ? 'true' : 'false');
+    await pick.click();
+    await expect(pick).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('combobox', { name: 'KPI shown in the trend' })).toContainText(KPIS[key].label);
+    await expect(page.getByRole('table', { name: `${KPIS[key].label}, last six months` })).toBeAttached();
+    await expect(page.getByTestId('trend-card')).toContainText(KPIS[key].note.slice(1)); // what the KPI counts (its first letter is lower-cased in the subtitle)
   });
 
   test('upcoming programs: the next five planned or running, soonest first, with the participants of the target and the partner', async ({ page }) => {
@@ -11630,6 +11673,20 @@ test.describe('Overview: status words, notes, layout and rankings', () => {
     for (const [label, band] of bands) expect(band, `${label}: empty space inside the card`).toBeLessThanOrEqual(24);
   });
 
+  test('the programs row: Recent activity is never taller than the programs card, its feed scrolls inside instead', async ({ page }) => {
+    for (const width of [1440, 1180]) {
+      await page.setViewportSize({ width, height: 900 });
+      await open(page);
+      await expect(page.getByTestId('upcoming-table')).toBeAttached();
+      await expect(page.getByTestId('recent-activity-scroll')).toBeVisible();
+      const [programs, activity] = await page.evaluate(() => ['Programs in progress and upcoming', 'Recent activity'].map((name) => {
+        const box = document.querySelector(`main section[aria-label="${name}"]`)!.getBoundingClientRect();
+        return { top: Math.round(box.top), bottom: Math.round(box.bottom) };
+      }));
+      expect(activity, `${width}px`).toEqual(programs);
+    }
+  });
+
   test('"Programs in progress and upcoming": five rows by start date, each with a Running or Planned badge', async ({ page }) => {
     await open(page);
     const data = buildSeed().collections;
@@ -11666,7 +11723,7 @@ test.describe('Overview: status words, notes, layout and rankings', () => {
 
   test('priorities: the rule is stated, and the ranking is attainment against the pro-rated target, ties in KPI order (this month)', async ({ page }) => {
     await open(page);
-    await expect(page.getByRole('region', { name: 'Priorities' })).toContainText('Ranked by how far each is from where it should be today');
+    await expect(page.getByRole('region', { name: 'Priorities' })).toContainText("Furthest behind today's pace first");
     await page.getByRole('button', { name: 'See all' }).click();
     const rows = page.getByTestId('priority-row');
     await expect(rows).toHaveCount(10);
@@ -11676,7 +11733,7 @@ test.describe('Overview: status words, notes, layout and rankings', () => {
   test('priorities: a past month (three months back) ranks by shortfall against the FULL target', async ({ page }) => {
     const threeBack = monthsBefore(currentMonth(), 3);
     await open(page, `?month=${threeBack}`);
-    await expect(page.getByRole('region', { name: 'Priorities' })).toContainText('Ranked by how far each fell short of its full target');
+    await expect(page.getByRole('region', { name: 'Priorities' })).toContainText("Furthest short of the full target first");
     await page.getByRole('button', { name: 'See all' }).click();
     const rows = page.getByTestId('priority-row');
     await expect(rows).toHaveCount(10);

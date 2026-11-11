@@ -27,6 +27,8 @@ interface ColumnBase {
   header: string;
   width?: string;
   mobileLabel?: string;
+  /** The narrowest this column may get, in px with padding, on the desktop table; below it the table scrolls inside its card. */
+  minWidth?: number;
 }
 
 export type Column<T> = ColumnBase &
