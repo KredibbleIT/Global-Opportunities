@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Invite Staff (/staff/invite): add an admin or support account and choose their role.
+ * Invite staff (/staff/invite): add an admin or support account and choose their role.
  * Built on the shared form system (src/components/ui/form). Single column, 640px wide.
  *
  * Fields: Full name (required), Email (required), Role (any of the 12 roles, default Support) and an optional
@@ -91,7 +91,7 @@ export default function InviteStaffPage() {
   if (!allowed) {
     return (
       <div className="max-w-160">
-        <h1 data-testid="page-title" className="page-title">Invite Staff</h1>
+        <h1 data-testid="page-title" className="page-title">Invite staff</h1>
         <p data-testid="invite-super-admin-only" className="page-subtitle mt-1">
           Only a Super Admin can add staff, because adding someone gives them a role. Ask a Super Admin to invite them.
         </p>
@@ -102,7 +102,7 @@ export default function InviteStaffPage() {
   return (
     <form ref={formRef} onSubmit={submit} noValidate className="flex flex-1 flex-col">
       <div className="max-w-160">
-        <h1 data-testid="page-title" className="page-title">Invite Staff</h1>
+        <h1 data-testid="page-title" className="page-title">Invite staff</h1>
         <p className="page-subtitle mt-1 mb-6">Add a new admin/support account and assign their permission tier.</p>
 
         <NotConnectedNotice className="mb-4" />
@@ -150,7 +150,7 @@ export default function InviteStaffPage() {
                   {ROLES[held].label}
                   {index === 1 && (
                     <button type="button" aria-label={`Remove ${ROLES[held].label}`} onClick={() => setSecond(NO_SECOND)} className="rounded-full p-0.5 hover:bg-purple-100">
-                      <X size={12} strokeWidth={2.5} aria-hidden="true" />
+                      <X size={12} strokeWidth={2} aria-hidden="true" />
                     </button>
                   )}
                 </li>

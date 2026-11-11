@@ -201,7 +201,7 @@ export function ProgramForm({ program }: { program?: Program }) {
               </Field>
               {form.status === "delivered" && (
                 <p data-testid="delivered-note" className="caption flex items-start gap-2 rounded-inset bg-purple-50 px-3 py-2 text-ink">
-                  <Info size={14} strokeWidth={1.75} aria-hidden="true" className="mt-0.5 shrink-0 text-purple-700" />
+                  <Info size={14} strokeWidth={2} aria-hidden="true" className="mt-0.5 shrink-0 text-purple-700" />
                   Delivered programs count toward the monthly target
                 </p>
               )}

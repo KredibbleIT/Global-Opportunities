@@ -38,7 +38,7 @@ interface TimeFieldProps {
 
 const display = (value: string) => (value ? formatTime12(value) : "");
 
-export function TimeField({ value, onChange, ariaLabel, invalid, describedBy, onInvalid, onBlur, disabled = false, placeholder = "e.g. 6:00 PM" }: TimeFieldProps) {
+export function TimeField({ value, onChange, ariaLabel, invalid, describedBy, onInvalid, onBlur, disabled = false, placeholder = "6:00 PM" }: TimeFieldProps) {
   const listId = useId();
   const titleId = useId();
   const phone = useMediaQuery("(max-width: 639px)");
@@ -224,7 +224,7 @@ export function TimeField({ value, onChange, ariaLabel, invalid, describedBy, on
             )}
           >
             {slot.label}
-            {selected && <Check size={16} strokeWidth={2} aria-hidden="true" />}
+            {selected && <Check size={16} strokeWidth={1.75} aria-hidden="true" />}
           </li>
         );
       })}
@@ -278,7 +278,7 @@ export function TimeField({ value, onChange, ariaLabel, invalid, describedBy, on
           <div
             ref={popRef}
             data-testid="time-list-popover"
-            className="fixed z-80 overflow-y-auto rounded-control border border-line bg-surface shadow-pop"
+            className="pop-enter fixed z-80 overflow-y-auto rounded-control border border-line bg-surface shadow-pop"
             // Data-driven position (measured from the field): the one legitimate inline style. Hidden for the one frame it is measured in.
             style={{ top: pos?.top ?? 0, left: pos?.left ?? 0, width: pos?.width ?? 160, maxHeight: pos?.maxHeight, visibility: pos ? "visible" : "hidden" }}
           >
@@ -297,7 +297,7 @@ export function TimeField({ value, onChange, ariaLabel, invalid, describedBy, on
                   Choose a time
                 </h2>
                 <button type="button" onClick={() => close(true)} aria-label="Close" className="inline-flex size-10 shrink-0 items-center justify-center rounded-inset text-muted transition-colors hover:bg-neutral-soft hover:text-ink">
-                  <X size={20} strokeWidth={1.75} aria-hidden="true" />
+                  <X size={18} strokeWidth={1.75} aria-hidden="true" />
                 </button>
               </div>
               {list}

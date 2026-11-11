@@ -209,7 +209,7 @@ test.describe('desktop', () => {
     );
     await go(page, '/ambassador-applications');
     await expect(page.getByTestId('table-row').first()).toBeVisible();
-    await capture(page, '14-ambassador-applications', { page: 'Ambassador Applications', state: 'Pending applications (three fictional records, answered by the script)', fullPage: true });
+    await capture(page, '14-ambassador-applications', { page: 'Ambassador applications', state: 'Pending applications (three fictional records, answered by the script)', fullPage: true });
   });
 
   test('leaderboard', async ({ page }) => {
@@ -221,10 +221,10 @@ test.describe('desktop', () => {
   test('verification both tabs', async ({ page }) => {
     await go(page, '/verification');
     await expect(page.getByTestId('table-row').first()).toBeVisible();
-    await capture(page, '16-verification-awaiting', { page: 'Verification Queue', state: 'Awaiting verification tab', fullPage: true });
+    await capture(page, '16-verification-awaiting', { page: 'Verification queue', state: 'Awaiting verification tab', fullPage: true });
     await page.getByRole('tab', { name: /^Reviewed requests/ }).click();
     await expect(page.getByTestId('table-row').first()).toBeVisible();
-    await capture(page, '17-verification-reviewed', { page: 'Verification Queue', state: 'Reviewed requests tab', fullPage: true });
+    await capture(page, '17-verification-reviewed', { page: 'Verification queue', state: 'Reviewed requests tab', fullPage: true });
   });
 
   test('social list and Add post dialog', async ({ page }) => {
@@ -250,7 +250,7 @@ test.describe('desktop', () => {
   test('team members, Create account dialog, role matrix', async ({ page }) => {
     await go(page, '/team');
     await expect(page.getByTestId('table-row').first()).toBeVisible();
-    await capture(page, '22-team-members', { page: 'Team', state: 'Members tab with the Create account / Invite Staff help lines', fullPage: true });
+    await capture(page, '22-team-members', { page: 'Team', state: 'Members tab with the Create account / Invite staff help lines', fullPage: true });
     await page.getByTestId('create-account-open').click();
     await expect(page.getByRole('dialog')).toBeVisible();
     await capture(page, '23-create-account-dialog', { page: 'Team', state: 'Create account dialog open' });
@@ -271,7 +271,7 @@ test.describe('desktop', () => {
     await go(page, '/reports');
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
     await expect(page.getByTestId('table-row').first()).toBeVisible();
-    await capture(page, '26-reports', { page: 'Reports Queue', state: 'Open reports', fullPage: true });
+    await capture(page, '26-reports', { page: 'Reports queue', state: 'Open reports', fullPage: true });
   });
 
   test('settings', async ({ page }) => {

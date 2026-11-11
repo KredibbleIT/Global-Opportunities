@@ -104,7 +104,7 @@ export default function LoginPage() {
 
             {error && (
               <p role="alert" className="body-sm flex items-start gap-2 rounded-control border border-danger/25 bg-danger-soft px-3 py-2 text-danger">
-                <AlertCircle size={16} strokeWidth={2} aria-hidden="true" className="mt-0.5 shrink-0" />
+                <AlertCircle size={16} strokeWidth={1.75} aria-hidden="true" className="mt-0.5 shrink-0" />
                 <span>{error}</span>
               </p>
             )}
@@ -114,7 +114,7 @@ export default function LoginPage() {
             </Button>
 
             <p className="caption flex items-center justify-center gap-1.5 text-center">
-              <ShieldCheck size={14} strokeWidth={1.75} aria-hidden="true" />
+              <ShieldCheck size={14} strokeWidth={2} aria-hidden="true" />
               Access is by invitation only.
             </p>
           </form>

@@ -17,13 +17,14 @@ interface SelectionCheckboxProps {
   label: string;
 }
 
+// Unslop pass: 24px on phones (a touch target), 20px from 640px.
 export function SelectionCheckbox({ checked, indeterminate = false, onChange, label }: SelectionCheckboxProps) {
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (ref.current) ref.current.indeterminate = indeterminate;
   }, [indeterminate]);
   return (
-    <span className="relative inline-flex size-5 shrink-0 align-middle">
+    <span className="relative inline-flex size-6 shrink-0 min-[640px]:size-5 align-middle">
       <input
         ref={ref}
         type="checkbox"
@@ -31,12 +32,12 @@ export function SelectionCheckbox({ checked, indeterminate = false, onChange, la
         aria-label={label}
         aria-checked={indeterminate ? "mixed" : checked}
         onChange={(event) => onChange(event.target.checked)}
-        className="peer size-5 cursor-pointer appearance-none rounded-inset border border-input bg-surface transition-colors checked:border-purple-600 checked:bg-purple-600 indeterminate:border-purple-600 indeterminate:bg-purple-600"
+        className="peer size-6 cursor-pointer min-[640px]:size-5 appearance-none rounded-inset border border-input bg-surface transition-colors checked:border-purple-600 checked:bg-purple-600 indeterminate:border-purple-600 indeterminate:bg-purple-600"
       />
       {indeterminate ? (
-        <Minus size={14} strokeWidth={3} aria-hidden="true" className="pointer-events-none absolute inset-0 m-auto text-white" />
+        <Minus size={14} strokeWidth={2.5} aria-hidden="true" className="pointer-events-none absolute inset-0 m-auto text-white" />
       ) : (
-        <Check size={14} strokeWidth={3} aria-hidden="true" className="pointer-events-none absolute inset-0 m-auto text-white opacity-0 peer-checked:opacity-100" />
+        <Check size={14} strokeWidth={2.5} aria-hidden="true" className="pointer-events-none absolute inset-0 m-auto text-white opacity-0 peer-checked:opacity-100" />
       )}
     </span>
   );

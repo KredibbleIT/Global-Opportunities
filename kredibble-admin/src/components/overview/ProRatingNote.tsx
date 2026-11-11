@@ -27,7 +27,7 @@ export function ProRatingNote({ month, isPast, loading }: { month: MonthKey; isP
       Targets are monthly. Status compares each figure with where it should be by today.
       <Tooltip label={`Day ${dayOfMonth} of ${daysInMonth}: a 12,000 target expects about ${expected.toLocaleString("en-US")} by now. Running totals, such as Active ambassadors, are judged against the full target.`} wrap>
         <button type="button" aria-label="How status is worked out" data-testid="pro-rating-help" className="inline-flex size-6 items-center justify-center rounded-pill text-muted hover:text-ink">
-          <Info size={14} strokeWidth={1.75} aria-hidden="true" />
+          <Info size={14} strokeWidth={2} aria-hidden="true" />
         </button>
       </Tooltip>
     </p>

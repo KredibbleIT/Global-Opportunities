@@ -44,7 +44,7 @@ export function IconButton({ label, tooltip, icon: Icon, tone = "neutral", onCli
           disabled ? "cursor-not-allowed bg-neutral-soft text-muted" : TONES[tone],
         )}
       >
-        <Icon size={16} strokeWidth={2} aria-hidden="true" />
+        <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
       </button>
     </Tooltip>
   );

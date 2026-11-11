@@ -86,7 +86,7 @@ export default function ReferenceDataPage() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Reference Data" subtitle={group.description} />
+      <PageHeader title="Reference data" subtitle={group.description} />
 
       <SegmentedControl
         ariaLabel="Reference data group"

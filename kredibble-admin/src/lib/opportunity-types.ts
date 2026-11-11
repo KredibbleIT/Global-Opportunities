@@ -1,5 +1,5 @@
 /**
- * Labels and icons for opportunity types, shared by the Opportunities Queue and the review page.
+ * Labels and icons for opportunity types, shared by the Opportunities queue and the review page.
  *
  * The redesign's four types (jobs, internships, events, grants), the API's other posting types and the desk's curated
  * scholarships, so a posting

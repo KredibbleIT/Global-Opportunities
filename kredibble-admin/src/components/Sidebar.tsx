@@ -294,7 +294,7 @@ export function Sidebar({ collapsed, onToggleCollapsed, drawerOpen, onCloseDrawe
           </ul>
         </nav>
 
-        {/* User card + Log Out */}
+        {/* User card + Log out */}
         {/* In development the Next.js dev badge sits at the bottom-left, so leave room under the user card. */}
         <div className={cn("relative shrink-0 p-3", process.env.NODE_ENV === "development" && "pb-16")}>
           <UserCard rail={rail} />

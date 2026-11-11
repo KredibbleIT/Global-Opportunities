@@ -76,7 +76,7 @@ export default function DatabasePage() {
       type: "primary",
       width: "18%",
       title: (r) => r.name,
-      subtitle: (r) => r.email,
+      subtitle: (r) => r.email, subtitleLines: 1,
       leading: (r) => ({ avatarName: r.name }),
     },
     { key: "country", header: "Country", type: "text", width: "9%", value: (r) => r.country },
@@ -87,7 +87,7 @@ export default function DatabasePage() {
       width: "12%",
       render: (r) => <TruncatedText text={r.institution} lines={2} className="table-text" />,
     },
-    { key: "source", header: "Source", type: "pill", width: "14%", label: (r) => RECORD_SOURCE_LABELS[r.source] },
+    { key: "source", header: "Source", type: "text", width: "14%", value: (r) => RECORD_SOURCE_LABELS[r.source] },
     { key: "linked", header: "Linked", type: "custom", width: "15%", render: (r) => <LinkedCell record={r} access={access} /> },
     {
       key: "verified",

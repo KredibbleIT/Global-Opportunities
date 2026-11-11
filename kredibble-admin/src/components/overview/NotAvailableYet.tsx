@@ -10,7 +10,7 @@ import type { LucideIcon } from "lucide-react";
 export function NotAvailableYet({ icon: Icon }: { icon: LucideIcon }) {
   return (
     <div data-testid="not-available-yet" className="flex min-h-40 flex-col items-center justify-center gap-2 text-center text-muted">
-      <Icon size={24} strokeWidth={1.5} aria-hidden="true" />
+      <Icon size={24} strokeWidth={1.75} aria-hidden="true" />
       <p className="body-sm">Not available yet</p>
     </div>
   );

@@ -137,7 +137,7 @@ export function AmbassadorBulkActions({ allRows, filteredRows, selectedIds, filt
         <Menu label="Export ambassadors" items={exportItems} triggerClassName={cn(buttonClasses("secondary"), "gap-2")} sheetTitle="Export ambassadors">
           <Download size={16} strokeWidth={1.75} aria-hidden="true" />
           Export
-          <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" />
+          <ChevronDown size={14} strokeWidth={2} aria-hidden="true" />
         </Menu>
       )}
       {canImport && (

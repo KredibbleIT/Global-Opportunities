@@ -159,14 +159,14 @@ export function SegmentedControl<T extends string>({
         data-testid="segmented-fade-start"
         className={cn("pointer-events-none absolute inset-y-0 left-0 z-10 flex w-8 items-center rounded-l-control bg-linear-to-r from-surface-2 from-40% to-transparent pl-1 text-muted transition-opacity", edges.start ? "opacity-100" : "opacity-0")}
       >
-        <ChevronLeft size={16} strokeWidth={2} />
+        <ChevronLeft size={16} strokeWidth={1.75} />
       </span>
       <span
         aria-hidden="true"
         data-testid="segmented-fade-end"
         className={cn("pointer-events-none absolute inset-y-0 right-0 z-10 flex w-8 items-center justify-end rounded-r-control bg-linear-to-l from-surface-2 from-40% to-transparent pr-1 text-muted transition-opacity", edges.end ? "opacity-100" : "opacity-0")}
       >
-        <ChevronRight size={16} strokeWidth={2} />
+        <ChevronRight size={16} strokeWidth={1.75} />
       </span>
     </div>
   );

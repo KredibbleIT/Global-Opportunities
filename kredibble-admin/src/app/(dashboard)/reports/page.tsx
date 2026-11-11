@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Reports Queue: trust & safety reports across posts, users, channels and postings.
+ * Reports queue: trust & safety reports across posts, users, channels and postings.
  * Built on the shared list template; this file holds the column config, the status filter
  * (default: Open) and the data.
  * Data: lib/services/reports.ts. Mock mode: the sample reports with this session's changes; real mode: GET /admin/reports, the same records the
@@ -55,7 +55,7 @@ export default function ReportsQueuePage() {
 
   return (
     <ListPage
-      title="Reports Queue"
+      title="Reports queue"
       subtitle={
         rows
           ? `${openCount} open report${openCount === 1 ? "" : "s"} awaiting review across posts, users, channels, and postings.`

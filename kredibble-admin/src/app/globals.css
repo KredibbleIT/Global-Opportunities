@@ -491,6 +491,35 @@ body {
   display: none;
 }
 
+/*
+ * Unslop pass: menus, popovers, dialogs, toasts and tooltips used to appear in one frame. They now fade in and rise 4px
+ * (160ms, one ease-out curve) from where they open; dialogs also settle from 98% scale. Reduced motion shows them at once.
+ */
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
+.pop-enter {
+  animation: pop-in 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.dialog-enter {
+  animation: dialog-in 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pop-enter,
+  .dialog-enter {
+    animation: none;
+  }
+}
+
 /* Bottom sheet (the phone version of the Select list) slides up in 200ms; reduced motion shows it at once. */
 @keyframes sheet-up {
   from {

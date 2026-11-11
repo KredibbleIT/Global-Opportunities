@@ -1,5 +1,5 @@
 /**
- * Data for the Reports Queue (/reports) and the report detail page (/reports/[id]).
+ * Data for the Reports queue (/reports) and the report detail page (/reports/[id]).
  *
  * The same switch as the Seekers and Hirers directories (see mock-mode.ts):
  * - Mock mode: the sample reports (mock-reports.ts) WITH this session's changes laid over them (mock-store.ts).

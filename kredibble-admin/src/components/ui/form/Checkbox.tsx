@@ -18,12 +18,13 @@ interface CheckboxProps {
   disabled?: boolean;
 }
 
+// Unslop pass: 24px on phones (a touch target), 20px from 640px.
 export function Checkbox({ checked, onChange, label, description, disabled }: CheckboxProps) {
   const id = useId();
   const descriptionId = `${id}-description`;
   return (
     <div className="flex items-start gap-3">
-      <span className="relative mt-0.5 inline-flex size-5 shrink-0">
+      <span className="relative mt-0.5 inline-flex size-6 shrink-0 min-[640px]:size-5">
         <input
           id={id}
           type="checkbox"
@@ -31,11 +32,11 @@ export function Checkbox({ checked, onChange, label, description, disabled }: Ch
           disabled={disabled}
           aria-describedby={description ? descriptionId : undefined}
           onChange={(event) => onChange(event.target.checked)}
-          className="peer size-5 cursor-pointer appearance-none rounded-inset border border-input bg-surface transition-colors checked:border-purple-600 checked:bg-purple-600 disabled:cursor-not-allowed disabled:bg-neutral-soft"
+          className="peer size-6 cursor-pointer min-[640px]:size-5 appearance-none rounded-inset border border-input bg-surface transition-colors checked:border-purple-600 checked:bg-purple-600 disabled:cursor-not-allowed disabled:bg-neutral-soft"
         />
         <Check
           size={14}
-          strokeWidth={3}
+          strokeWidth={2.5}
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 m-auto text-white opacity-0 peer-checked:opacity-100"
         />

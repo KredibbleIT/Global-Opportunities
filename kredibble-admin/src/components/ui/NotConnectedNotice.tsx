@@ -23,7 +23,7 @@ export function NotConnectedNotice({ className, message }: { className?: string;
         className,
       )}
     >
-      <Info size={16} aria-hidden="true" />
+      <Info size={16} strokeWidth={1.75} aria-hidden="true" />
       {message ?? "This page isn't connected to live data yet. What you see is sample data."}
     </p>
   );

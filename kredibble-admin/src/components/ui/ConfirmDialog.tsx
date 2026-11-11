@@ -97,7 +97,7 @@ function DialogBody({
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
-        className="w-full max-w-md rounded-card border border-line bg-surface p-6 shadow-pop"
+        className="dialog-enter w-full max-w-md rounded-card border border-line bg-surface p-6 shadow-pop"
       >
         <h2 id={titleId} className="card-title">
           {title}

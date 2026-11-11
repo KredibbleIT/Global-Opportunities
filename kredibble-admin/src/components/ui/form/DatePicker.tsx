@@ -350,7 +350,7 @@ function Calendar({ dialogRef, dialogId, titleId, label, value, min, max, today,
       aria-label={label}
       data-testid="date-picker-calendar"
       onKeyDown={onDialogKey}
-      className={cn(sheet ? "sheet-enter absolute inset-x-0 bottom-0 rounded-t-[20px] bg-surface pb-[max(env(safe-area-inset-bottom),12px)] shadow-pop" : "w-[21rem] rounded-control border border-line bg-surface p-3 shadow-pop")}
+      className={cn(sheet ? "sheet-enter absolute inset-x-0 bottom-0 rounded-t-[20px] bg-surface pb-[max(env(safe-area-inset-bottom),12px)] shadow-pop" : "pop-enter w-[21rem] rounded-control border border-line bg-surface p-3 shadow-pop")}
     >
       {sheet && (
         <>
@@ -360,7 +360,7 @@ function Calendar({ dialogRef, dialogId, titleId, label, value, min, max, today,
               {label}
             </h2>
             <button type="button" onClick={onClose} aria-label="Close" className={NAV}>
-              <X size={20} strokeWidth={1.75} aria-hidden="true" />
+              <X size={18} strokeWidth={1.75} aria-hidden="true" />
             </button>
           </div>
         </>
@@ -368,13 +368,13 @@ function Calendar({ dialogRef, dialogId, titleId, label, value, min, max, today,
       <div className={cn(sheet && "px-3")}>
         <div className="flex items-center justify-between gap-1 pb-2">
           <button type="button" aria-label="Previous month" onClick={() => moveTo(addMonths(focusDate, -1), false)} className={NAV}>
-            <ChevronLeft size={20} strokeWidth={1.75} aria-hidden="true" />
+            <ChevronLeft size={18} strokeWidth={1.75} aria-hidden="true" />
           </button>
           <p aria-live="polite" data-testid="date-picker-month" className="font-display text-sm font-semibold text-ink">
             {MONTH_NAMES[parts.month - 1]} {parts.year}
           </p>
           <button type="button" aria-label="Next month" onClick={() => moveTo(addMonths(focusDate, 1), false)} className={NAV}>
-            <ChevronRight size={20} strokeWidth={1.75} aria-hidden="true" />
+            <ChevronRight size={18} strokeWidth={1.75} aria-hidden="true" />
           </button>
         </div>
         <div ref={gridRef} role="grid" aria-label={`${MONTH_NAMES[parts.month - 1]} ${parts.year}`} onKeyDown={onGridKey}>

@@ -6,7 +6,7 @@
  *
  * Why: the detail pages, the list pages, the sidebar pills, the breadcrumb pill and the Overview
  * counts must tell the same story. Suspend a seeker and the Seekers list shows Suspended; approve
- * the last pending document and the Verification Queue row becomes Approved while the pending count
+ * the last pending document and the Verification queue row becomes Approved while the pending count
  * drops by one everywhere.
  *
  * How it works

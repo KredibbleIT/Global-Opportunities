@@ -35,6 +35,8 @@ export type Column<T> = ColumnBase &
         type: "primary";
         title: (row: T) => string;
         subtitle?: (row: T) => string | undefined;
+        /** 1 keeps the subtitle on one line with an ellipsis (an email address has no spaces, so two lines split it mid-word). Default 2. */
+        subtitleLines?: 1 | 2;
         /** 2 lets a long title wrap to two lines (full text in a tooltip) instead of one cut line. Events, Grants, report targets, articles. */
         titleLines?: 1 | 2;
         /** Leading 36px tile: an icon tile, or a thumbnail when `imageSrc` returns a URL. */

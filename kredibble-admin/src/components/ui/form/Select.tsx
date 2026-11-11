@@ -231,7 +231,7 @@ export function Select<T extends string>({
             {option.description && <span className="caption block">{option.description}</span>}
           </span>
           {option.badge && <span className="caption shrink-0">{option.badge}</span>}
-          {isSelected && <Check size={16} strokeWidth={2.25} aria-hidden="true" className="shrink-0 text-purple-700" />}
+          {isSelected && <Check size={16} strokeWidth={1.75} aria-hidden="true" className="shrink-0 text-purple-700" />}
         </li>
       );
     });
@@ -255,7 +255,7 @@ export function Select<T extends string>({
       >
         {Icon && <Icon size={18} strokeWidth={1.75} aria-hidden="true" className="shrink-0 text-muted" />}
         <span className={cn("min-w-0 flex-1 break-words", !selected && "text-muted")}>{selected ? selected.label : placeholder}</span>
-        <ChevronDown size={16} strokeWidth={2} aria-hidden="true" className={cn("shrink-0 text-muted transition-transform", open && "rotate-180")} />
+        <ChevronDown size={16} strokeWidth={1.75} aria-hidden="true" className={cn("shrink-0 text-muted transition-transform", open && "rotate-180")} />
       </button>
 
       {open && !asSheet && typeof document !== "undefined" &&
@@ -268,7 +268,7 @@ export function Select<T extends string>({
             tabIndex={-1}
             // Fixed to the trigger by useFloatingPanel (data-driven numbers, so inline); hidden for the one frame before it has measured.
             style={{ position: "fixed", top: position?.top, bottom: position?.bottom, left: position?.left ?? 0, width: position?.width, maxHeight: position?.maxHeight, visibility: position ? "visible" : "hidden" }}
-            className={cn(FLOATING_Z, "overflow-auto rounded-control border border-line bg-surface p-1 shadow-pop")}
+            className={cn(FLOATING_Z, "pop-enter overflow-auto rounded-control border border-line bg-surface p-1 shadow-pop")}
           >
             {renderOptions(() => "min-h-10 py-2")}
           </ul>,
@@ -298,7 +298,7 @@ export function Select<T extends string>({
                   aria-label="Close"
                   className="inline-flex size-10 shrink-0 items-center justify-center rounded-inset text-muted transition-colors hover:bg-neutral-soft hover:text-ink"
                 >
-                  <X size={20} strokeWidth={1.75} aria-hidden="true" />
+                  <X size={18} strokeWidth={1.75} aria-hidden="true" />
                 </button>
               </div>
               <ul

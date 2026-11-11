@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Hirers Directory: every hirer / company account, with text search.
+ * Hirers directory: every hirer / company account, with text search.
  * Built on the shared list template; this file holds the column config, the search and the data.
  * Data: mock hirer accounts (src/lib/mock-hirers.ts), unchanged.
  */
@@ -40,7 +40,7 @@ export default function HirersDirectoryPage() {
 
   return (
     <ListPage
-      title="Hirers Directory"
+      title="Hirers directory"
       subtitle={rows ? `${pluralize(rows.length, "hirer/company account")} registered on the platform.` : "Hirer/company accounts registered on the platform."}
       toolbar={
         <TableToolbar

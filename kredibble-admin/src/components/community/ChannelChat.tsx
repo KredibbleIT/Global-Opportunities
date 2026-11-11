@@ -125,7 +125,7 @@ export function ChannelChat({ channelId }: { channelId: string }) {
                   aria-expanded={openThread === post.id}
                   className="caption inline-flex items-center gap-1 font-semibold text-purple-700 hover:underline"
                 >
-                  <MessageSquare size={14} aria-hidden="true" />
+                  <MessageSquare size={14} strokeWidth={2} aria-hidden="true" />
                   {post.replyCount === 0 ? "No replies" : `${post.replyCount} ${post.replyCount === 1 ? "reply" : "replies"}`}
                   {openThread === post.id ? " (hide)" : " (view)"}
                 </button>

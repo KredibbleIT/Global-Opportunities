@@ -1,5 +1,5 @@
 /**
- * Mock data for the Trust & Safety Reports Queue.
+ * Mock data for the Trust & Safety Reports queue.
  * There is no report/flag UI anywhere in kredibble-app yet (consumer-facing
  * "Report" buttons are a dependency this admin surface is waiting on) — this
  * models what the queue would consume once that exists.

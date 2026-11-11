@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Opportunities Queue: ONE list for everything that can become an opportunity on the platform.
+ * Opportunities queue: ONE list for everything that can become an opportunity on the platform.
  *   - Hirer-submitted postings (Jobs, Internships, Events, Grants), moderated here: pending, approved, rejected.
  *   - Staff-curated listings (also scholarships and fellowships), made by the desk: draft or published, and gated by
  *     vetting ("Listings must be vetted before they can be published").
@@ -119,7 +119,7 @@ export default function OpportunitiesQueuePage() {
 
   return (
     <ListPage
-      title="Opportunities Queue"
+      title="Opportunities queue"
       subtitle={`Review postings from hirers and manage the listings the desk curates.${rows ? ` ${pendingCount} awaiting review.` : ""}`}
       action={can("listings_curate", "edit") ? { label: "New listing", href: "/opportunities/new", icon: Plus } : undefined}
       toolbar={

@@ -129,7 +129,7 @@ export function StagesTab() {
                   </Field>
                   {closed && (
                     <p data-testid={`stage-closed-${stage}`} className="caption flex items-start gap-1.5 pt-3">
-                      <Lock size={14} strokeWidth={1.75} aria-hidden="true" className="mt-px shrink-0" />
+                      <Lock size={14} strokeWidth={2} aria-hidden="true" className="mt-px shrink-0" />
                       Counts as closed (cannot be changed)
                     </p>
                   )}

@@ -113,7 +113,7 @@ export function RailGroup({ group, pathname, counts, flyoutOpen, onFlyoutChange 
             const next = event.relatedTarget as Node | null;
             if (next && !flyoutRef.current?.contains(next) && !triggerRef.current?.contains(next)) onFlyoutChange(false);
           }}
-          className="dark-surface fixed z-50 w-55 rounded-card bg-sb-bg shadow-pop"
+          className="pop-enter dark-surface fixed z-50 w-55 rounded-card bg-sb-bg shadow-pop"
           style={{ left: position.left, top: position.top }}
         >
           <div className="glass rounded-card p-2">

@@ -18,10 +18,10 @@
  * view-only role) there is no menu and no drag handle at all.
  *
  * Look: a column has its label, a count pill, an optional marker (e.g. "Closed") and a thin purple line; cards are white
- * with a 1px line border. A column is never narrower than 11rem (176px), so all six columns need 1116px of board (6 x 176px
- * plus five 12px gaps). The board is the page width minus the sidebar (248px expanded, 72px as a rail) and 56px of padding, so:
- * it FITS at 1440px and wider with the sidebar open (1136px of board) and from 1280px with the sidebar collapsed to the rail
- * (1152px); it SCROLLS at 1280px with the sidebar open (976px) and at 1024px (720px). The measured numbers are in the
+ * with a 1px line border. A column is never narrower than 13rem (208px; at 11rem names such as "Safaricom" split mid-word), so all six
+ * columns need 1308px of board (6 x 208px plus five 12px gaps). The board is the page width minus the sidebar (248px expanded, 72px
+ * as a rail) and 56px of padding, so it FITS on wide screens (1920px) and SCROLLS at 1440px with the sidebar open (1136px of board),
+ * at 1280px (976px, or 1152px as a rail) and at 1024px (720px). The measured numbers are in the
  * "Partners board width" test. When it scrolls, it does so sideways inside itself (the page never scrolls sideways), a soft
  * fade shows on each edge that has more columns, and the scroller takes keyboard focus (arrow keys, Home and End scroll it).
  * Structure ideas (native drag and drop, a column drop highlight, a live region) come from the 21st.dev "Kanban Board"
@@ -206,7 +206,7 @@ export function KanbanBoard<T>({ ariaLabel, columns, items, getId, getColumnKey,
 
   if (loading) {
     return (
-      <div aria-busy="true" aria-label={`${ariaLabel} (loading)`} className="grid grid-flow-col auto-cols-[minmax(11rem,1fr)] gap-3 overflow-hidden max-sm:auto-cols-[100%]">
+      <div aria-busy="true" aria-label={`${ariaLabel} (loading)`} className="grid grid-flow-col auto-cols-[minmax(13rem,1fr)] gap-3 overflow-hidden max-sm:auto-cols-[100%]">
         {columns.slice(0, phone ? 1 : columns.length).map((column) => (
           <div key={column.key} className="space-y-3">
             <Skeleton className="h-5 w-24" />
@@ -270,7 +270,7 @@ export function KanbanBoard<T>({ ariaLabel, columns, items, getId, getColumnKey,
         }}
         // "relative": the screen-reader-only text inside the cards is absolutely positioned; without a positioned scroller it would
         // escape the scrolling box and make the whole PAGE scroll sideways.
-        className="no-scrollbar relative grid grid-flow-col auto-cols-[minmax(11rem,1fr)] gap-3 overflow-x-auto pb-2"
+        className="no-scrollbar relative grid grid-flow-col auto-cols-[minmax(13rem,1fr)] gap-3 overflow-x-auto pb-2"
       >
         {columns.map((column) => {
           const cards = inColumn(column.key);
@@ -316,12 +316,12 @@ export function KanbanBoard<T>({ ariaLabel, columns, items, getId, getColumnKey,
       {/* Arrow buttons while there is more to scroll to in that direction (the fades only hint; these are clickable). */}
       {edges.start && (
         <button type="button" data-testid="kanban-scroll-start" aria-label="Scroll the board left" onClick={() => scrollBoard(-1)} className="absolute left-1 top-24 z-20 inline-flex size-10 items-center justify-center rounded-pill border border-line bg-surface text-ink shadow-pop transition-colors hover:bg-surface-2">
-          <ChevronLeft size={20} strokeWidth={2} aria-hidden="true" />
+          <ChevronLeft size={18} strokeWidth={1.75} aria-hidden="true" />
         </button>
       )}
       {edges.end && (
         <button type="button" data-testid="kanban-scroll-end" aria-label="Scroll the board right" onClick={() => scrollBoard(1)} className="absolute right-1 top-24 z-20 inline-flex size-10 items-center justify-center rounded-pill border border-line bg-surface text-ink shadow-pop transition-colors hover:bg-surface-2">
-          <ChevronRight size={20} strokeWidth={2} aria-hidden="true" />
+          <ChevronRight size={18} strokeWidth={1.75} aria-hidden="true" />
         </button>
       )}
       {liveRegion}

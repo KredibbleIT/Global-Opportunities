@@ -136,7 +136,7 @@ export function Dialog({ title, description, onClose, children, footer, size = "
         aria-describedby={description ? descriptionId : undefined}
         data-testid={testId}
         className={cn(
-          "flex max-h-[90vh] w-full flex-col rounded-card border border-line bg-surface shadow-pop",
+          "dialog-enter flex max-h-[90vh] w-full flex-col rounded-card border border-line bg-surface shadow-pop",
           "max-sm:max-h-[92vh] max-sm:rounded-b-none",
           SIZES[size],
         )}
@@ -160,7 +160,7 @@ export function Dialog({ title, description, onClose, children, footer, size = "
               aria-label={`Close ${title}`}
               className="inline-flex size-10 shrink-0 items-center justify-center rounded-control text-ink transition-colors duration-150 hover:bg-neutral-soft"
             >
-              <X size={20} strokeWidth={1.75} aria-hidden="true" />
+              <X size={18} strokeWidth={1.75} aria-hidden="true" />
             </button>
           )}
         </header>

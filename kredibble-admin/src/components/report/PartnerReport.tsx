@@ -32,7 +32,7 @@ function DeltaText({ delta, estimated }: { delta: Delta; estimated: boolean }) {
   const Icon = delta.kind === "up" ? ArrowUp : delta.kind === "down" ? ArrowDown : delta.kind === "flat" ? Minus : null;
   return (
     <p data-testid="metric-delta" data-kind={delta.kind} className={cn("flex items-start gap-1 text-xs font-semibold leading-4", delta.kind === "up" ? "text-success" : delta.kind === "down" ? "text-danger" : "text-muted")}>
-      {Icon && <Icon size={12} strokeWidth={2.25} aria-hidden="true" className="mt-0.5 shrink-0" />}
+      {Icon && <Icon size={12} strokeWidth={2} aria-hidden="true" className="mt-0.5 shrink-0" />}
       <span>
         {delta.text}
         {estimated && delta.percent !== null && <span className="font-normal"> (est.)</span>}

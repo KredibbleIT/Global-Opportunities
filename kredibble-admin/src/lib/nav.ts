@@ -57,7 +57,7 @@ export const NAV_GROUPS: NavGroup[] = [
     group: "Opportunities",
     icon: Briefcase,
     children: [
-      { label: "Opportunities Queue", href: "/opportunities", icon: Briefcase, screen: "opportunities_queue", accent: "orange" },
+      { label: "Opportunities queue", href: "/opportunities", icon: Briefcase, screen: "opportunities_queue", accent: "orange" },
       { label: "Events", href: "/events", icon: CalendarDays, screen: "events" },
       { label: "Grants", href: "/grants", icon: HandCoins, screen: "grants" },
       { label: "Programs", href: "/programs", icon: GraduationCap, screen: "programs", accent: "orange" },
@@ -87,15 +87,15 @@ export const NAV_GROUPS: NavGroup[] = [
     group: "Trust & safety",
     icon: ShieldCheck,
     children: [
-      { label: "Verification Queue", href: "/verification", icon: ShieldCheck, screen: "verification", countKey: "pendingVerifications" },
-      { label: "Reports Queue", href: "/reports", icon: Flag, screen: "reports_queue", countKey: "openReports" },
+      { label: "Verification queue", href: "/verification", icon: ShieldCheck, screen: "verification", countKey: "pendingVerifications" },
+      { label: "Reports queue", href: "/reports", icon: Flag, screen: "reports_queue", countKey: "openReports" },
     ],
   },
   {
     group: "Content",
     icon: FileText,
     children: [
-      { label: "Career Resources", href: "/content/articles", icon: FileText, screen: "career_resources" },
+      { label: "Career resources", href: "/content/articles", icon: FileText, screen: "career_resources" },
       { label: "Reference data", href: "/reference-data", icon: Database, screen: "reference_data" },
       { label: "Social", href: "/social", icon: Share2, screen: "social" },
       { label: "Testimonials", href: "/testimonials", icon: Quote, screen: "testimonials", countKey: "pendingTestimonials" },

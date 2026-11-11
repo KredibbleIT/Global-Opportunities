@@ -98,7 +98,7 @@ export default function EventDetailPage() {
               </p>
             </InfoCard>
 
-            <InfoCard title="Adjust Capacity">
+            <InfoCard title="Adjust capacity">
               <div className="flex max-w-xs items-center gap-2">
                 <input
                   type="number"

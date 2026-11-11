@@ -70,7 +70,7 @@ export function CuratedListingDetail({ id }: { id: string }) {
 
   if (status === "loading") return <DetailSkeleton />;
   if (status === "error") return <DetailError message={error ?? "Could not load this listing."} onRetry={retry} />;
-  if (!record) return <DetailNotFound noun="Opportunity" listLabel="Opportunities Queue" listHref="/opportunities" />;
+  if (!record) return <DetailNotFound noun="Opportunity" listLabel="Opportunities queue" listHref="/opportunities" />;
 
   const { listing, metrics } = record;
   const type = TYPE_META[listing.type];

@@ -23,8 +23,8 @@ import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { useToast } from "@/components/ui/Toast";
 
 const AUDIENCE_OPTIONS: { value: Audience; label: string }[] = [
-  { value: "seekers", label: "All Seekers" },
-  { value: "hirers", label: "All Hirers" },
+  { value: "seekers", label: "All seekers" },
+  { value: "hirers", label: "All hirers" },
   { value: "both", label: "Everyone" },
 ];
 

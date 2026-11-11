@@ -208,7 +208,7 @@ export function Menu({
         <>
           {item.checked !== undefined && (
             <span aria-hidden="true" className={cn("flex size-4 shrink-0 items-center justify-center rounded-inset border", item.checked ? "border-purple-600 bg-purple-600 text-white" : "border-input")}>
-              {item.checked && <Check size={12} strokeWidth={3} />}
+              {item.checked && <Check size={12} strokeWidth={2.5} />}
             </span>
           )}
           {Icon && <Icon size={16} strokeWidth={1.75} aria-hidden="true" className="shrink-0" />}
@@ -216,7 +216,7 @@ export function Menu({
             {item.label}
             {item.hint && <span className="caption block font-normal">{item.hint}</span>}
           </span>
-          {item.current && <Check size={16} strokeWidth={2} aria-hidden="true" className="shrink-0 text-purple-700" />}
+          {item.current && <Check size={16} strokeWidth={1.75} aria-hidden="true" className="shrink-0 text-purple-700" />}
         </>
       );
 
@@ -297,7 +297,7 @@ export function Menu({
             onKeyDown={onMenuKeyDown}
             // Fixed to the trigger by useFloatingPanel; hidden for the one frame before it has measured.
             style={{ position: "fixed", top: position?.top, bottom: position?.bottom, left: position?.left ?? 0, maxHeight: position?.maxHeight, visibility: position ? "visible" : "hidden" }}
-            className={cn(FLOATING_Z, "w-max min-w-48 max-w-[calc(100vw-16px)] overflow-y-auto rounded-card border border-line bg-surface p-1 shadow-pop")}
+            className={cn(FLOATING_Z, "pop-enter w-max min-w-48 max-w-[calc(100vw-16px)] overflow-y-auto rounded-card border border-line bg-surface p-1 shadow-pop")}
           >
             {header && <div role="presentation">{header}</div>}
             {renderItems()}
@@ -328,7 +328,7 @@ export function Menu({
                   aria-label="Close"
                   className="inline-flex size-10 shrink-0 items-center justify-center rounded-inset text-muted transition-colors hover:bg-neutral-soft hover:text-ink"
                 >
-                  <X size={20} strokeWidth={1.75} aria-hidden="true" />
+                  <X size={18} strokeWidth={1.75} aria-hidden="true" />
                 </button>
               </div>
               <div id={menuId} role="menu" aria-label={label} onKeyDown={onMenuKeyDown} className="space-y-0.5 px-2 pb-3">

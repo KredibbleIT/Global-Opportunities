@@ -3,8 +3,8 @@ import type { Audience } from "@/lib/notification-store";
 
 /** How an audience is named in sentences and history rows. */
 export const AUDIENCE_LABEL: Record<Audience, string> = {
-  seekers: "All Seekers",
-  hirers: "All Hirers",
+  seekers: "All seekers",
+  hirers: "All hirers",
   both: "Everyone",
 };
 

@@ -1,5 +1,5 @@
 /**
- * Mock data for the Opportunities Queue.
+ * Mock data for the Opportunities queue.
  * Mirrors PostedOpportunity from kredibble-app/src/constants/authStore.ts,
  * plus a `moderationStatus` field the mobile app doesn't have yet — that
  * state only needs to exist on the admin side.

@@ -27,11 +27,12 @@ export function KeyValueList({ items }: { items: KeyValueItem[] }) {
 
   return (
     <div className="@container">
-      <dl data-testid="key-value-list" className="grid grid-cols-1 gap-x-4 @[24rem]:grid-cols-[140px_minmax(0,1fr)] @[24rem]:gap-y-3">
+      <dl data-testid="key-value-list" className="grid grid-cols-1 gap-x-4 @[24rem]:grid-cols-[140px_minmax(0,1fr)] @[24rem]:gap-y-3 [&>div:last-child>dd]:mb-0">
         {visible.map((item) => (
           <div key={item.label} className="contents">
             <dt className="caption pt-0.5">{item.label}</dt>
-            <dd className="input-text mb-3 min-w-0 break-words text-left text-ink last:mb-0 @[24rem]:mb-0">{item.value}</dd>
+            {/* Unslop pass: 12px between stacked items. The old last:mb-0 matched every value (each is the last child of its own wrapper), so stacked items had no gap. */}
+            <dd className="input-text mb-3 min-w-0 break-words text-left text-ink @[24rem]:mb-0">{item.value}</dd>
           </div>
         ))}
       </dl>

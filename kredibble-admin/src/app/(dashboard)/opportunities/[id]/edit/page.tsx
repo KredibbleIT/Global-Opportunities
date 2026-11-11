@@ -27,7 +27,7 @@ export default function EditListingPage() {
       ) : status === "error" ? (
         <DetailError message={error ?? "Could not load this listing."} onRetry={retry} />
       ) : !record ? (
-        <DetailNotFound noun="Listing" listLabel="Opportunities Queue" listHref="/opportunities" />
+        <DetailNotFound noun="Listing" listLabel="Opportunities queue" listHref="/opportunities" />
       ) : (
         // key: a different listing starts a fresh form
         <ListingForm key={record.id} listing={record} />

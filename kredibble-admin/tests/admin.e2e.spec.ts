@@ -183,9 +183,9 @@ test.describe('Admin Logout', () => {
     await page.goto(`${BASE_URL}/`);
     await expect(page).toHaveURL(`${BASE_URL}/`);
 
-    // The sidebar's real label is "Log Out" (the old selector looked for "Sign out" / "Logout",
+    // The sidebar's real label is "Log out" (the old selector looked for "Sign out" / "Logout",
     // matched nothing, and the whole block was skipped silently).
-    const logoutButton = page.locator('aside button:has-text("Log Out")');
+    const logoutButton = page.locator('aside button:has-text("Log out")');
     await expect(logoutButton).toBeVisible();
     await logoutButton.click();
     await expect(page).toHaveURL(`${BASE_URL}/login`);
@@ -214,7 +214,7 @@ test.describe('Admin Dashboard Functionality', () => {
     await expect(sidebar).toBeVisible();
     // Check for key navigation items (scoped to the sidebar; the page body repeats some words)
     // The nav is two-level now: the active group (Overview) is open, the others are collapsed.
-    // "Dashboard" is labelled "Overview"; Seekers / Hirers / Opportunities Queue sit inside groups.
+    // "Dashboard" is labelled "Overview"; Seekers / Hirers / Opportunities queue sit inside groups.
     await expect(sidebar.getByRole('button', { name: 'Dashboard' })).toHaveAttribute('aria-expanded', 'true'); // group was "Overview"
     await expect(sidebar.getByRole('link', { name: 'Overview' })).toBeVisible(); // its child keeps the name
     await expect(sidebar.getByRole('link', { name: 'Insights' })).toBeVisible();
@@ -222,7 +222,7 @@ test.describe('Admin Dashboard Functionality', () => {
     await expect(sidebar.getByRole('link', { name: 'Seekers' })).toBeVisible();
     await expect(sidebar.getByRole('link', { name: 'Hirers' })).toBeVisible();
     await sidebar.getByRole('button', { name: 'Opportunities' }).click();
-    await expect(sidebar.getByRole('link', { name: 'Opportunities Queue' })).toBeVisible();
+    await expect(sidebar.getByRole('link', { name: 'Opportunities queue' })).toBeVisible();
   });
 });
 
@@ -437,7 +437,7 @@ test.describe('Mobile drawer', () => {
     await expect(sidebar).toBeHidden(); // off-canvas and invisible while closed
     await page.getByRole('button', { name: 'Open navigation' }).click();
     await expect(sidebar).toBeVisible();
-    await expect(sidebar.getByRole('button', { name: 'Log Out' })).toBeVisible();
+    await expect(sidebar.getByRole('button', { name: 'Log out' })).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(sidebar).toBeHidden();
   });
@@ -490,7 +490,7 @@ test.describe('Sidebar: the active group is always open', () => {
       [...document.querySelectorAll('aside nav button[aria-expanded="true"]')].map((el) => el.textContent?.trim()),
     );
 
-  // The reported repro: rail -> Dashboard flyout -> Opportunities flyout -> Opportunities Queue -> expand.
+  // The reported repro: rail -> Dashboard flyout -> Opportunities flyout -> Opportunities queue -> expand.
   test('rail -> flyouts -> navigate -> expand opens the active group', async ({ page }) => {
     await page.context().addCookies([{ name: 'sidebar', value: 'collapsed', url: BASE_URL }]);
     await signedIn(page);
@@ -499,7 +499,7 @@ test.describe('Sidebar: the active group is always open', () => {
 
     await aside.getByRole('button', { name: 'Dashboard' }).click(); // Dashboard flyout open ...
     await aside.getByRole('button', { name: 'Opportunities' }).click(); // ... then straight to another flyout
-    await page.getByRole('region', { name: 'Opportunities' }).getByRole('link', { name: 'Opportunities Queue' }).click();
+    await page.getByRole('region', { name: 'Opportunities' }).getByRole('link', { name: 'Opportunities queue' }).click();
     await expect(page).toHaveURL(`${BASE_URL}/opportunities`);
 
     await page.getByRole('button', { name: 'Expand sidebar' }).click();
@@ -507,7 +507,7 @@ test.describe('Sidebar: the active group is always open', () => {
     // Only the active group is open: Dashboard was auto-opened (active) and was never opened by hand,
     // so it closed when navigation moved to Opportunities.
     expect(await expandedGroups(page)).toEqual(['Opportunities']);
-    await expect(aside.getByRole('link', { name: 'Opportunities Queue' })).toHaveAttribute('aria-current', 'page');
+    await expect(aside.getByRole('link', { name: 'Opportunities queue' })).toHaveAttribute('aria-current', 'page');
   });
 
   test('the same repro with Ctrl+B and Esc between flyouts', async ({ page }) => {
@@ -539,7 +539,7 @@ test.describe('Sidebar: the active group is always open', () => {
     expect((await expandedGroups(page)).sort()).toEqual(['Opportunities', 'People']);
   });
 
-  test('Seekers -> Verification Queue leaves only Trust & safety open', async ({ page }) => {
+  test('Seekers -> Verification queue leaves only Trust & safety open', async ({ page }) => {
     await signedIn(page);
     await page.goto(`${BASE_URL}/seekers`);
     const aside = page.locator('aside');
@@ -547,7 +547,7 @@ test.describe('Sidebar: the active group is always open', () => {
     expect(await expandedGroups(page)).toEqual(['People']);
 
     await aside.getByRole('button', { name: 'Trust & safety' }).click(); // opened by hand
-    await aside.getByRole('link', { name: 'Verification Queue' }).click();
+    await aside.getByRole('link', { name: 'Verification queue' }).click();
     await expect(page).toHaveURL(`${BASE_URL}/verification`);
     // People was only auto-opened, so it closed; Trust & safety is open (active + opened by hand).
     expect(await expandedGroups(page)).toEqual(['Trust & safety']);
@@ -743,14 +743,14 @@ test.describe('Overview error hygiene', () => {
 // They reuse the saved session; no extra logins.
 // ---------------------------------------------------------------------------------------------
 const LIST_PAGES = [
-  { path: '/verification', title: 'Verification Queue', mockOnly: true },
-  { path: '/opportunities', title: 'Opportunities Queue', mockOnly: true },
-  { path: '/seekers', title: 'Seekers Directory' },
-  { path: '/hirers', title: 'Hirers Directory' },
+  { path: '/verification', title: 'Verification queue', mockOnly: true },
+  { path: '/opportunities', title: 'Opportunities queue', mockOnly: true },
+  { path: '/seekers', title: 'Seekers directory' },
+  { path: '/hirers', title: 'Hirers directory' },
   // Channels come from the real API outside mock mode, and the e2e API has none, so rows only exist in mock mode.
-  { path: '/community', title: 'Community Channels', mockOnly: true },
-  { path: '/reports', title: 'Reports Queue' },
-  { path: '/content/articles', title: 'Career Resources' },
+  { path: '/community', title: 'Community channels', mockOnly: true },
+  { path: '/reports', title: 'Reports queue' },
+  { path: '/content/articles', title: 'Career resources' },
   { path: '/events', title: 'Events' },
   { path: '/grants', title: 'Grants' },
   { path: '/team', title: 'Team', detailBase: '/staff' },
@@ -868,11 +868,11 @@ test.describe('List pages: template', () => {
     expect(/\p{Extended_Pictographic}/u.test(text)).toBe(false);
   });
 
-  test('action buttons: New Article and Invite Staff', async ({ page }) => {
+  test('action buttons: New article and Invite staff', async ({ page }) => {
     await page.goto(`${BASE_URL}/content/articles`);
-    await expect(page.getByRole('link', { name: 'New Article' })).toHaveAttribute('href', '/content/articles/new');
+    await expect(page.getByRole('link', { name: 'New article' })).toHaveAttribute('href', '/content/articles/new');
     await page.goto(`${BASE_URL}/staff`);
-    await expect(page.getByRole('link', { name: 'Invite Staff' })).toHaveAttribute('href', '/staff/invite');
+    await expect(page.getByRole('link', { name: 'Invite staff' })).toHaveAttribute('href', '/staff/invite');
   });
 
   test('progress columns show the figure, a bar and the percentage (Events, Grants)', async ({ page }) => {
@@ -918,8 +918,8 @@ test.describe('Mock counts agree everywhere', () => {
     // Sidebar pills (open the group that holds them)
     const aside = page.locator('aside');
     await aside.getByRole('button', { name: 'Trust & safety' }).click();
-    await expect(aside.getByRole('link', { name: /^Verification Queue/ })).toContainText(String(pendingVerifications));
-    await expect(aside.getByRole('link', { name: /^Reports Queue/ })).toContainText(String(openReports));
+    await expect(aside.getByRole('link', { name: /^Verification queue/ })).toContainText(String(pendingVerifications));
+    await expect(aside.getByRole('link', { name: /^Reports queue/ })).toContainText(String(openReports));
 
     // The Verification list's Pending filter holds exactly that many rows; the breadcrumb pill matches.
     await page.goto(`${BASE_URL}/verification`);
@@ -1104,7 +1104,7 @@ test.describe('Shared mock store', () => {
   test('approving the last pending document updates the row, the count and the sidebar pill', async ({ page }) => {
     await page.goto(`${BASE_URL}/verification/comp-2`, { timeout: 30_000 });
     const aside = page.locator('aside');
-    const pill = aside.getByRole('link', { name: /^Verification Queue/ });
+    const pill = aside.getByRole('link', { name: /^Verification queue/ });
     await expect(pill).toContainText(String(MOCK_COUNTS.pendingVerifications));
 
     await page.getByRole('button', { name: 'Approve Proof of Organization' }).click();
@@ -1310,7 +1310,7 @@ test.describe('Forms: staff invite', () => {
 
   test('single 640px column; role options each show a one-line description', async ({ page }) => {
     await page.goto(`${BASE_URL}/staff/invite`, { timeout: 30_000 });
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Invite Staff');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Invite staff');
     const width = await page.getByLabel('Full name').evaluate((el) => el.closest('.max-w-160')!.getBoundingClientRect().width);
     expect(width).toBeLessThanOrEqual(640);
 
@@ -1363,7 +1363,7 @@ test.describe('Reference data', () => {
 
   test('groups, list tabs with counts, and the add / duplicate / remove rules', async ({ page }) => {
     await page.goto(`${BASE_URL}/reference-data`, { timeout: 30_000 });
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Reference Data');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Reference data');
     const group = page.getByRole('radiogroup', { name: 'Reference data group' });
     await expect(group.getByRole('radio')).toHaveText(['Seekers', 'Hirers', 'Grants']);
 
@@ -1509,12 +1509,12 @@ test.describe('Notifications', () => {
     // Live preview follows what is typed, and the audience control.
     const preview = page.getByRole('region', { name: 'Preview' });
     await expect(preview).toContainText('Maintenance tonight');
-    await page.getByRole('radio', { name: 'All Hirers' }).click();
-    await expect(preview).toContainText('All Hirers');
+    await page.getByRole('radio', { name: 'All hirers' }).click();
+    await expect(preview).toContainText('All hirers');
 
     await send.click();
     const dialog = page.getByRole('alertdialog');
-    await expect(dialog).toContainText('All Hirers');
+    await expect(dialog).toContainText('All hirers');
     await expect(dialog).toContainText('cannot be undone');
     await page.keyboard.press('Escape');
     await expect(dialog).toHaveCount(0);
@@ -1522,7 +1522,7 @@ test.describe('Notifications', () => {
 
     await send.click();
     await page.getByRole('alertdialog').getByRole('button', { name: 'Send notification' }).click();
-    await expect(page.getByText('The notification was sent to All Hirers.')).toBeVisible();
+    await expect(page.getByText('The notification was sent to All hirers.')).toBeVisible();
     await expect(page.getByLabel('Title')).toHaveValue('');
     await expect(page.getByRole('textbox', { name: 'Message' })).toHaveValue('');
     await expect(page.getByRole('region', { name: 'History' }).getByRole('listitem').first()).toContainText('Maintenance tonight');
@@ -1532,11 +1532,11 @@ test.describe('Notifications', () => {
 test.describe('Team', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
-  test('Members tab: the list with Invite Staff; a row opens the member page', async ({ page }) => {
+  test('Members tab: the list with Invite staff; a row opens the member page', async ({ page }) => {
     await page.goto(`${BASE_URL}/team`, { timeout: 30_000 });
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Team');
     await expect(page.getByRole('tab', { name: 'Members' })).toHaveAttribute('aria-selected', 'true');
-    await expect(page.getByRole('link', { name: 'Invite Staff' })).toHaveAttribute('href', '/staff/invite');
+    await expect(page.getByRole('link', { name: 'Invite staff' })).toHaveAttribute('href', '/staff/invite');
     await expect(page.locator('main tbody tr').first()).toBeVisible();
   });
 
@@ -1590,7 +1590,7 @@ test.describe('Team', () => {
       await expect(page.getByText('Role permissions were saved.')).toBeVisible();
     }
     await page.getByRole('tab', { name: 'Members' }).click();
-    await page.getByRole('link', { name: 'Invite Staff' }).click(); // client-side: the store survives
+    await page.getByRole('link', { name: 'Invite staff' }).click(); // client-side: the store survives
     await page.getByRole('combobox', { name: 'Role', exact: true }).click();
     await expect(page.getByRole('option', { name: /^Support/ })).toContainText('suspend accounts and send notifications');
   });
@@ -1756,7 +1756,7 @@ test.describe('Mock copy uses the brand', () => {
 test.describe('Forms: wording and layout fixes', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
-  test('GOD-T41: Career Resources has a search and a status filter whose counts follow the search; one draft is singular', async ({ page }) => {
+  test('GOD-T41: Career resources has a search and a status filter whose counts follow the search; one draft is singular', async ({ page }) => {
     await page.goto(`${BASE_URL}/content/articles`, { timeout: 30_000 });
     await expect(page.getByTestId('table-row').first()).toBeVisible();
     const radio = (name: string) => page.getByRole('radiogroup', { name: 'Filter by status' }).getByRole('radio', { name: new RegExp(`^${name}`) });
@@ -1986,7 +1986,7 @@ const AUDIT_ROUTES: { path: string; mockOnly?: string }[] = [
   { path: '/opportunities' },
   { path: '/opportunities/opp-1', mockOnly: 'opp-1 is a mock record id' },
   { path: '/reports' },
-  { path: '/reports/report-1', mockOnly: 'report-1 is a mock record id (the real run opens the seeded report in "Reports Queue: the real API")' },
+  { path: '/reports/report-1', mockOnly: 'report-1 is a mock record id (the real run opens the seeded report in "Reports queue: the real API")' },
   { path: '/seekers' },
   { path: '/seekers/seeker-1', mockOnly: 'seeker-1 is a mock record id' },
   { path: '/hirers' },
@@ -2488,7 +2488,7 @@ for (const width of [434, 390]) {
       }
     });
 
-    test('Invite Staff: the action bar bottom edge is the viewport bottom even though the form is short', async ({ page }) => {
+    test('Invite staff: the action bar bottom edge is the viewport bottom even though the form is short', async ({ page }) => {
       await page.goto(`${BASE_URL}/staff/invite`, { timeout: 30_000 });
       const bar = page.getByRole('button', { name: 'Send invite' }).locator('xpath=ancestor::div[contains(@class,"sticky")]');
       await expect.poll(async () => {
@@ -2742,11 +2742,11 @@ test.describe('Month selector', () => {
 // ---------------------------------------------------------------------------
 const NAV_ORDER = [
   'Overview', 'Insights', 'Monthly report', 'Scorecard',
-  'Opportunities Queue', 'Events', 'Grants', 'Programs',
+  'Opportunities queue', 'Events', 'Grants', 'Programs',
   'Partners', 'Network', 'Ambassadors', 'Leaderboard',
   'Seekers', 'Hirers', 'Channels', 'Database',
-  'Verification Queue', 'Reports Queue',
-  'Career Resources', 'Reference data', 'Social', 'Testimonials', 'Showcase',
+  'Verification queue', 'Reports queue',
+  'Career resources', 'Reference data', 'Social', 'Testimonials', 'Showcase',
   'Notifications', 'Team', 'Settings',
 ];
 const slugOf = (label: string) => label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
@@ -2756,17 +2756,17 @@ const slugOf = (label: string) => label.toLowerCase().replace(/[^a-z0-9]+/g, '-'
 const EXPECTED_NAV: Record<string, string[]> = {
   super_admin: NAV_ORDER,
   desk_lead: NAV_ORDER,
-  moderator: ['Overview', 'Scorecard', 'Seekers', 'Hirers', 'Channels', 'Verification Queue', 'Reports Queue', 'Opportunities Queue', 'Settings'],
+  moderator: ['Overview', 'Scorecard', 'Seekers', 'Hirers', 'Channels', 'Verification queue', 'Reports queue', 'Opportunities queue', 'Settings'],
   support: ['Overview', 'Scorecard', 'Seekers', 'Hirers', 'Settings'],
   partnerships_officer: ['Overview', 'Monthly report', 'Scorecard', 'Partners', 'Network', 'Ambassadors', 'Leaderboard', 'Showcase', 'Settings'],
-  opportunities_officer: ['Overview', 'Scorecard', 'Opportunities Queue', 'Events', 'Grants', 'Career Resources', 'Settings'],
+  opportunities_officer: ['Overview', 'Scorecard', 'Opportunities queue', 'Events', 'Grants', 'Career resources', 'Settings'],
   training_officer: ['Overview', 'Scorecard', 'Events', 'Programs', 'Network', 'Ambassadors', 'Settings'],
   database_officer: ['Overview', 'Scorecard', 'Network', 'Ambassadors', 'Database', 'Settings'],
-  communications_officer: ['Overview', 'Monthly report', 'Scorecard', 'Career Resources', 'Social', 'Testimonials', 'Showcase', 'Notifications', 'Settings'],
+  communications_officer: ['Overview', 'Monthly report', 'Scorecard', 'Career resources', 'Social', 'Testimonials', 'Showcase', 'Notifications', 'Settings'],
   social_media_manager: ['Overview', 'Scorecard', 'Social', 'Testimonials', 'Settings'],
   country_lead: ['Overview', 'Scorecard', 'Partners', 'Network', 'Ambassadors', 'Leaderboard', 'Programs', 'Database', 'Showcase', 'Settings'],
   admin_support: ['Overview', 'Scorecard', 'Team', 'Settings'],
-  'moderator,communications_officer': ['Overview', 'Monthly report', 'Scorecard', 'Seekers', 'Hirers', 'Channels', 'Verification Queue', 'Reports Queue', 'Career Resources', 'Social', 'Testimonials', 'Showcase', 'Notifications', 'Settings', 'Opportunities Queue'],
+  'moderator,communications_officer': ['Overview', 'Monthly report', 'Scorecard', 'Seekers', 'Hirers', 'Channels', 'Verification queue', 'Reports queue', 'Career resources', 'Social', 'Testimonials', 'Showcase', 'Notifications', 'Settings', 'Opportunities queue'],
 };
 
 const setDateTime = async (page: import('@playwright/test').Page, label: string, date: string, time: string) => {
@@ -2818,7 +2818,7 @@ test.describe('Roles: gated navigation (dev role cookie, mock mode)', () => {
     await page.keyboard.press('Control+k');
     const palette = page.getByRole('dialog');
     await expect(palette.getByRole('option', { name: /Seekers/ })).toBeVisible();
-    await expect(palette.getByRole('option', { name: /Verification Queue/ })).toHaveCount(0);
+    await expect(palette.getByRole('option', { name: /Verification queue/ })).toHaveCount(0);
     await page.keyboard.press('Escape');
     await page.locator('header button[aria-haspopup="menu"]').first().click();
     const items = await page.locator('[role="menu"] [role="menuitem"]').allInnerTexts(); // (the menu is drawn in a portal on <body>, above the page)
@@ -2852,14 +2852,14 @@ test.describe('Roles: gated navigation (dev role cookie, mock mode)', () => {
     await expect(page.getByTestId('no-access')).toBeVisible();
     await asRoles(context, 'admin_support');
     await page.goto(`${BASE_URL}/staff/invite`);
-    await expect(page.getByTestId('page-title')).toHaveText('Invite Staff');
+    await expect(page.getByTestId('page-title')).toHaveText('Invite staff');
   });
 
   test('SEC-134: only a Super Admin adds staff or changes their roles and access', async ({ page, context }) => {
     await asRoles(context, 'admin_support');
     await page.goto(`${BASE_URL}/team`, { timeout: 30_000 });
     await expect(page.getByTestId('table-row').first()).toBeVisible();
-    await expect(page.getByRole('link', { name: 'Invite Staff' })).toHaveCount(0);
+    await expect(page.getByRole('link', { name: 'Invite staff' })).toHaveCount(0);
     await page.goto(`${BASE_URL}/staff/invite`);
     await expect(page.getByTestId('invite-super-admin-only')).toBeVisible();
     await expect(page.getByRole('button', { name: 'Send invite' })).toHaveCount(0);
@@ -2873,7 +2873,7 @@ test.describe('Roles: gated navigation (dev role cookie, mock mode)', () => {
     await page.goto(`${BASE_URL}/staff/staff-2`);
     await expect(page.getByRole('button', { name: 'Suspend access' })).toBeVisible();
     await page.goto(`${BASE_URL}/team`);
-    await expect(page.getByRole('link', { name: 'Invite Staff' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Invite staff' })).toBeVisible();
   });
 
   test('the Scorecard has a Team tab only for the desk lead and the super admin', async ({ page, context }) => {
@@ -3904,7 +3904,7 @@ test.describe('Roles fix pass: Team > Roles & permissions access and the toggles
     await expect(page.getByRole('menuitem', { name: 'Roles & Permissions' })).toHaveCount(0);
   });
 
-  test('turning "Moderate opportunities & community" off for Moderator removes Reports Queue and Channels (and Opportunities Queue) from the nav', async ({ page, context }) => {
+  test('turning "Moderate opportunities & community" off for Moderator removes Reports queue and Channels (and Opportunities queue) from the nav', async ({ page, context }) => {
     await asRoles(context, 'super_admin');
     await page.goto(`${BASE_URL}/team?tab=roles`, { timeout: 30_000 });
     await page.getByTestId('sidebar-toggle').waitFor();
@@ -3930,7 +3930,7 @@ test.describe('Roles fix pass: Team > Roles & permissions access and the toggles
     await expect(nav.getByTestId('nav-item-reports-queue')).toHaveCount(0);
     await expect(nav.getByTestId('nav-item-channels')).toHaveCount(0);
     await expect(nav.getByTestId('nav-item-opportunities-queue')).toHaveCount(0);
-    // the toggles that stayed on still work: Verification Queue (verifications) is there
+    // the toggles that stayed on still work: Verification queue (verifications) is there
     await expect(nav.getByTestId('nav-item-verification-queue')).toHaveCount(1);
   });
 
@@ -3972,7 +3972,7 @@ test.describe('Roles fix pass: Team > Roles & permissions access and the toggles
     await page.keyboard.press('Escape');
     const nav = page.locator('aside nav');
     await expect(page.getByTestId('viewing-as')).toContainText('Viewing as Moderator');
-    await nav.getByTestId('nav-group-content').click(); // content -> Career Resources and Reference data
+    await nav.getByTestId('nav-group-content').click(); // content -> Career resources and Reference data
     await expect(nav.getByTestId('nav-item-reference-data')).toHaveCount(1);
     await page.getByTestId('nav-item-team').click();
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Team');
@@ -4213,7 +4213,7 @@ test.describe('Roles fix pass: every role in the dev switcher opens and works', 
 });
 
 // ---------------------------------------------------------------------------
-// Opportunities Queue: hirer-submitted and staff-curated listings in one place
+// Opportunities queue: hirer-submitted and staff-curated listings in one place
 // ---------------------------------------------------------------------------
 // Hand-written from the seed and the hirer mock data: 6 hirer postings (3 jobs, 1 internship, 1 event, 1 grant; 2
 // approved, 3 pending, 1 rejected) and 14 curated listings (4 jobs, 2 each of internship, scholarship, fellowship,
@@ -4223,7 +4223,7 @@ const todayLocal = () => {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 };
 
-test.describe('Opportunities Queue: one list for both sources', () => {
+test.describe('Opportunities queue: one list for both sources', () => {
   test.skip(!MOCK_RUN, 'the redesign screens run on sample data: see npm run test:e2e:mock');
   test.use({ viewport: { width: 1440, height: 900 } });
 
@@ -4384,7 +4384,7 @@ test.describe('Opportunities: the listing form', () => {
     await expect(page.getByRole('region', { name: 'Reach' })).toHaveCount(0); // not published
 
     // back to the list (client side, so the store survives)
-    await page.locator('header.sticky').getByRole('link', { name: 'Opportunities Queue' }).click();
+    await page.locator('header.sticky').getByRole('link', { name: 'Opportunities queue' }).click();
     await expect(page.getByTestId('table-row').first()).toBeVisible();
     expect(await tabCount(page, 'All')).toBe('21');
     expect(await tabCount(page, 'Other')).toBe('5'); // the new one is a fellowship
@@ -4411,7 +4411,7 @@ test.describe('Opportunities: the listing form', () => {
     const details = page.getByRole('region', { name: 'Details' });
     await expect(details).toContainText(new Date().getFullYear().toString()); // the published date is today
     await expect(page.getByRole('region', { name: 'Reach' })).toBeVisible();
-    await page.locator('header.sticky').getByRole('link', { name: 'Opportunities Queue' }).click();
+    await page.locator('header.sticky').getByRole('link', { name: 'Opportunities queue' }).click();
     const row = page.getByTestId('table-row').filter({ hasText: 'Published In Test' });
     await expect(row).toContainText('Vetted');
     await expect(row).toContainText('Published');
@@ -4544,7 +4544,7 @@ test.describe('Opportunities: roles', () => {
   test('a moderator keeps approve / reject, but has no New listing button and cannot open the form or edit', async ({ page, context }) => {
     await asRoles(context, 'moderator');
     await page.goto(`${BASE_URL}/opportunities`, { timeout: 30_000 });
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Opportunities Queue');
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText('Opportunities queue');
     await expect(page.getByTestId('table-row').first()).toBeVisible();
     await expect(page.getByRole('link', { name: 'New listing' })).toHaveCount(0);
     await page.goto(`${BASE_URL}/opportunities/opp-3`);
@@ -4684,7 +4684,7 @@ test.describe('Phone overflow exemption is narrow (434px)', () => {
   });
 });
 
-test.describe('Opportunities Queue: memory note', () => {
+test.describe('Opportunities queue: memory note', () => {
   test('mock mode shows no note about curated listings being kept in memory', async ({ page }) => {
     test.skip(!MOCK_RUN, 'mock mode only');
     await page.goto(`${BASE_URL}/opportunities`, { timeout: 30_000 });
@@ -5198,7 +5198,7 @@ test.describe('Not connected yet', () => {
     await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
   });
 
-  test('the screens that still show only sample data say so in the real run: Events, Grants and Career Resources, lists and records', async ({ page }) => {
+  test('the screens that still show only sample data say so in the real run: Events, Grants and Career resources, lists and records', async ({ page }) => {
     test.skip(MOCK_RUN, 'the notice only shows outside mock mode');
     for (const path of ['/events', '/events/event-1', '/grants', '/grants/grant-1', '/content/articles', '/content/articles/new']) {
       await page.goto(`${BASE_URL}${path}`);
@@ -5209,11 +5209,11 @@ test.describe('Not connected yet', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Reports Queue against the real API (task sheet GOD-T2). The admin review saw "3 open reports" on the queue (the sample list) while the Overview
+// Reports queue against the real API (task sheet GOD-T2). The admin review saw "3 open reports" on the queue (the sample list) while the Overview
 // counted 0 in the database. The queue now reads GET /admin/reports, so both count the same records. Serial: the second test resolves the seeded
 // report and reopens it, and the first one counts it.
 // ---------------------------------------------------------------------------
-test.describe('Reports Queue: the real API, the same count as the Overview', () => {
+test.describe('Reports queue: the real API, the same count as the Overview', () => {
   test.skip(MOCK_RUN, 'real API run only');
   test.describe.configure({ mode: 'serial' });
   type P = import('@playwright/test').Page;
@@ -6198,13 +6198,13 @@ test.describe('Partners: summary tiles, health states and the empty filter', () 
 test.describe('Partners board width', () => {
   test.skip(!MOCK_RUN, 'the redesign screens run on sample data: see npm run test:e2e:mock');
 
-  // 6 columns x 11rem (176px) + 5 gaps x 12px: the board needs this much room to show every column.
-  const NEEDED = 1116;
+  // 6 columns x 13rem (208px) + 5 gaps x 12px: the board needs this much room to show every column (unslop pass: 11rem split names mid-word).
+  const NEEDED = 1308;
   const CASES = [
     { label: '1920 sidebar open', width: 1920, rail: false, fits: true },
-    { label: '1440 sidebar open', width: 1440, rail: false, fits: true },
+    { label: '1440 sidebar open', width: 1440, rail: false, fits: false },
     { label: '1280 sidebar open', width: 1280, rail: false, fits: false },
-    { label: '1280 rail', width: 1280, rail: true, fits: true },
+    { label: '1280 rail', width: 1280, rail: true, fits: false },
     { label: '1024 rail', width: 1024, rail: true, fits: false },
   ];
 
@@ -6231,7 +6231,7 @@ test.describe('Partners board width', () => {
         return;
       }
 
-      // It scrolls: the columns keep their 11rem, so the content is exactly 1116px wide.
+      // It scrolls: the columns keep their 13rem, so the content is exactly 1308px wide.
       expect(m.sw).toBe(NEEDED);
       expect(m.cw).toBeLessThan(NEEDED);
       await expect(scroller).toHaveAttribute('tabindex', '0');
@@ -8504,7 +8504,7 @@ test.describe('Social: roles', () => {
     await expect(page.getByTestId('no-access')).toBeVisible();
   });
 
-  test('the opportunity in the list is a link only for a role that can view the Opportunities Queue', async ({ page, context }) => {
+  test('the opportunity in the list is a link only for a role that can view the Opportunities queue', async ({ page, context }) => {
     for (const [role, linked] of [['super_admin', true], ['social_media_manager', false]] as const) {
       await asRoles(context, role);
       await page.goto(`${BASE_URL}/social`, { timeout: 30_000 });
@@ -11331,9 +11331,9 @@ test.describe('Overview: the prioritised sections', () => {
     await expect(aside.getByRole('link', { name: /^Testimonials/ })).toContainText(String(pendingTestimonials));
     // the Verification and Reports pills are the same numbers
     await aside.getByRole('button', { name: 'Trust & safety' }).click();
-    await expect(aside.getByRole('link', { name: /^Verification Queue/ })).toContainText(String(MOCK_COUNTS.pendingVerifications));
-    await expect(aside.getByRole('link', { name: /^Reports Queue/ })).toContainText(String(MOCK_COUNTS.openReports));
-    await goViaSidebar(page, 'Trust & safety', 'Verification Queue');
+    await expect(aside.getByRole('link', { name: /^Verification queue/ })).toContainText(String(MOCK_COUNTS.pendingVerifications));
+    await expect(aside.getByRole('link', { name: /^Reports queue/ })).toContainText(String(MOCK_COUNTS.openReports));
+    await goViaSidebar(page, 'Trust & safety', 'Verification queue');
     await expect(page.locator('main tbody tr a').first()).toBeVisible();
     // the priorities panel's figures are the numbers the data gives
     await goViaSidebar(page, 'Dashboard', 'Overview');

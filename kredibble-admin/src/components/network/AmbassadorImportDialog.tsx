@@ -23,7 +23,7 @@
  * promise of the result (the page checks the permission and saves). A rejected commit shows its message in step 3.
  */
 import { useRef, useState, type DragEvent, type ReactNode } from "react";
-import { AlertTriangle, CheckCircle2, FileUp, GitMerge, Info, UserCheck, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileUp, GitMerge, Info, UserCheck, XCircle, Check } from "lucide-react";
 import {
   MAX_FILE_BYTES,
   analyseImport,
@@ -258,7 +258,7 @@ export function AmbassadorImportDialog({ existing, onClose, onCommit }: Ambassad
               }
               aria-hidden="true"
             >
-              {state === "done" ? "✓" : n}
+              {state === "done" ? <Check size={14} strokeWidth={2} /> : n}
             </span>
             <span className={state === "current" ? "caption font-semibold text-ink" : "caption"}>{label}</span>
           </li>
@@ -362,7 +362,7 @@ export function AmbassadorImportDialog({ existing, onClose, onCommit }: Ambassad
             }
             data-testid="import-dropzone"
           >
-            <FileUp size={28} strokeWidth={1.5} aria-hidden="true" className="text-purple-700" />
+            <FileUp size={28} strokeWidth={1.75} aria-hidden="true" className="text-purple-700" />
             <label htmlFor="ambassador-import-file" className="body-sm font-semibold text-ink">
               CSV file to import
             </label>
@@ -524,7 +524,7 @@ export function AmbassadorImportDialog({ existing, onClose, onCommit }: Ambassad
       {step === 4 && result && (
         <section aria-label="Result" className="space-y-4" data-testid="import-result">
           <div className="flex items-center gap-2">
-            <CheckCircle2 size={20} strokeWidth={1.75} aria-hidden="true" className="text-success" />
+            <CheckCircle2 size={18} strokeWidth={1.75} aria-hidden="true" className="text-success" />
             <p className="body-sm font-semibold text-ink">Import finished. The ambassadors are in the list now.</p>
           </div>
           <p className="body-sm" data-testid="result-status">

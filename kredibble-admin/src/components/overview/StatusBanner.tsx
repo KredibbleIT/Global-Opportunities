@@ -25,7 +25,7 @@ export function StatusBanner({ issue, onRetry }: { issue: OverviewIssue; onRetry
       role="alert"
       className="flex flex-wrap items-center gap-3 rounded-control border border-line bg-danger-soft px-4 py-3"
     >
-      <AlertTriangle size={18} aria-hidden="true" className="shrink-0 text-danger" />
+      <AlertTriangle size={18} strokeWidth={1.75} aria-hidden="true" className="shrink-0 text-danger" />
       <p className="min-w-0 flex-1 text-sm text-ink">{issue.message}</p>
 
       {issue.kind === "unauthorized" ? (

@@ -2,11 +2,11 @@
  * Data for Insights (/analytics), GOD-T29.
  *
  * The admin review asked for Insights' counts to be reconciled with the Overview and the queue pages. Insights used to build
- * every figure from the sample lists, in both modes, so its "Open reports" could not match the Overview or the Reports Queue.
+ * every figure from the sample lists, in both modes, so its "Open reports" could not match the Overview or the Reports queue.
  * Now each figure comes from the same loader as the page it summarises, so they agree by construction:
- * - postings by type: loadOpportunityRows (the Opportunities Queue's rows, curated and hirer-posted);
- * - verification by decision: loadVerificationRows (the Verification Queue's rows);
- * - reports (open count and by reason): loadReportRows (the Reports Queue's rows; the Overview counts the same open records);
+ * - postings by type: loadOpportunityRows (the Opportunities queue's rows, curated and hirer-posted);
+ * - verification by decision: loadVerificationRows (the Verification queue's rows);
+ * - reports (open count and by reason): loadReportRows (the Reports queue's rows; the Overview counts the same open records);
  * - total applications: GET /admin/analytics (the server counts every application) in real mode; the sample seekers' counts
  *   in mock mode.
  * Mock mode reads the sample lists with this session's changes laid over them, so a decision made elsewhere shows here too.

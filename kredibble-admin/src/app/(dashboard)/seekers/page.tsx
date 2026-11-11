@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Seekers Directory: every seeker account, with text search.
+ * Seekers directory: every seeker account, with text search.
  * Built on the shared list template; this file holds the column config, the search and the data.
  * Data: mock seeker accounts (src/lib/mock-seekers.ts), unchanged.
  */
@@ -37,7 +37,7 @@ export default function SeekersDirectoryPage() {
 
   return (
     <ListPage
-      title="Seekers Directory"
+      title="Seekers directory"
       subtitle={rows ? `${rows.length} seeker accounts registered on the platform.` : "Seeker accounts registered on the platform."}
       toolbar={
         <TableToolbar

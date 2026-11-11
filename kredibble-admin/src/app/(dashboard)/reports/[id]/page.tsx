@@ -46,7 +46,7 @@ export default function ReportDetailPage() {
 
   if (status === "loading") return <DetailSkeleton />;
   if (status === "error") return <DetailError message={error ?? "Could not load this report."} onRetry={retry} />;
-  if (!report) return <DetailNotFound noun="Report" listLabel="Reports Queue" listHref="/reports" />;
+  if (!report) return <DetailNotFound noun="Report" listLabel="Reports queue" listHref="/reports" />;
 
   // Saves first (real mode), then changes the page; a failed save leaves the report as it was and says so.
   const changeStatus = async (next: Exclude<ReportStatus, "open">, done: string) => {
@@ -97,7 +97,7 @@ export default function ReportDetailPage() {
           />
         }
         main={
-          <InfoCard title="Report Details">
+          <InfoCard title="Report details">
             <p className="input-text text-ink">{report.details}</p>
             {report.linkedChannelId && (
               <Link href={`/community/${report.linkedChannelId}`} className={`${buttonClasses("secondary")} mt-4`}>

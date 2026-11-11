@@ -2,7 +2,7 @@
 
 /**
  * Ambassador applications: seekers and hirers who asked, in the mobile app, to become ambassadors.
- * Built on the shared list template (ListPage + TableToolbar + DataTable), like the Verification Queue.
+ * Built on the shared list template (ListPage + TableToolbar + DataTable), like the Verification queue.
  *
  * Data: GET /admin/ambassador-requests (real API; there is no mock version). It loads the first 100 once and the
  * status filter and its counts are computed here. A failed request shows inline with "Try again".
@@ -29,8 +29,8 @@ const FILTERS: { value: Filter; label: string }[] = [
 const loadRequests = async (): Promise<AmbassadorRequestRecord[]> => (await getAmbassadorRequests({ limit: 100 })).data;
 
 const COLUMNS: Column<AmbassadorRequestRecord>[] = [
-  { key: "applicant", header: "Applicant", type: "primary", width: "32%", title: (r) => r.name, subtitle: (r) => r.email, leading: (r) => ({ avatarName: r.name }) },
-  { key: "role", header: "Applying as", type: "pill", width: "14%", label: (r) => (r.role === "hirer" ? "Hirer" : "Seeker") },
+  { key: "applicant", header: "Applicant", type: "primary", width: "32%", title: (r) => r.name, subtitle: (r) => r.email, subtitleLines: 1, leading: (r) => ({ avatarName: r.name }) },
+  { key: "role", header: "Applying as", type: "text", width: "14%", value: (r) => (r.role === "hirer" ? "Hirer" : "Seeker") },
   { key: "background", header: "Profession / organisation", type: "text", width: "24%", value: (r) => [r.profession, r.organisation].filter(Boolean).join(" · ") || "—" },
   { key: "submitted", header: "Applied", type: "text", width: "14%", value: (r) => formatDate(r.createdAt) },
   { key: "status", header: "Status", type: "status", width: "16%", status: (r) => r.status },
@@ -49,7 +49,7 @@ export default function AmbassadorApplicationsPage() {
 
   return (
     <ListPage
-      title="Ambassador Applications"
+      title="Ambassador applications"
       // SEC-150: the Network page has its own "Applicant" stage (people staff added to the registry), which these requests from the app are not.
       subtitle="Requests from the app to become a Global Opportunity Desk ambassador. Approving adds the person to the Network and, if you choose, a channel. People staff add on the Network page start there as Applicant and are not listed here."
       toolbar={<TableToolbar filters={{ options, value: filter, onChange: setFilter, label: "Filter by status" }} />}

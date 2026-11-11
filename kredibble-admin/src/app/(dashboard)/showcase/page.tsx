@@ -72,7 +72,7 @@ export default function ShowcasePage() {
       subtitle: (row) => row.title,
       leading: (row) => ({ avatarName: row.name, imageSrc: row.photoUrl }),
     },
-    { key: "category", header: "Category", type: "pill", width: "14%", label: (row) => categoryName(row.categoryId) },
+    { key: "category", header: "Category", type: "text", width: "14%", value: (row) => categoryName(row.categoryId) },
     { key: "country", header: "Country", type: "text", width: "12%", value: (row) => row.country ?? "—" },
     { key: "status", header: "Status", type: "status", width: "12%", status: (row) => (row.visible ? "visible" : "hidden") },
     {
@@ -180,7 +180,7 @@ export default function ShowcasePage() {
             isFiltered={category !== ALL || term.trim() !== ""}
             resetKey={`${category}|${term}`}
             pageSize={10}
-            emptyNoData={{ icon: Star, title: "Nobody is featured yet", description: "Add the first person or partner to show on the app.", action: manager.canAddEntries ? <Button icon={Plus} onClick={manager.openAdd}>Add your first entry</Button> : undefined }}
+            emptyNoData={{ icon: Star, title: "Nobody is featured yet", description: "Add the first person or partner to show on the app.", action: manager.canAddEntries ? <Button variant="secondary" icon={Plus} onClick={manager.openAdd}>Add your first entry</Button> : undefined }}
             emptyNoResults={{ icon: Star, title: "No entries match", description: "Try another category or clear the search." }}
           />
         </div>

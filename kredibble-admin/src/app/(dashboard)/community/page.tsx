@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Community Channels: every channel across the platform.
+ * Community channels: every channel across the platform.
  * Built on the shared list template; this file holds the column config and the data.
  * Data: the real API (GET /admin/community/channels). In mock mode (NEXT_PUBLIC_USE_MOCKS=true) the sample channels in
  * src/lib/mock-channels.ts are shown instead.
@@ -90,7 +90,7 @@ export default function CommunityChannelsPage() {
   return (
     <>
       <ListPage
-        title="Community Channels"
+        title="Community channels"
         subtitle={rows ? `All channels across the platform. ${flaggedCount} flagged for review.` : "All channels across the platform."}
         actions={
           !isMockMode() && (

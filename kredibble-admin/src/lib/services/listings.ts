@@ -1,5 +1,5 @@
 /**
- * Listings service: the curated (staff-made) listings of the Opportunities Queue.
+ * Listings service: the curated (staff-made) listings of the Opportunities queue.
  *
  * One function per need; pages never touch the store or the seed directly. Everything lives in the shared
  * in-memory mock store (mock-store.ts), so the list, the detail page, the form, the KPIs and the Overview see the

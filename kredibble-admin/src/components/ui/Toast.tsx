@@ -161,10 +161,10 @@ function ToastCard({ toast, onDismiss }: { toast: ToastItem; onDismiss: (id: num
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
       onBlur={() => setPaused(false)}
-      className="pointer-events-auto flex items-start gap-3 rounded-card border border-line bg-surface p-4 shadow-pop"
+      className="pop-enter pointer-events-auto flex items-start gap-3 rounded-card border border-line bg-surface p-4 shadow-pop"
     >
       <Icon
-        size={20}
+        size={18}
         strokeWidth={1.75}
         aria-hidden="true"
         className={cn("mt-0.5 shrink-0", iconClassName)}

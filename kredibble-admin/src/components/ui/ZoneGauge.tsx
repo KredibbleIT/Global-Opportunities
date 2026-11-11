@@ -164,7 +164,7 @@ export function ZoneGauge({ zones, meter, markerAt, markerLabel, capped, hint, t
           <ArrowRight
             data-testid={testIds.arrow}
             size={14}
-            strokeWidth={2.25}
+            strokeWidth={2}
             aria-hidden="true"
             className="absolute top-4 -translate-x-full -ml-3 text-ink"
             style={{ left: `${markerAt}%` }}

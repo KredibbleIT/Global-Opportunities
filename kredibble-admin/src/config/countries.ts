@@ -25,7 +25,7 @@ export const COUNTRY_DIAL_CODES: Record<string, string> = {
 
 /**
  * Countries a listing can be tied to (the Country Select on the listing form). The desk works across Africa, so the list
- * is African countries plus "Worldwide" for listings open to anyone. Edit this list to add one; the Opportunities Queue
+ * is African countries plus "Worldwide" for listings open to anyone. Edit this list to add one; the Opportunities queue
  * country filter only shows countries that actually have a row.
  */
 export const LISTING_COUNTRIES = [
