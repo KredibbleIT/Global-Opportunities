@@ -18,6 +18,7 @@ import { getMockCollection, setMockCollection, subscribeMockStore } from "@/lib/
 import type { Listing, ListingFormat, ListingMetrics, ListingType } from "@/lib/mock-entities";
 import type { StaffMember } from "@/lib/mock-entities";
 import { isMockMode } from "./mock-mode";
+import { orMissing } from "./api-helpers";
 import {
   createOpportunityApi,
   getOpportunityById,
@@ -71,44 +72,40 @@ export function toListing(record: OpportunityRecord): Listing {
 /** The fields a person fills in on the form. The rest (id, dates, status) is decided by the service. */
 export type ListingFields = Omit<Listing, "id" | "createdAt" | "publishedAt" | "status">;
 
-/** One listing, or undefined when the id is not a curated listing (it may be a hirer-submitted posting). */
+/**
+ * One listing, or undefined when the id is not a curated listing (it may be a hirer-submitted posting, or nothing).
+ * Real mode asks the API only: a 404 is "not found", any other failure rejects so the page shows its error and Retry.
+ * It never falls back to the store, which starts from the sample seed even with Mock data off (SEC-148).
+ */
 export async function loadListing(id: string): Promise<Listing | undefined> {
-  if (!isMockMode()) {
-    try {
-      const res = await getOpportunityById(id);
-      // only a curated listing (a hirer's posting has its own review page)
-      if (res?.id && isCuratedRecord(res)) {
-        const item = toListing(res);
-        cacheListing(item);
-        return item;
-      }
-    } catch {
-      // Fall through to mock store
-    }
-  }
-  return afterDelay(getMockCollection("listings").find((listing) => listing.id === id));
+  if (isMockMode()) return afterDelay(getMockCollection("listings").find((listing) => listing.id === id));
+  const res = await getOpportunityById(id).catch(orMissing<OpportunityRecord>);
+  // only a curated listing (a hirer's posting has its own review page)
+  if (!res?.id || !isCuratedRecord(res)) return undefined;
+  const item = toListing(res);
+  cacheListing(item);
+  return item;
 }
 
-/** The reach of one listing: views and applications, website versus app. Undefined when nothing was recorded. */
+/**
+ * The reach of one listing: views and applications, website versus app. Undefined when nothing was recorded.
+ * Real mode: the API's answer, or undefined on a 404; any other failure rejects (SEC-148). The answer is cached only when
+ * it changed: the listing page reloads on every store change, so caching the same figures again would reload it forever.
+ */
 export async function loadListingMetrics(id: string): Promise<ListingMetrics | undefined> {
-  if (!isMockMode()) {
-    try {
-      const res = await getOpportunityMetricsApi(id);
-      if (res?.listingId) {
-        const metrics: ListingMetrics = {
-          listingId: id,
-          views: res.views || { website: 0, app: 0 },
-          applications: res.applications || { website: 0, app: 0 },
-        };
-        const existing = getMockCollection("listingMetrics");
-        setMockCollection("listingMetrics", [metrics, ...existing.filter((m) => m.listingId !== id)], { always: true });
-        return metrics;
-      }
-    } catch {
-      // Fall through to mock store
-    }
+  if (isMockMode()) return getMockCollection("listingMetrics").find((metrics) => metrics.listingId === id);
+  const res = await getOpportunityMetricsApi(id).catch(orMissing<Awaited<ReturnType<typeof getOpportunityMetricsApi>>>);
+  if (!res?.listingId) return undefined;
+  const metrics: ListingMetrics = {
+    listingId: id,
+    views: res.views || { website: 0, app: 0 },
+    applications: res.applications || { website: 0, app: 0 },
+  };
+  const existing = getMockCollection("listingMetrics");
+  if (JSON.stringify(existing.find((m) => m.listingId === id)) !== JSON.stringify(metrics)) {
+    setMockCollection("listingMetrics", [metrics, ...existing.filter((m) => m.listingId !== id)], { always: true });
   }
-  return Promise.resolve(getMockCollection("listingMetrics").find((metrics) => metrics.listingId === id));
+  return metrics;
 }
 
 /** Everyone who can be named as vetter or writer: active team members. */
