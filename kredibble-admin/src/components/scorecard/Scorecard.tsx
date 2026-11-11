@@ -192,7 +192,7 @@ function PersonRow({ person }: { person: ScorecardPerson }) {
         </div>
         {ranked && (
           <div className="flex shrink-0 items-center gap-2">
-            <span data-testid="team-composite" className="font-display text-xl font-bold tabular-nums text-ink">
+            <span data-testid="team-composite" className="font-display text-xl font-semibold tabular-nums text-ink">
               {person.composite}
             </span>
             <StatusChip status={person.status} />
@@ -298,7 +298,7 @@ function TeamScorecard({ people, month, isPast, tooEarly }: { people: ScorecardP
         )}
         {unranked.length > 0 && (
           <div data-testid="team-unranked" className="mt-4 border-t border-line pt-4">
-            <h3 className="font-display text-sm font-bold text-ink">No metrics assigned</h3>
+            <h3 className="font-display text-sm font-semibold text-ink">No metrics assigned</h3>
             <p className="caption mt-1">These roles have no metrics assigned to them.</p>
             <ul className="mt-3 space-y-2">
               {unranked.map((person) => (

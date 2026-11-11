@@ -189,7 +189,7 @@ export function KanbanBoard<T>({ ariaLabel, columns, items, getId, getColumnKey,
     <div>
       {/* flex-wrap: a long stage name ("Onboarded") plus the Closed marker wraps the marker to a second line instead of widening the column. */}
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <h3 className="font-display text-sm font-bold leading-5 text-ink">{column.label}</h3>
+        <h3 className="font-display text-sm font-semibold leading-5 text-ink">{column.label}</h3>
         <span data-testid={`kanban-count-${column.key}`} className="badge-text rounded-pill bg-surface-2 px-2 py-0.5 tabular-nums text-muted" aria-label={`${count} ${nounFor(count)}`}>
           {count}
         </span>

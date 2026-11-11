@@ -106,7 +106,7 @@ export function ProgramDetail({ id }: { id: string }) {
           <>
             <InfoCard title="Participants">
               <div className="flex items-baseline justify-between gap-3">
-                <p data-testid="participants-figure" className="font-display text-2xl font-extrabold tabular-nums text-ink">
+                <p data-testid="participants-figure" className="font-display text-2xl font-semibold tabular-nums text-ink">
                   {program.participants} of {program.target}
                 </p>
                 <p className="font-semibold tabular-nums text-ink">{percent}%</p>

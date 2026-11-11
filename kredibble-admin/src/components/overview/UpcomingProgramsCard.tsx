@@ -65,7 +65,7 @@ export function UpcomingProgramsCard({ programs, loading, notConnected = false, 
             </thead>
             <tbody className="divide-y divide-line">
               {programs.map((program) => (
-                <tr key={program.id} data-testid="upcoming-row" className="align-top">
+                <tr key={program.id} data-testid="upcoming-row" className="align-middle">
                   <td className="table-text py-2.5 pr-3 font-semibold">
                     {linked ? <TruncatedLink href={`/programs/${program.id}`} text={program.title} /> : <TruncatedText text={program.title} />}
                   </td>

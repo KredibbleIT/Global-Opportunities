@@ -72,7 +72,7 @@ export function PrioritiesCard({ cards, loading, isPast, notConnected = false, c
               <li key={card.key} data-testid="priority-row" data-kpi={card.key}>
                 <div className="flex items-baseline justify-between gap-3 body-sm">
                   <span className="min-w-0 font-medium text-ink">{definition.label}</span>
-                  <span className="shrink-0 font-bold tabular-nums text-ink">
+                  <span className="shrink-0 font-semibold tabular-nums text-ink">
                     {format(card.value ?? 0)} <span className="font-normal text-muted">of {format(card.target ?? 0)}</span>
                   </span>
                 </div>

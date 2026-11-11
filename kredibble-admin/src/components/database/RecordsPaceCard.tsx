@@ -56,7 +56,7 @@ function SourceBar({ sources }: { sources: SourceCount[] }) {
     <div>
       {/* The same row height as "Verified this month" and its badge, so the two titles line up (GOD-T17). */}
       <div className="flex min-h-7 items-center">
-        <h3 className="font-display text-sm font-bold leading-5 text-ink">Records by source</h3>
+        <h3 className="font-display text-sm font-semibold leading-5 text-ink">Records by source</h3>
       </div>
       {total === 0 ? (
         <p data-testid="source-empty" className="caption mt-2">Nothing to chart yet.</p>
@@ -135,7 +135,7 @@ export function RecordsPaceCard({ pace, sources, error, onRetry }: RecordsPaceCa
     <Card as="section" ariaLabel="Verification pace" padding="sm" className="grid gap-x-8 gap-y-4 py-3 lg:grid-cols-2" testId="records-pace">
       <div className="space-y-1.5">
         <div className="flex min-h-7 items-center justify-between gap-2">
-          <h2 className="font-display text-sm font-bold leading-5 text-ink">Verified this month</h2>
+          <h2 className="font-display text-sm font-semibold leading-5 text-ink">Verified this month</h2>
           {/* The thresholds behind the status ("Off track: below 70% of the pro-rated pace...") on hover and focus. */}
           <Tooltip label={pace.hint}>
             <span data-testid="pace-status" tabIndex={0} className="rounded-pill focus-visible:outline-2 focus-visible:outline-offset-2">
@@ -145,7 +145,7 @@ export function RecordsPaceCard({ pace, sources, error, onRetry }: RecordsPaceCa
         </div>
         {pace.target > 0 ? (
           <>
-            <p data-testid="pace-headline" className="font-display text-xl font-extrabold leading-6.5 text-ink">
+            <p data-testid="pace-headline" className="font-display text-xl font-semibold leading-6.5 text-ink">
               {pace.verified} of {pace.target} verified
             </p>
             {/* GOD-T17: one bar (the share of the month's target verified so far) and one caption. The status badge above says

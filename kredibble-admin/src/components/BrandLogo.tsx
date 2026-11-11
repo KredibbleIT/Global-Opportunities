@@ -27,7 +27,7 @@ export function BrandLogo({ className, tone = "dark" }: { className?: string; to
   if (failed) {
     return (
       <div data-testid="brand-wordmark" className="flex flex-col leading-tight">
-        <span className={cn("font-display text-2xl font-extrabold", tone === "light" ? "text-white" : "text-ink")}>{BRAND.name}</span>
+        <span className={cn("font-display text-2xl font-semibold", tone === "light" ? "text-white" : "text-ink")}>{BRAND.name}</span>
         <span className={cn("caption", tone === "light" ? "text-sb-text" : "text-muted")}>{BRAND.sub}</span>
       </div>
     );

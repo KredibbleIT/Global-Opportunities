@@ -30,7 +30,7 @@ function ReachBlock({ id, label, split }: { id: "views" | "applications"; label:
   return (
     <div data-testid={`reach-${id}`} className="min-w-0">
       <p className="caption">{label}</p>
-      <p data-testid={`reach-${id}-total`} className="font-display text-3xl font-extrabold tabular-nums text-ink">
+      <p data-testid={`reach-${id}-total`} className="font-display text-3xl font-semibold tabular-nums text-ink">
         {total.toLocaleString("en-US")}
       </p>
       <div className="mt-3 grid grid-cols-2 gap-3">

@@ -95,7 +95,7 @@ export function PipelineHealthCard({ health, standalone, target, demo }: { healt
       <div className="flex items-center justify-between gap-2">
         {/* SEC-150: "Healthy" here is about NEXT month (enough open deals for its target); the Scorecard's "Partners onboarded … Off
             track" is about partners signed THIS month. The heading says which, so the two no longer read as a contradiction. */}
-        <h2 data-testid="pipeline-title" className="font-display text-sm font-bold leading-5 text-ink">
+        <h2 data-testid="pipeline-title" className="font-display text-sm font-semibold leading-5 text-ink">
           Pipeline health <span className="font-medium text-muted">· next month</span>
         </h2>
         <span data-testid="pipeline-status">
@@ -103,7 +103,7 @@ export function PipelineHealthCard({ health, standalone, target, demo }: { healt
         </span>
       </div>
 
-      <p data-testid="pipeline-headline" className="font-display text-xl font-extrabold leading-6.5 text-ink">
+      <p data-testid="pipeline-headline" className="font-display text-xl font-semibold leading-6.5 text-ink">
         {headline}
       </p>
 

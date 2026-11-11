@@ -206,7 +206,7 @@ test.describe('Admin Dashboard Functionality', () => {
   test('dashboard loads with summary data', async ({ page }) => {
     await expect(page.locator('main')).toBeVisible();
     // Dashboard should show some content
-    await expect(page.getByRole('heading', { level: 1, name: /^Good (morning|afternoon|evening)/ })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('heading', { level: 1, name: /^Overview/ })).toBeVisible({ timeout: 5000 });
   });
 
   test('navigation sidebar is present', async ({ page }) => {
@@ -620,15 +620,14 @@ test.describe('Handled errors', () => {
 test.describe('Overview', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
-  test('greets the signed-in person by first name, time-of-day aware', async ({ page }) => {
-    await signedIn(page); // name: "Test Admin" (in real mode the shell replaces it with the API's session user: SEC-136)
+  test('the title names the page and the selected month (unslop pass: no greeting)', async ({ page }) => {
+    await signedIn(page);
     await page.goto(`${BASE_URL}/`);
     await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-    const first = await page.evaluate(() => ((JSON.parse(localStorage.getItem('kredibble_admin_user') ?? '{}') as { name?: string }).name ?? '').split(' ')[0]);
-    expect(first).toBeTruthy();
-    const escaped = first.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText(new RegExp(`^Good (morning|afternoon|evening), ${escaped}\\.$`));
-    await expect(page.getByText("See how your team is doing against its monthly targets.")).toBeVisible();
+    const [year, monthNumber] = currentMonth().split('-').map(Number);
+    const monthName = new Date(Date.UTC(year, monthNumber - 1, 15)).toLocaleString('en-US', { month: 'long', timeZone: 'UTC' });
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(`Overview · ${monthName} ${year}`);
+    await expect(page.getByText('See how your team is doing against its monthly targets', { exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: 'View report' })).toHaveAttribute('href', `/monthly-report/partner?month=${currentMonth()}`);
   });
 
@@ -12559,7 +12558,7 @@ test.describe('Monthly report: routes, access, the two templates and the coheren
     await open(page, context, 'desk_lead');
     const paper = page.getByTestId('partner-report');
     await expect(paper).toBeVisible();
-    await expect(paper.getByText('GLOBAL OPPORTUNITY DESK', { exact: true })).toBeVisible();
+    await expect(paper.getByText('Global Opportunity Desk', { exact: true })).toBeVisible();
     await expect(paper.getByRole('heading', { name: 'Progress report' })).toBeVisible();
     await expect(page.getByTestId('report-month')).toHaveText(formatMonth(defaultMonth())); // the last COMPLETE month
     await expect(paper.getByRole('heading', { name: 'Performance overview' })).toBeVisible();

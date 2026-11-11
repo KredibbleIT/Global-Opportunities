@@ -80,7 +80,8 @@ const COLUMNS: Column<OpportunityRow>[] = [
   },
   { key: "company", header: "Company", type: "text", width: "16%", value: (r) => r.company },
   { key: "type", header: "Type", type: "text", width: "12%", value: (r) => typeOf(r).label, icon: (r) => typeOf(r).icon },
-  { key: "source", header: "Source", type: "pill", width: "12%", label: (r) => (r.source === "curated" ? "Staff-curated" : "Hirer") },
+  // Unslop pass: plain text. The same lavender pill on every row was noise; Vetting and Status keep their chips because they vary.
+  { key: "source", header: "Source", type: "text", width: "12%", value: (r) => (r.source === "curated" ? "Staff-curated" : "Hirer") },
   { key: "vetting", header: "Vetting", type: "status", width: "11%", status: (r) => r.vetting },
   { key: "posted", header: "Posted", type: "text", width: "11%", value: (r) => formatDate(r.date) },
   { key: "status", header: "Status", type: "status", width: "14%", status: (r) => r.moderationStatus },

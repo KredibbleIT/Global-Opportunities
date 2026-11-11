@@ -42,7 +42,7 @@ function Row({ href, icon, label, count, testId, noSource = false }: { href: str
         {noSource && <span className="caption block text-sb-muted">Not available yet</span>}
       </span>
       {!noSource && (
-        <span className="font-display text-xl font-bold tabular-nums text-white">
+        <span className="font-display text-xl font-semibold tabular-nums text-white">
           {count === null ? (
             <span role="img" aria-label="unavailable">
               —
@@ -67,7 +67,7 @@ export function NeedsAttentionCard({ counts, loading, notConnected = false }: { 
 
   return (
     <section aria-label="Needs your attention" data-testid="needs-attention" className="dark-feature dark-surface rounded-card p-5 shadow-card">
-      <h2 className="font-display text-base font-bold leading-5.5 text-white">Needs your attention</h2>
+      <h2 className="font-display text-base font-semibold leading-5.5 text-white">Needs your attention</h2>
       <p className="caption mt-1 text-sb-muted">{allClear ? "All clear: nothing is waiting on you." : "Items waiting on a decision"}</p>
       {loading ? (
         <div className="mt-4 grid gap-3 min-[640px]:grid-cols-2 min-[1025px]:grid-cols-4" aria-busy="true" aria-label="Loading items that need attention">

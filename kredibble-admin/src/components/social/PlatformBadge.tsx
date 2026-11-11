@@ -26,7 +26,7 @@ export function PlatformBadge({ platform, highlight = false }: { platform: PostP
     <span data-testid="platform-badge" className="inline-flex min-w-0 items-center gap-2 whitespace-nowrap">
       <span
         aria-hidden="true"
-        className={cn("badge-text inline-flex size-6 shrink-0 items-center justify-center rounded-inset font-display font-bold", highlight ? "bg-orange-500 text-white" : TILE[platform])}
+        className={cn("badge-text inline-flex size-6 shrink-0 items-center justify-center rounded-inset font-display font-semibold", highlight ? "bg-orange-500 text-white" : TILE[platform])}
       >
         {label.charAt(0)}
       </span>

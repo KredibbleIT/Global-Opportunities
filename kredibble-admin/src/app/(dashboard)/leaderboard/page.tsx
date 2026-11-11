@@ -45,7 +45,7 @@ function RankBadge({ rank }: { rank: number }) {
       data-top={rank <= 3 ? "true" : "false"}
       aria-label={`Rank ${rank}`}
       className={cn(
-        "inline-flex size-7 items-center justify-center rounded-pill font-display text-sm font-bold tabular-nums",
+        "inline-flex size-7 items-center justify-center rounded-pill font-display text-sm font-semibold tabular-nums",
         rank <= 3 ? "bg-purple-50 text-purple-700 ring-1 ring-purple-200" : "text-muted",
       )}
     >

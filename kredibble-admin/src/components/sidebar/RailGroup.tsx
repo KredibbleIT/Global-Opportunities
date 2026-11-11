@@ -117,7 +117,7 @@ export function RailGroup({ group, pathname, counts, flyoutOpen, onFlyoutChange 
           style={{ left: position.left, top: position.top }}
         >
           <div className="glass rounded-card p-2">
-            <p className="caption px-3 py-2 font-semibold uppercase tracking-wide">{group.group}</p>
+            <p className="caption px-3 py-2 font-medium">{group.group}</p>
             <ul>
               {group.children.map((child) => {
                 const ChildIcon = child.icon;

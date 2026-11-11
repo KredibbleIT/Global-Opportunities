@@ -91,7 +91,7 @@ export default function EventDetailPage() {
           <>
             <InfoCard title="Attendance">
               <div className="h-3 overflow-hidden rounded-pill bg-surface-2" role="presentation">
-                <div className="h-full rounded-pill bg-purple-600 transition-all" style={{ width: `${Math.min(pct, 100)}%` }} />
+                <div className="h-full rounded-pill bg-purple-600" style={{ width: `${Math.min(pct, 100)}%` }} />
               </div>
               <p className="body-sm mt-2 text-muted">
                 {event.attendeesCount} of {event.capacity} spots filled ({pct}%) · {event.capacity - event.attendeesCount} left

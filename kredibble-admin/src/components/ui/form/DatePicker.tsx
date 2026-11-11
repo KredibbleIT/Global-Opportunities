@@ -370,7 +370,7 @@ function Calendar({ dialogRef, dialogId, titleId, label, value, min, max, today,
           <button type="button" aria-label="Previous month" onClick={() => moveTo(addMonths(focusDate, -1), false)} className={NAV}>
             <ChevronLeft size={20} strokeWidth={1.75} aria-hidden="true" />
           </button>
-          <p aria-live="polite" data-testid="date-picker-month" className="font-display text-sm font-bold text-ink">
+          <p aria-live="polite" data-testid="date-picker-month" className="font-display text-sm font-semibold text-ink">
             {MONTH_NAMES[parts.month - 1]} {parts.year}
           </p>
           <button type="button" aria-label="Next month" onClick={() => moveTo(addMonths(focusDate, 1), false)} className={NAV}>

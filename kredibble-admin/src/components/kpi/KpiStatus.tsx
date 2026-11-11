@@ -38,7 +38,9 @@ export function StatusChip({ status }: { status: KpiStatus | null }) {
       </span>
     );
   }
-  return <StatusBadge status={status} tone={TONE[status].badge} label={CARD_STATUS_WORDS[status]} variant="solid" testId="kpi-status" dataStatus={status} className="h-6 px-2.5 py-0" />;
+  // Unslop pass: the soft (tinted) chip, not the filled one. Filled red and amber chips on every row competed with the one thing
+  // each card should say; the bar's colour and the chip's word still carry the verdict.
+  return <StatusBadge status={status} tone={TONE[status].badge} label={CARD_STATUS_WORDS[status]} testId="kpi-status" dataStatus={status} className="h-6 px-2.5 py-0" />;
 }
 
 /** The progress-to-target bar: the fill is the share of the target reached (capped at the full bar), the tick is the month's pace. */
