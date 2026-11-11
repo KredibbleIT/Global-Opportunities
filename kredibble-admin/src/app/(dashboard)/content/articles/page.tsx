@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * Career Resources: the articles shown in the app's Career Resources section.
+ * Career resources: the articles shown in the app's Career resources section.
  * Built on the shared list template; this file holds the column config and the data.
- * Data: mock articles (src/lib/mock-articles.ts), unchanged. "New Article" is the primary action.
+ * Data: mock articles (src/lib/mock-articles.ts), unchanged. "New article" is the primary action.
  */
 import { useState } from "react";
 import { FileText, Plus } from "lucide-react";
@@ -55,13 +55,13 @@ export default function ArticlesListPage() {
 
   return (
     <ListPage
-      title="Career Resources"
+      title="Career resources"
       subtitle={
         rows
-          ? `Articles shown in the Career Resources section of the app. ${pluralize(draftCount, "draft")} not yet published.`
-          : "Articles shown in the Career Resources section of the app."
+          ? `Articles shown in the Career resources section of the app. ${pluralize(draftCount, "draft")} not yet published.`
+          : "Articles shown in the Career resources section of the app."
       }
-      action={{ label: "New Article", href: "/content/articles/new", icon: Plus }}
+      action={{ label: "New article", href: "/content/articles/new", icon: Plus }}
       notice={<NotConnectedNotice />}
       toolbar={
         <TableToolbar
@@ -81,7 +81,7 @@ export default function ArticlesListPage() {
         onRetry={retry}
         isFiltered={status !== "all" || term !== ""}
         resetKey={`${status}|${term}`}
-        emptyNoData={{ icon: FileText, title: "No articles yet", description: "Write the first Career Resources article.", action: <EmptyAction href="/content/articles/new" label="Add your first article" /> }}
+        emptyNoData={{ icon: FileText, title: "No articles yet", description: "Write the first Career resources article.", action: <EmptyAction href="/content/articles/new" label="Add your first article" /> }}
         emptyNoResults={{ icon: FileText, title: "No articles match", description: "Try another status or search." }}
       />
     </ListPage>

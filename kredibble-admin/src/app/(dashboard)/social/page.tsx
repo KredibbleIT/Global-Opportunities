@@ -8,7 +8,7 @@
  *   compact MiniStats with their targets, a per-platform table and a bar chart with the leading platform in orange) for the month
  *   chosen in the shared MonthSelect.
  * - Below: the month's posts, newest first: Title (with an external-link icon, opens the post in a new tab), Platform, Date,
- *   Reach, Engagement and the linked opportunity (a link only for a role that can view the Opportunities Queue).
+ *   Reach, Engagement and the linked opportunity (a link only for a role that can view the Opportunities queue).
  * - Roles: Social Media Manager, Desk Lead and Super Admin edit (they get the Add post button); the Communications Officer and any role
  *   that only views see the totals and the list, and NO Add post button at all (it is not rendered, not disabled).
  * - Everything comes from dated posts: logging one changes the totals, the platform table, the chart, the list and the Posts
@@ -81,7 +81,7 @@ function SocialContent() {
             <span className="min-w-0">
               <TruncatedText text={r.title} className="table-text font-semibold" />
             </span>
-            <ExternalLink size={14} strokeWidth={1.75} aria-hidden="true" className="shrink-0" />
+            <ExternalLink size={14} strokeWidth={2} aria-hidden="true" className="shrink-0" />
           </a>
         ) : (
           <TruncatedText text={r.title} className="table-text font-semibold" />

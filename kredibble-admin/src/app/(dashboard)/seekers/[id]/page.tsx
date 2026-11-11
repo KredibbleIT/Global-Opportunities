@@ -42,7 +42,7 @@ export default function SeekerDetailPage() {
 
   if (status === "loading") return <DetailSkeleton />;
   if (status === "error") return <DetailError message={error ?? "Could not load this seeker."} onRetry={retry} />;
-  if (!seeker) return <DetailNotFound noun="Seeker" listLabel="Seekers Directory" listHref="/seekers" />;
+  if (!seeker) return <DetailNotFound noun="Seeker" listLabel="Seekers directory" listHref="/seekers" />;
 
   const isActive = seeker.status === "active";
 

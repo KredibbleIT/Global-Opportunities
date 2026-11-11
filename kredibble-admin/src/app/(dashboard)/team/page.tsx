@@ -4,7 +4,7 @@
  * Team: this one page replaces Staff and Roles & Permissions (their old URLs redirect here: see
  * src/config/redirects.ts). The tab is kept in the URL: /team (Members) and /team?tab=roles.
  *
- * - Members: the staff list on the shared list template, with, for a Super Admin only, "Invite Staff" (opens /staff/invite),
+ * - Members: the staff list on the shared list template, with, for a Super Admin only, "Invite staff" (opens /staff/invite),
  *   "Create account" (User or Admin, created as Invited with a 48-hour invite link), "Account history" and a row menu (see use-account-manager).
  *   A member's row opens /staff/[id]; both stay real routes under Team.
  * - Roles & permissions: three role cards with switches, a sticky save bar and the compact matrix of the other ten roles.
@@ -56,8 +56,8 @@ export default function TeamPage() {
             {/* Adding staff gives them roles, so it is Super Admin only like Create account (SEC-134). */}
             {accounts.allowed && (
               <Link href="/staff/invite" className={buttonClasses("primary")}>
-                <Plus size={16} strokeWidth={2} aria-hidden="true" />
-                Invite Staff
+                <Plus size={16} strokeWidth={1.75} aria-hidden="true" />
+                Invite staff
               </Link>
             )}
           </div>
@@ -72,7 +72,7 @@ export default function TeamPage() {
             <dd>Super Admin only. Makes a User or Admin account straight away and gives you a 48-hour invite link to send them.</dd>
           </div>
           <div className="flex flex-wrap gap-x-1.5">
-            <dt className="font-semibold text-ink">Invite Staff:</dt>
+            <dt className="font-semibold text-ink">Invite staff:</dt>
             <dd>Super Admin only. Adds a colleague to the desk team with one or two roles; use it when they will work in the admin.</dd>
           </div>
         </dl>

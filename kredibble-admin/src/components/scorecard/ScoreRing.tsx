@@ -53,7 +53,7 @@ export function ScoreRing({ score, status, className }: { score: number | null; 
         )}
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span data-testid="score-value" className="font-display text-3xl font-bold leading-8 tabular-nums text-ink">
+        <span data-testid="score-value" className="font-display text-3xl font-semibold leading-8 tabular-nums text-ink">
           {score === null ? "—" : score}
         </span>
         <span className="caption">{score === null ? "no score yet" : "out of 100"}</span>

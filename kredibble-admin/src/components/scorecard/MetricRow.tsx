@@ -29,12 +29,12 @@ export function MetricRow({ row }: { row: MetricResult }) {
           <TruncatedText text={row.label} className="table-text font-semibold text-ink" />
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <AttainmentFigure value={row.attainment} testId="metric-attainment" className="font-display text-base font-bold tabular-nums text-ink" />
+          <AttainmentFigure value={row.attainment} testId="metric-attainment" className="font-display text-base font-semibold tabular-nums text-ink" />
           <StatusChip status={row.status} />
         </div>
       </div>
       <p className="body-sm mt-1 text-ink">
-        <span data-testid="metric-value" className="font-bold tabular-nums">
+        <span data-testid="metric-value" className="font-semibold tabular-nums">
           {format(row.value)}
         </span>{" "}
         <span data-testid="metric-of" className="text-muted">

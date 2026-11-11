@@ -5,8 +5,8 @@
  *   sidebar pills, the breadcrumb pill and the Overview's "Needs your attention" card all read from here, and the list pages show the same
  *   rows these numbers are counted from.
  *
- * - pendingVerifications = pending rows in the Verification Queue mock list
- * - openReports          = open rows in the Reports Queue mock list
+ * - pendingVerifications = pending rows in the Verification queue mock list
+ * - openReports          = open rows in the Reports queue mock list
  *
  * ACTIVE SEEKERS and ACTIVE HIRERS are the only counts that intentionally DIFFER from their
  * lists: the Seekers and Hirers mock directories hold a handful of sample accounts, while the

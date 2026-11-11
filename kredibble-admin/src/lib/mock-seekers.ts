@@ -1,5 +1,5 @@
 /**
- * Mock data for the Seekers Directory.
+ * Mock data for the Seekers directory.
  * Mirrors the Expert/profile shape from kredibble-app's mockExperts.ts +
  * mockProfile.ts, reduced to what an admin needs for account management.
  */

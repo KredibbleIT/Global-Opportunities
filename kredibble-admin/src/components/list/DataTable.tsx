@@ -191,8 +191,9 @@ export function DataTable<T>({
                   key={column.key}
                   scope="col"
                   className={cn(
-                    "table-head h-9 px-3 font-semibold",
+                    "table-head h-9 px-3",
                     index === 0 && !selection && "rounded-l-inset",
+                    column.type === "number" && "text-right",
                   )}
                 >
                   {column.header}
@@ -333,7 +334,7 @@ export function DataTable<T>({
 
 /** The small leading icon of a text cell (a component prop, so it is not "created during render"). */
 function TextIcon({ icon: Icon }: { icon?: LucideIcon }) {
-  return Icon ? <Icon size={14} strokeWidth={1.75} aria-hidden="true" className="shrink-0" /> : null;
+  return Icon ? <Icon size={14} strokeWidth={2} aria-hidden="true" className="shrink-0" /> : null;
 }
 
 interface CellProps<T> {
@@ -387,7 +388,7 @@ function Cell<T>({ column, row, href, isBadgeColumn }: CellProps<T>) {
               ) : (
                 <TruncatedText text={column.title(row)} lines={column.titleLines ?? 1} className={cn(wrapOnPhone, "table-text font-semibold text-ink")} />
               )}
-              {subtitle && <TruncatedText text={subtitle} lines={2} className={cn("caption", wrapOnPhone)} />}
+              {subtitle && <TruncatedText text={subtitle} lines={column.subtitleLines ?? 2} className={cn("caption", wrapOnPhone)} />}
             </div>
           </div>
         </td>
@@ -404,9 +405,10 @@ function Cell<T>({ column, row, href, isBadgeColumn }: CellProps<T>) {
       );
     }
     case "number":
+      // Unslop pass: figures line up on the right in one column, tabular and in ink (they were muted and left-aligned).
       return (
-        <td className={cn(base, "table-text text-muted", labelled)} data-label={label}>
-          <span className="max-sm:text-left max-sm:text-ink">{column.value(row)}</span>
+        <td className={cn(base, "table-text text-right tabular-nums text-ink", labelled)} data-label={label}>
+          <span className="max-sm:text-left">{column.value(row)}</span>
         </td>
       );
     case "status":

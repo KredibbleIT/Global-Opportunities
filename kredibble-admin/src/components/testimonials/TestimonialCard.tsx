@@ -50,7 +50,7 @@ export function TestimonialCard({ item, canEdit, onAction }: TestimonialCardProp
         <div className="flex min-w-0 flex-1 items-start gap-3">
           <Avatar name={item.author} size="md" />
           <div className="min-w-0">
-            <h3 className="font-display text-base font-bold leading-6 text-ink">{item.author}</h3>
+            <h3 className="font-display text-base font-semibold leading-6 text-ink">{item.author}</h3>
             <p className="caption">
               {item.role} · Submitted <span className="tabular-nums">{formatDate(item.submittedAt)}</span>
             </p>

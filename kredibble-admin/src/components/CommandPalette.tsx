@@ -100,7 +100,7 @@ function PaletteDialog({ onClose, counts }: { onClose: () => void; counts: NavCo
         aria-modal="true"
         aria-label="Command palette"
         onKeyDown={onKeyDown}
-        className="w-full max-w-xl overflow-hidden rounded-card border border-line bg-surface shadow-pop"
+        className="dialog-enter w-full max-w-xl overflow-hidden rounded-card border border-line bg-surface shadow-pop"
       >
         <div className="flex items-center gap-3 border-b border-line px-4">
           <Search size={18} strokeWidth={1.75} aria-hidden="true" className="shrink-0 text-muted" />

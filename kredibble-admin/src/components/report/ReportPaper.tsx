@@ -19,9 +19,9 @@ export function ReportPaper({ title, month, toDate = false, sample, note, childr
   return (
     <article data-testid={testId} data-source={sample ? "sample" : "live"} aria-label={sample ? `${title} (sample report)` : title} className="report-paper p-4 min-[640px]:p-10">
       <header>
-        <p className="text-xs font-bold tracking-widest text-orange-600">GLOBAL OPPORTUNITY DESK</p>
+        <p className="text-sm font-medium text-orange-700">Global Opportunity Desk</p>
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
-          <h2 data-testid="report-title" className="font-display text-3xl font-bold leading-9 text-ink">
+          <h2 data-testid="report-title" className="font-display text-3xl font-semibold leading-9 text-ink">
             {title}
           </h2>
           {sample && (
@@ -65,7 +65,7 @@ export function ReportPaper({ title, month, toDate = false, sample, note, childr
 export function ReportSection({ title, subtitle, children, testId }: { title: string; subtitle?: string; children: ReactNode; testId?: string }) {
   return (
     <section data-testid={testId} aria-label={title} className="report-section">
-      <h3 className="font-display text-lg font-bold leading-6 text-ink">{title}</h3>
+      <h3 className="font-display text-lg font-semibold leading-6 text-ink">{title}</h3>
       {subtitle && <p className="caption mt-1">{subtitle}</p>}
       <div className="mt-3">{children}</div>
     </section>

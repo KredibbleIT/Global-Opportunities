@@ -91,7 +91,7 @@ export function ChipsInput({ value, onChange, placeholder, chipsLabel, max, onBl
                 onClick={() => onChange(value.filter((existing) => existing !== chip))}
                 className="flex size-6 items-center justify-center rounded-pill hover:bg-purple-100"
               >
-                <X size={12} strokeWidth={2.5} aria-hidden="true" />
+                <X size={12} strokeWidth={2} aria-hidden="true" />
               </button>
             </li>
           ))}

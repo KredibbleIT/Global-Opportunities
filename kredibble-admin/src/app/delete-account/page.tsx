@@ -26,7 +26,7 @@ export default function DeleteAccountPage() {
         {/* Brand header */}
         <div className="mb-8 flex flex-col items-center text-center">
           <BrandMark size={56} className="mb-4" />
-          <h1 className="text-2xl font-display font-bold tracking-tight">
+          <h1 className="text-2xl font-display font-semibold tracking-tight">
             Delete your {BRAND.sub} account
           </h1>
           <p className="mt-2 text-ink-muted">

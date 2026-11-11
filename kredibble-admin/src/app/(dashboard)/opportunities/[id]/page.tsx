@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Opportunity detail (/opportunities/[id]): ONE route for both sources of the Opportunities Queue.
+ * Opportunity detail (/opportunities/[id]): ONE route for both sources of the Opportunities queue.
  *   - A staff-curated listing (an id in the listings collection) shows CuratedListingDetail.
  *   - A hirer-submitted posting shows the review page below: approve and reject. They need edit access on
  *     opportunities_queue; a view-only role sees both buttons disabled with the standard tooltip.
@@ -82,7 +82,7 @@ function HirerPostingReview() {
 
   if (status === "loading") return <DetailSkeleton />;
   if (status === "error") return <DetailError message={error ?? "Could not load this opportunity."} onRetry={retry} />;
-  if (!opp) return <DetailNotFound noun="Opportunity" listLabel="Opportunities Queue" listHref="/opportunities" />;
+  if (!opp) return <DetailNotFound noun="Opportunity" listLabel="Opportunities queue" listHref="/opportunities" />;
 
   const type = opportunityTypeMeta(opp.type);
   const hasExtraDetails = opp.eventDateTime || opp.eventCategory || opp.grantBudgetRange || opp.grantSector;
@@ -170,7 +170,7 @@ function HirerPostingReview() {
               <KeyValueList
                 items={[
                   { label: "Posted", value: formatDate(opp.date) },
-                  { label: "Work Type", value: opp.workType },
+                  { label: "Work type", value: opp.workType },
                   { label: "Salary", value: opp.salary },
                 ]}
               />

@@ -57,7 +57,7 @@ export default function VerificationReviewPage() {
 
   if (status === "loading") return <DetailSkeleton />;
   if (status === "error") return <DetailError message={error ?? "Could not load this company."} onRetry={retry} />;
-  if (!company) return <DetailNotFound noun="Company" listLabel="Verification Queue" listHref="/verification" />;
+  if (!company) return <DetailNotFound noun="Company" listLabel="Verification queue" listHref="/verification" />;
 
   const approvedCount = DOC_KEYS.filter((key) => company.docs[key]?.status === "approved").length;
   const meta = [company.industry, company.companySize, company.location].filter(Boolean).join(" · ");
@@ -109,7 +109,7 @@ export default function VerificationReviewPage() {
           />
         }
         main={
-          <InfoCard title="Verification Documents">
+          <InfoCard title="Verification documents">
             <ul className="space-y-3">
               {DOC_KEYS.map((key) => {
                 const doc = company.docs[key];
@@ -163,7 +163,7 @@ export default function VerificationReviewPage() {
               <KeyValueList
                 items={[
                   { label: "Website", value: company.website },
-                  { label: "Company Email", value: company.companyEmail },
+                  { label: "Company email", value: company.companyEmail },
                   { label: "Submitted", value: formatDate(company.submittedDate) },
                 ]}
               />

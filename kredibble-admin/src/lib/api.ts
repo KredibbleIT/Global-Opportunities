@@ -700,7 +700,7 @@ export const deleteStaff = async (id: string) => {
   return request<{ data: { id: string } }>(`/admin/staff/${id}`, { method: "DELETE" });
 };
 
-// Community Channels
+// Community channels
 export const getCommunityChannels = async (params?: { page?: number; limit?: number; q?: string; status?: string; category?: string }) => {
   const query = new URLSearchParams();
   if (params?.page) query.set("page", String(params.page));
@@ -756,7 +756,7 @@ export const updateVerificationCompany = async <T = CompanyVerification>(id: str
   return request<T>(`/admin/verification/companies/${id}`, { method: "PATCH", body: JSON.stringify(data) });
 };
 
-// Verification Documents
+// Verification documents
 export const getVerificationCompanyDocuments = async (companyId: string, params?: { page?: number; limit?: number }) => {
   const query = new URLSearchParams();
   if (params?.page) query.set("page", String(params.page));
@@ -2290,7 +2290,7 @@ export const deleteAdminNotification = async (id: string) => {
   });
 };
 
-// --- BE-017: Reference Data Lists -------------------------------------------
+// --- BE-017: Reference data Lists -------------------------------------------
 
 export interface ReferenceListApi {
   key: string;

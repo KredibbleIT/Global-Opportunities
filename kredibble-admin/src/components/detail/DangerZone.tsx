@@ -16,7 +16,7 @@ import { Card } from "@/components/ui/Card";
 export function DangerZone({ explanation, children }: { explanation: string; children: ReactNode }) {
   return (
     <Card as="section" ariaLabel="Danger zone" className="border-danger/40">
-      <h2 className="font-display text-base font-bold leading-5.5 text-danger">Danger zone</h2>
+      <h2 className="font-display text-base font-semibold leading-5.5 text-danger">Danger zone</h2>
       <p className="page-subtitle mt-1">{explanation}</p>
       <div className="mt-4 flex flex-wrap items-center gap-3">{children}</div>
     </Card>

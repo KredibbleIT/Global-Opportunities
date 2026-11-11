@@ -106,14 +106,14 @@
 
 /* ================================================================ type scale */
 
-/* Greeting headline (Overview): Jakarta 800, 28/34, -0.01em. 24/30 below 640px. */
+/* Overview headline: Jakarta 600, 28/34, -0.01em. 24/30 below 640px. (Unslop pass: 600, not 800; size sets the hierarchy.) */
 @utility hero-title {
   font-family: var(--font-display);
-  font-weight: 800;
+  font-weight: 600;
   font-size: 28px;
   line-height: 34px;
   letter-spacing: -0.01em;
-  word-spacing: 0.08em; /* Jakarta ExtraBold's native space is narrow; this opens the word gaps back up */
+  word-spacing: normal;
   color: var(--color-ink);
   @media (width < 40rem) {
     font-size: 24px;
@@ -121,10 +121,10 @@
   }
 }
 
-/* Page title (inner pages): Jakarta 700, 24/30, -0.01em. 22/28 below 640px. */
+/* Page title (inner pages): Jakarta 600, 24/30, -0.01em. 22/28 below 640px. */
 @utility page-title {
   font-family: var(--font-display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 24px;
   line-height: 30px;
   letter-spacing: -0.01em;
@@ -145,10 +145,10 @@
   color: var(--color-muted);
 }
 
-/* Card title: Jakarta 700, 16/22 */
+/* Card title: Jakarta 600, 16/22 */
 @utility card-title {
   font-family: var(--font-display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 16px;
   line-height: 22px;
   letter-spacing: -0.005em;
@@ -163,10 +163,10 @@
   color: var(--color-muted);
 }
 
-/* KPI value: Jakarta 800, 30/36, tabular numerals */
+/* KPI value: Jakarta 600, 30/36, tabular numerals */
 @utility stat-value {
   font-family: var(--font-display);
-  font-weight: 800;
+  font-weight: 600;
   font-size: 30px;
   line-height: 36px;
   font-variant-numeric: tabular-nums;
@@ -223,13 +223,11 @@
   line-height: 18px;
 }
 
-/* Table header: Inter 600, 11/16, uppercase, +0.06em. Body: 13/18. Secondary line: 12/16 muted. */
+/* Table header: Inter 500, 12/16, sentence case (no uppercase tracking). Body: 13/18. Secondary line: 12/16 muted. */
 @utility table-head {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 16px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-weight: 500;
   color: var(--color-muted);
 }
 @utility table-text {
@@ -258,10 +256,10 @@
   line-height: 18px;
   font-weight: 600;
 }
-/* The article title input: Jakarta 700, 20/28 */
+/* The article title input: Jakarta 600, 20/28 */
 @utility form-title-text {
   font-family: var(--font-display);
-  font-weight: 700;
+  font-weight: 600;
   font-size: 20px;
   line-height: 28px;
 }
@@ -270,10 +268,10 @@
   line-height: 20px;
 }
 
-/* Mini stat value on detail pages: Jakarta 800, 24/30, tabular numerals */
+/* Mini stat value on detail pages: Jakarta 600, 24/30, tabular numerals */
 @utility ministat-value {
   font-family: var(--font-display);
-  font-weight: 800;
+  font-weight: 600;
   font-size: 24px;
   line-height: 30px;
   font-variant-numeric: tabular-nums;
@@ -295,33 +293,27 @@
   color: var(--color-muted);
 }
 
-/* Small uppercase label (table heads in older components, group names) */
+/* Small label (table heads in older components, group names): sentence case */
 @utility eyebrow {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 16px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-weight: 500;
   color: var(--color-muted);
 }
 
-/* Header eyebrow: 11/16, 600, uppercase, +0.12em, orange-700 */
+/* Header eyebrow: 12/16, 500, sentence case, orange-700 */
 @utility eyebrow-brand {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 16px;
-  font-weight: 600;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  font-weight: 500;
   color: var(--color-orange-700);
 }
 
-/* Sidebar group label (older sidebar markup): 11/16, 600, uppercase */
+/* Sidebar group label (older sidebar markup): 12/16, 500, sentence case */
 @utility nav-label {
-  font-size: 11px;
+  font-size: 12px;
   line-height: 16px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  font-weight: 500;
   color: var(--color-muted);
 }
 
@@ -341,19 +333,18 @@
  * feature card per page); light surfaces stay flat.
  */
 
-/* Glass: "light from below". Used by the sidebar search field and the active child row. */
+/* Raised surface on the dark sidebar (the search field): one step up from the sidebar with a hairline.
+   Unslop pass: was a "light from below" gradient with a glowing bottom edge. */
 @utility glass {
-  background: linear-gradient(to top, rgb(167 106 214 / 0.22), rgb(255 255 255 / 0.04));
-  border: 1px solid rgb(255 255 255 / 0.1);
-  border-bottom-color: rgb(210 170 240 / 0.4); /* the glowing bottom edge */
+  background: rgb(255 255 255 / 0.06);
+  border: 1px solid rgb(255 255 255 / 0.08);
 }
 
-/* Active child in the sidebar: the same glass fill, but the "light from below" edge is much
-   brighter than the other three edges (bottom 0.55, others 0.08) */
+/* Active child in the sidebar: a surface step brighter than glass, a hairline and a soft top highlight. No glow. */
 @utility glass-active {
-  background: linear-gradient(to top, rgb(167 106 214 / 0.22), rgb(255 255 255 / 0.04));
-  border: 1px solid rgb(255 255 255 / 0.08);
-  border-bottom-color: rgb(210 170 240 / 0.55);
+  background: rgb(255 255 255 / 0.1);
+  border: 1px solid rgb(255 255 255 / 0.1);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.08);
 }
 
 /*
@@ -378,23 +369,24 @@
   }
 }
 
-/* Selected parent pill in the sidebar: white text on a violet gradient (5.8:1 or better) */
+/* Selected parent pill in the sidebar: white text on the flat brand violet (7.5:1), with a soft top highlight. */
 @utility sb-pill {
-  background: linear-gradient(180deg, #8e40bd, #7b2fa7);
+  background: #7b2fa7;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.12);
   color: #ffffff;
 }
 
 /* Subtle purple glow at the bottom edge of the sidebar (alpha 0.18, about half of the first draft)
    so the sidebar stays near-black except around the user card */
 @utility sb-glow {
-  background: radial-gradient(70% 45% at 50% 100%, rgb(121 46 164 / 0.18), transparent);
+  /* Unslop pass: the purple glow behind the user card is gone; the sidebar is one flat surface. */
+  background: none;
 }
 
-/* The one dark feature card per page: violet-black to purple with an orange glow at the bottom */
+/* The one dark feature card per page: the flat deep brand violet (no gradient, no glow), so its four counts carry the card */
 @utility dark-feature {
-  background:
-    radial-gradient(80% 40% at 50% 100%, rgb(252 94 36 / 0.3), transparent),
-    linear-gradient(160deg, #140a22, #4a1c6b);
+  background: #2a1442;
+  border: 1px solid rgb(255 255 255 / 0.06);
   color: var(--color-sb-text);
 }
 
@@ -402,10 +394,8 @@
    bigger orange glow rising from the bottom, centred behind the person cutout (SignInFigure) that fills the lower part of the panel.
    The one accent is orange. */
 @utility signin-panel {
-  background:
-    radial-gradient(75% 60% at 58% 100%, rgb(252 94 36 / 0.55), transparent),
-    radial-gradient(80% 40% at 50% 100%, rgb(252 94 36 / 0.3), transparent),
-    linear-gradient(160deg, #140a22, #4a1c6b);
+  /* Unslop pass: the two orange glows are gone; a single-hue violet tone shift stays behind the photo. */
+  background: linear-gradient(160deg, #140a22, #3a1656);
   color: var(--color-sb-text);
 }
 
@@ -499,6 +489,35 @@ body {
 }
 .no-scrollbar::-webkit-scrollbar {
   display: none;
+}
+
+/*
+ * Unslop pass: menus, popovers, dialogs, toasts and tooltips used to appear in one frame. They now fade in and rise 4px
+ * (160ms, one ease-out curve) from where they open; dialogs also settle from 98% scale. Reduced motion shows them at once.
+ */
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.98);
+  }
+}
+.pop-enter {
+  animation: pop-in 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.dialog-enter {
+  animation: dialog-in 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .pop-enter,
+  .dialog-enter {
+    animation: none;
+  }
 }
 
 /* Bottom sheet (the phone version of the Select list) slides up in 200ms; reduced motion shows it at once. */

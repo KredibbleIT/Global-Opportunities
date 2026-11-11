@@ -1,5 +1,5 @@
 /**
- * Data loader for the Verification Queue list page (the Opportunities Queue's is in opportunities.ts).
+ * Data loader for the Verification queue list page (the Opportunities queue's is in opportunities.ts).
  *
  * They follow the same switch as the Overview (see mock-mode.ts):
  * - Mock mode (NEXT_PUBLIC_USE_MOCKS=true, or unset in development): realistic mock rows after

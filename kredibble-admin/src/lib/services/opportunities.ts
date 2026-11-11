@@ -1,5 +1,5 @@
 /**
- * Data and actions for the Opportunities Queue and the review page (opportunities/[id]).
+ * Data and actions for the Opportunities queue and the review page (opportunities/[id]).
  *
  * Same switch as the other loaders (see mock-mode.ts):
  * - Mock mode: mock postings (src/lib/mock-opportunities.ts) after ~400ms, with this session's changes laid over

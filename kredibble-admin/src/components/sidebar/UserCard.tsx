@@ -2,11 +2,11 @@
 
 /**
  * UserCard: the glass card at the bottom of the sidebar, with the signed-in
- * person and the Log Out action.
+ * person and the Log out action.
  *
  * - Expanded: avatar, name (13/18 600), role (12/16 muted) and a full-width
- *   "Log Out" button with its visible text.
- * - Rail: just the avatar, and a Log Out icon button with a tooltip.
+ *   "Log out" button with its visible text.
+ * - Rail: just the avatar, and a Log out icon button with a tooltip.
  *
  * Logging out calls the API, but the local session is cleared and the user is
  * sent to /login even if that request fails, so nobody is left stuck.
@@ -44,11 +44,11 @@ export function UserCard({ rail }: { rail: boolean }) {
     return (
       <div className="flex flex-col items-center gap-2">
         <Avatar name={name} size="sm" />
-        <Tooltip label="Log Out" placement="right">
+        <Tooltip label="Log out" placement="right">
           <button
             type="button"
             onClick={logOut}
-            aria-label="Log Out"
+            aria-label="Log out"
             className="flex size-10 items-center justify-center rounded-control text-sb-text transition-colors duration-150 ease-out hover:bg-white/10"
           >
             <LogOut size={18} strokeWidth={1.75} aria-hidden="true" />
@@ -76,7 +76,7 @@ export function UserCard({ rail }: { rail: boolean }) {
         )}
       >
         <LogOut size={16} strokeWidth={1.75} aria-hidden="true" />
-        Log Out
+        Log out
       </button>
     </div>
   );

@@ -36,7 +36,7 @@ export function DeltaChip({ label, direction, goodDirection, children }: DeltaCh
         isGood ? "bg-success-soft text-success" : "bg-warning-soft text-warning",
       )}
     >
-      <Arrow size={14} aria-hidden="true" />
+      <Arrow size={14} strokeWidth={2} aria-hidden="true" />
       {label}
       {children && <span> {children}</span>}
       <span className="sr-only">{isGood ? " (improved)" : " (worsened)"}</span>

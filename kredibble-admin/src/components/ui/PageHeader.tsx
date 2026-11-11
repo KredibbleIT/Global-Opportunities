@@ -22,9 +22,10 @@ interface PageHeaderProps {
 }
 
 export function PageHeader({ title, subtitle, icon, tone = "accent", actions }: PageHeaderProps) {
+  // Unslop pass: from 640px the actions stay on the right however long the subtitle is (flex-wrap used to drop them under it, on the left).
   return (
-    <header className="flex flex-wrap items-start justify-between gap-3">
-      <div className="flex min-w-0 items-center gap-3">
+    <header className="flex flex-col gap-3 min-[640px]:flex-row min-[640px]:items-start min-[640px]:justify-between">
+      <div className="flex min-w-0 flex-1 items-center gap-3">
         {icon && <IconTile icon={icon} tone={tone} size="md" />}
         <div className="min-w-0">
           <h1 data-testid="page-title" className="page-title break-words">
@@ -33,7 +34,7 @@ export function PageHeader({ title, subtitle, icon, tone = "accent", actions }: 
           {subtitle && <p className="page-subtitle mt-1">{subtitle}</p>}
         </div>
       </div>
-      {actions}
+      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
     </header>
   );
 }

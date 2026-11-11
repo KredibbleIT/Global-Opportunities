@@ -121,7 +121,7 @@ export function GroupedBarChart({ data, ariaLabel, unit = "", height = "h-chart"
 
   const valueLabel = (value: number | null, x: number, y: number, key: string, bold: boolean) =>
     value === null ? null : (
-      <text key={key} x={x} y={y} textAnchor="middle" fontSize={11} className={bold ? "fill-ink font-bold" : "fill-muted"}>
+      <text key={key} x={x} y={y} textAnchor="middle" fontSize={11} className={bold ? "fill-ink font-semibold" : "fill-muted"}>
         {format(value)}
       </text>
     );

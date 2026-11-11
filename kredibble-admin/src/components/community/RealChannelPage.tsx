@@ -4,7 +4,7 @@
  * RealChannelPage: one live channel, for the admin. Built on the shared detail template.
  *
  * Tabs: Group chat (history + composer, see ChannelChat) and Members (see ChannelMembers).
- * Data: GET /admin/community/channels/:id (real API). Moderation of feed posts stays on the Reports Queue.
+ * Data: GET /admin/community/channels/:id (real API). Moderation of feed posts stays on the Reports queue.
  */
 import { useCallback, useState } from "react";
 import { useParams } from "next/navigation";
@@ -43,7 +43,7 @@ export function RealChannelPage() {
 
   if (status === "loading") return <DetailSkeleton />;
   if (status === "error") return <DetailError message={error ?? "Could not load this channel."} onRetry={retry} />;
-  if (!channel) return <DetailNotFound noun="Channel" listLabel="Community Channels" listHref="/community" />;
+  if (!channel) return <DetailNotFound noun="Channel" listLabel="Community channels" listHref="/community" />;
 
   const isPrivate = channel.visibility === "private";
 

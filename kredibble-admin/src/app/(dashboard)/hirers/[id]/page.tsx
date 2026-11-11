@@ -44,7 +44,7 @@ export default function HirerDetailPage() {
 
   if (status === "loading") return <DetailSkeleton />;
   if (status === "error") return <DetailError message={error ?? "Could not load this hirer."} onRetry={retry} />;
-  if (!hirer) return <DetailNotFound noun="Hirer" listLabel="Hirers Directory" listHref="/hirers" />;
+  if (!hirer) return <DetailNotFound noun="Hirer" listLabel="Hirers directory" listHref="/hirers" />;
 
   const isActive = hirer.status === "active";
 
@@ -131,7 +131,7 @@ export default function HirerDetailPage() {
             <KeyValueList
               items={[
                 { label: "Recruiter", value: hirer.recruiterName },
-                { label: "Recruiter Email", value: hirer.recruiterEmail },
+                { label: "Recruiter email", value: hirer.recruiterEmail },
                 { label: "Joined", value: formatDate(hirer.joinedDate) },
               ]}
             />

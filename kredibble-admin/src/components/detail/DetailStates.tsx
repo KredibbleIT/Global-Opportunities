@@ -7,7 +7,7 @@
  * - DetailError: the same layout for a failed load, with a "Try again" button.
  *
  * Props
- * - DetailNotFound: noun ("Seeker"), listLabel ("Seekers Directory"), listHref ("/seekers")
+ * - DetailNotFound: noun ("Seeker"), listLabel ("Seekers directory"), listHref ("/seekers")
  * - DetailError: message, onRetry
  */
 import Link from "next/link";

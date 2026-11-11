@@ -25,7 +25,7 @@ import { TagPill } from "@/components/ui/TagPill";
 import { TruncatedLink, TruncatedText } from "@/components/ui/TruncatedText";
 import { cn } from "@/lib/cn";
 import { formatMonth } from "@/lib/format";
-import { AMBASSADOR_TIER_LABELS, AMBASSADOR_TIER_SHORT_LABELS } from "@/lib/mock-entities";
+import { AMBASSADOR_TIER_SHORT_LABELS } from "@/lib/mock-entities";
 import { loadLeaderboard, subscribeNetwork, type LeaderboardRow } from "@/lib/services/network";
 import { useListData } from "@/lib/use-list-data";
 import { useMonth } from "@/lib/use-month";
@@ -45,7 +45,7 @@ function RankBadge({ rank }: { rank: number }) {
       data-top={rank <= 3 ? "true" : "false"}
       aria-label={`Rank ${rank}`}
       className={cn(
-        "inline-flex size-7 items-center justify-center rounded-pill font-display text-sm font-bold tabular-nums",
+        "inline-flex size-7 items-center justify-center rounded-pill font-display text-sm font-semibold tabular-nums",
         rank <= 3 ? "bg-purple-50 text-purple-700 ring-1 ring-purple-200" : "text-muted",
       )}
     >
@@ -59,7 +59,7 @@ const COLUMNS: Column<LeaderboardRow>[] = [
   { key: "name", header: "Name", type: "primary", width: "22%", title: (r) => r.ambassador.name, leading: (r) => ({ avatarName: r.ambassador.name, imageSrc: r.ambassador.photoUrl }) },
   { key: "country", header: "Country", type: "text", width: "11%", value: (r) => r.ambassador.country },
   { key: "campus", header: "Campus", type: "text", width: "14%", value: (r) => r.ambassador.campus },
-  { key: "tier", header: "Tier", type: "pill", width: "14%", label: (r) => AMBASSADOR_TIER_SHORT_LABELS[r.ambassador.tier], tooltip: (r) => AMBASSADOR_TIER_LABELS[r.ambassador.tier] },
+  { key: "tier", header: "Tier", type: "text", width: "14%", value: (r) => AMBASSADOR_TIER_SHORT_LABELS[r.ambassador.tier] },
   { key: "shares", header: "Shares", type: "number", width: "10%", value: (r) => r.shares },
   { key: "clicks", header: "Referred clicks", type: "number", width: "11%", value: (r) => r.clicks },
   { key: "signups", header: "Verified signups", type: "number", width: "10%", value: (r) => r.signups },

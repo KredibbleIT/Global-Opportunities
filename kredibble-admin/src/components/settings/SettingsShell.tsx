@@ -95,7 +95,7 @@ export function SettingsShell({ children }: { children: ReactNode }) {
       <div className="flex flex-1 flex-col">
         <header className="mb-4 flex items-start gap-3">
           <span aria-hidden="true" className="inline-flex size-11 shrink-0 items-center justify-center rounded-inset bg-neutral-soft text-neutral">
-            <SettingsIcon size={20} strokeWidth={1.75} />
+            <SettingsIcon size={18} strokeWidth={1.75} />
           </span>
           <div className="min-w-0">
             <h1 data-testid="page-title" className="page-title">

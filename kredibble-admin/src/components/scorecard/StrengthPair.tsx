@@ -18,7 +18,7 @@ function Tile({ testId, icon: Icon, caption, row }: { testId: string; icon: Luci
         <p className="caption">{caption}</p>
         <TruncatedText text={row.label} className="table-text font-semibold text-ink" />
       </div>
-      <AttainmentFigure value={row.attainment} testId={`${testId}-percent`} className="font-display text-xl font-bold tabular-nums text-ink" />
+      <AttainmentFigure value={row.attainment} testId={`${testId}-percent`} className="font-display text-xl font-semibold tabular-nums text-ink" />
     </div>
   );
 }

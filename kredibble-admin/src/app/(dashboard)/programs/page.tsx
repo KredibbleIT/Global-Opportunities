@@ -123,7 +123,7 @@ export default function ProgramsPage() {
           // The first-program action (only for a role that may add programs).
           action: can("programs", "edit") ? (
             <Link href="/programs/new" className={buttonClasses("primary")}>
-              <Plus size={16} strokeWidth={2} aria-hidden="true" />
+              <Plus size={16} strokeWidth={1.75} aria-hidden="true" />
               Add your first program
             </Link>
           ) : undefined,

@@ -36,11 +36,11 @@ export function ProgressRow({ label, percent, caption, tone = "accent" }: Progre
       <div className="mb-2 flex items-baseline justify-between gap-3 body-sm">
         <span className="font-medium text-ink">{label}</span>
         {percent === null ? (
-          <span role="img" aria-label="unavailable" className="font-bold text-muted">
+          <span role="img" aria-label="unavailable" className="font-semibold text-muted">
             —
           </span>
         ) : (
-          <span className="font-bold tabular-nums text-ink">{clamped}%</span>
+          <span className="font-semibold tabular-nums text-ink">{clamped}%</span>
         )}
       </div>
       <div

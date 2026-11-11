@@ -176,7 +176,7 @@ export function PartnerDetail({ id }: { id: string }) {
         side={
           <InfoCard title="Linked programs">
             {programs.length === 0 ? (
-              <p className="input-text text-muted">No programs are linked to this partner yet. —</p>
+              <p className="input-text text-muted">No programs are linked to this partner yet</p>
             ) : (
               <ul data-testid="linked-programs" className="space-y-2">
                 {programs.map((program) => (

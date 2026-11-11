@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Verification Queue: companies that submitted their documents for Hirer verification.
+ * Verification queue: companies that submitted their documents for Hirer verification.
  * Built on the shared list template (ListPage + TableToolbar + DataTable): this file only
  * holds the column config, the filter and the data loader.
  *
@@ -46,7 +46,7 @@ export default function VerificationQueuePage() {
 
   return (
     <ListPage
-      title="Verification Queue"
+      title="Verification queue"
       subtitle="Review company verification requests."
       toolbar={
         // Two labelled sections, each with its own count (and its own empty state below).

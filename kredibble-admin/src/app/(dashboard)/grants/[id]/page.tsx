@@ -91,9 +91,9 @@ export default function GrantDetailPage() {
         }
         main={
           <>
-            <InfoCard title="Funding Pool">
+            <InfoCard title="Funding pool">
               <div className="h-3 overflow-hidden rounded-pill bg-surface-2" role="presentation">
-                <div className="h-full rounded-pill bg-purple-600 transition-all" style={{ width: `${Math.min(pct, 100)}%` }} />
+                <div className="h-full rounded-pill bg-purple-600" style={{ width: `${Math.min(pct, 100)}%` }} />
               </div>
               <p className="body-sm mt-2 text-muted">
                 {money(grant.allocated)} allocated of {money(grant.fundingPool)} ({pct}%) · {money(remaining)} remaining
@@ -165,7 +165,7 @@ export default function GrantDetailPage() {
                 items={[
                   { label: "Hirer", value: grant.hirer },
                   { label: "Sector", value: grant.sector },
-                  { label: "Currency", value: grant.currency }, // the pool and what remains are in the Funding Pool card: one place each
+                  { label: "Currency", value: grant.currency }, // the pool and what remains are in the Funding pool card: one place each
                 ]}
               />
             </InfoCard>

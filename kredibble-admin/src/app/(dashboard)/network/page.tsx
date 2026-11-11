@@ -43,12 +43,13 @@ const COLUMNS: Column<AmbassadorRow>[] = [
     width: "24%",
     title: (r) => r.name,
     subtitle: (r) => r.email,
+    subtitleLines: 1,
     leading: (r) => ({ avatarName: r.name, imageSrc: r.photoUrl }),
   },
   { key: "place", header: "Country and city", type: "text", width: "15%", value: (r) => `${r.city}, ${r.country}` },
   { key: "campus", header: "Campus", type: "text", width: "13%", value: (r) => r.campus },
-  { key: "tier", header: "Tier", type: "pill", width: "14%", label: (r) => AMBASSADOR_TIER_SHORT_LABELS[r.tier], tooltip: (r) => AMBASSADOR_TIER_LABELS[r.tier] },
-  { key: "status", header: "Status", type: "status", width: "10%", status: (r) => r.status },
+  { key: "tier", header: "Tier", type: "text", width: "11%", value: (r) => AMBASSADOR_TIER_SHORT_LABELS[r.tier] },
+  { key: "status", header: "Status", type: "status", width: "13%", status: (r) => r.status },
   { key: "trained", header: "Trained", type: "text", width: "9%", value: (r) => (r.trained ? "Trained" : "—"), icon: (r) => (r.trained ? Check : undefined) },
   { key: "lead", header: "Assigned lead", type: "text", width: "15%", value: (r) => r.leadName ?? "—" },
 ];
@@ -93,8 +94,8 @@ export default function NetworkPage() {
   return (
     <ListPage
       title="Network"
-      // SEC-150: "Applicant" here is the registry's first stage, not a request from the app (those are on Ambassador Applications).
-      subtitle="Ambassadors who amplify listings with their referral code. Applicant is the first stage here; requests from the app are on Ambassador Applications."
+      // SEC-150: "Applicant" here is the registry's first stage, not a request from the app (those are on Ambassador applications).
+      subtitle="Ambassadors who amplify listings with their referral code. Applicant is the first stage here; requests from the app are on Ambassador applications."
       action={can("network", "edit") ? { label: "New ambassador", href: "/network/new", icon: Plus } : undefined}
       toolbar={
         <div className="space-y-4">

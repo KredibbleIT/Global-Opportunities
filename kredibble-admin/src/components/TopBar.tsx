@@ -101,7 +101,7 @@ export function TopBar({ onOpenNav, counts }: TopBarProps) {
   return (
     <header data-print-hide className="lg:panel-corner sticky top-0 z-30 flex h-topbar shrink-0 items-center gap-3 border-b border-line bg-surface px-4 sm:px-5 lg:px-7">
       <button type="button" onClick={onOpenNav} aria-label="Open navigation" className={cn(ICON_BUTTON, "lg:hidden", back && "max-sm:hidden")}>
-        <MenuIcon size={20} strokeWidth={1.75} aria-hidden="true" />
+        <MenuIcon size={18} strokeWidth={1.75} aria-hidden="true" />
       </button>
       {back && (
         <Link href={back.href} aria-label={`Back to ${back.label}`} data-testid="back-button" className={cn(ICON_BUTTON, "sm:hidden")}>
@@ -144,7 +144,7 @@ export function TopBar({ onOpenNav, counts }: TopBarProps) {
           aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"}
           className={cn(ICON_BUTTON, "relative")}
         >
-          <Bell size={20} strokeWidth={1.75} aria-hidden="true" />
+          <Bell size={18} strokeWidth={1.75} aria-hidden="true" />
           {/* Orange dot with a white ring so it reads on the bar; the count is in the aria-label. */}
           {unread ? (
             <span aria-hidden="true" className="absolute right-2 top-2 size-2.5 rounded-full border-2 border-surface bg-orange-500" />

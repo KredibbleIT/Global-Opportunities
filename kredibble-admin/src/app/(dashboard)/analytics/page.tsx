@@ -5,9 +5,9 @@
  * stat row (total applications, open reports) and the charts below.
  *
  * Charts:
- * - Postings by type          segmented bar    the Opportunities Queue's rows, by type
- * - Verification status       segmented bar    the Verification Queue's rows, by decision
- * - Reports by reason         highlight bar    the Reports Queue's rows, by reason (sorted so the most common is last, which is
+ * - Postings by type          segmented bar    the Opportunities queue's rows, by type
+ * - Verification status       segmented bar    the Verification queue's rows, by decision
+ * - Reports by reason         highlight bar    the Reports queue's rows, by reason (sorted so the most common is last, which is
  *                                              the bar the chart highlights in orange)
  * Each chart has a visually hidden text-alternative table and an empty state.
  *

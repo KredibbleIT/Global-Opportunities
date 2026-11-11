@@ -46,7 +46,7 @@ export function ListPage({ title, subtitle, action, actions, toolbar, notice, ch
           actions ??
           (action && (
             <Link href={action.href} className={buttonClasses("primary")}>
-              {ActionIcon && <ActionIcon size={16} strokeWidth={2} aria-hidden="true" />}
+              {ActionIcon && <ActionIcon size={16} strokeWidth={1.75} aria-hidden="true" />}
               {action.label}
             </Link>
           ))

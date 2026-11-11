@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Opportunities Queue: ONE list for everything that can become an opportunity on the platform.
+ * Opportunities queue: ONE list for everything that can become an opportunity on the platform.
  *   - Hirer-submitted postings (Jobs, Internships, Events, Grants), moderated here: pending, approved, rejected.
  *   - Staff-curated listings (also scholarships and fellowships), made by the desk: draft or published, and gated by
  *     vetting ("Listings must be vetted before they can be published").
@@ -80,7 +80,8 @@ const COLUMNS: Column<OpportunityRow>[] = [
   },
   { key: "company", header: "Company", type: "text", width: "16%", value: (r) => r.company },
   { key: "type", header: "Type", type: "text", width: "12%", value: (r) => typeOf(r).label, icon: (r) => typeOf(r).icon },
-  { key: "source", header: "Source", type: "pill", width: "12%", label: (r) => (r.source === "curated" ? "Staff-curated" : "Hirer") },
+  // Unslop pass: plain text. The same lavender pill on every row was noise; Vetting and Status keep their chips because they vary.
+  { key: "source", header: "Source", type: "text", width: "12%", value: (r) => (r.source === "curated" ? "Staff-curated" : "Hirer") },
   { key: "vetting", header: "Vetting", type: "status", width: "11%", status: (r) => r.vetting },
   { key: "posted", header: "Posted", type: "text", width: "11%", value: (r) => formatDate(r.date) },
   { key: "status", header: "Status", type: "status", width: "14%", status: (r) => r.moderationStatus },
@@ -118,7 +119,7 @@ export default function OpportunitiesQueuePage() {
 
   return (
     <ListPage
-      title="Opportunities Queue"
+      title="Opportunities queue"
       subtitle={`Review postings from hirers and manage the listings the desk curates.${rows ? ` ${pendingCount} awaiting review.` : ""}`}
       action={can("listings_curate", "edit") ? { label: "New listing", href: "/opportunities/new", icon: Plus } : undefined}
       toolbar={

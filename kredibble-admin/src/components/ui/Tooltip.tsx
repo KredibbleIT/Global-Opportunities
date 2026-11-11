@@ -142,7 +142,7 @@ export function Tooltip({
         >
           <span
             className={cn(
-              "badge-text block rounded-inset border border-white/18 bg-ink px-2 py-1 font-medium text-white shadow-pop",
+              "pop-enter badge-text block rounded-inset border border-white/18 bg-ink px-2 py-1 font-medium text-white shadow-pop",
               wrap ? "max-w-xs whitespace-normal break-words" : "whitespace-nowrap",
             )}
           >

@@ -1,5 +1,5 @@
 /**
- * Mock data for the Hirers Directory.
+ * Mock data for the Hirers directory.
  * Account-level view of hirer companies — broader than the Verification
  * Queue (src/lib/mock-data.ts), which only tracks document review state.
  * This tracks the account itself: status, activity, verification summary.

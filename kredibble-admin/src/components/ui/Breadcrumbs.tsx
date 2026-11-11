@@ -76,7 +76,7 @@ export function Breadcrumbs({ items }: { items: Crumb[] }) {
                   triggerClassName={cn("inline-flex h-10 items-center gap-1 px-1", LINK_CLASSES)}
                 >
                   {item.label}
-                  <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" />
+                  <ChevronDown size={14} strokeWidth={2} aria-hidden="true" />
                 </Menu>
               ) : item.href ? (
                 <Link href={item.href} className={cn("inline-flex h-10 items-center px-1", LINK_CLASSES)}>

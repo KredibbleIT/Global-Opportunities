@@ -167,7 +167,7 @@ export function HighlightBarChart({ data, ariaLabel, unit = "", height = "h-char
                 y={bar.y - 6}
                 textAnchor="middle"
                 fontSize={12}
-                className={i === highlighted ? "fill-ink font-bold" : "fill-muted"}
+                className={i === highlighted ? "fill-ink font-semibold" : "fill-muted"}
               >
                 {data[i].value}
               </text>

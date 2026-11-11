@@ -50,7 +50,7 @@ export const buttonClasses = (variant: ButtonVariant = "primary", onDark = false
   cn(
     "button-text inline-flex items-center justify-center gap-2 rounded-control",
     size === "sm" ? "h-9 px-3" : "h-10 px-4",
-    "transition-colors duration-150 ease-out disabled:cursor-not-allowed",
+    "transition-[color,background-color,border-color,transform] duration-150 ease-out active:scale-[0.98] disabled:cursor-not-allowed disabled:active:scale-100",
     (onDark ? DARK_VARIANTS : VARIANTS)[variant],
   );
 
@@ -85,7 +85,7 @@ export function Button({
       {...rest}
     >
       {loading ? (
-        <Loader2 size={16} className="animate-spin" aria-hidden="true" />
+        <Loader2 size={16} strokeWidth={1.75} className="animate-spin" aria-hidden="true" />
       ) : (
         Icon && <Icon size={16} strokeWidth={1.75} aria-hidden="true" />
       )}

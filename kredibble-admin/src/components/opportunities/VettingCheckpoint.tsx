@@ -58,7 +58,7 @@ export function VettingCheckpoint({ vetted, vettedById, vettedOn, staff, default
           aria-hidden="true"
           className={cn("flex size-10 shrink-0 items-center justify-center rounded-control bg-surface", vetted ? "text-success" : "text-warning")}
         >
-          <Icon size={20} strokeWidth={1.75} />
+          <Icon size={18} strokeWidth={1.75} />
         </span>
         <div className="min-w-0 flex-1">
           <h2 className="card-title">Vetting checkpoint</h2>

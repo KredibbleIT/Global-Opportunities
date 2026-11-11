@@ -49,7 +49,7 @@ function MockChannelReviewPage() {
 
   if (status === "loading") return <DetailSkeleton />;
   if (status === "error") return <DetailError message={error ?? "Could not load this channel."} onRetry={retry} />;
-  if (!channel) return <DetailNotFound noun="Channel" listLabel="Community Channels" listHref="/community" />;
+  if (!channel) return <DetailNotFound noun="Channel" listLabel="Community channels" listHref="/community" />;
 
   const isRemoved = channel.status === "removed";
 

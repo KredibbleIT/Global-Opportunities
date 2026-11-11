@@ -1,5 +1,5 @@
 /**
- * Mock data for Career Resources CMS.
+ * Mock data for Career resources CMS.
  * Mirrors the Article shape hardcoded in
  * kredibble-app/src/app/career-resources/index.tsx — that component bakes
  * 3 articles directly into the source, so publishing a new one today

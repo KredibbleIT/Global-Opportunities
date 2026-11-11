@@ -30,7 +30,7 @@ export function Avatar({ name, size = "md" }: { name: string; size?: keyof typeo
     <span
       aria-hidden="true"
       className={cn(
-        "badge-text inline-flex shrink-0 items-center justify-center rounded-full font-display font-bold",
+        "badge-text inline-flex shrink-0 items-center justify-center rounded-full font-display font-semibold",
         AVATAR_SIZES[size],
         TONE_CLASSES[tone],
       )}

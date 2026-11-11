@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Career Resources editor: New article (/content/articles/new) and Edit article (/content/articles/[id]).
+ * Career resources editor: New article (/content/articles/new) and Edit article (/content/articles/[id]).
  * Built on the shared form system (src/components/ui/form).
  *
  * Fields (all kept from the old page, with the same required rules):
@@ -85,7 +85,7 @@ export default function ArticleEditorPage() {
   useBreadcrumbLabel(isNew ? "New article" : existing ? existing.title : "Not found");
 
   if (!isNew && !existing) {
-    return <DetailNotFound noun="Article" listLabel="Career Resources" listHref={LIST_HREF} />;
+    return <DetailNotFound noun="Article" listLabel="Career resources" listHref={LIST_HREF} />;
   }
 
   const set = <K extends keyof ArticleForm>(key: K, value: ArticleForm[K]) => setForm((current) => ({ ...current, [key]: value }));
@@ -112,7 +112,7 @@ export default function ArticleEditorPage() {
       <div className="mb-6">
         <h1 data-testid="page-title" className="page-title">{isNew ? "New article" : "Edit article"}</h1>
         <p className="page-subtitle mt-1">
-          {isNew ? "Write a Career Resources article for seekers." : "Update this Career Resources article."}
+          {isNew ? "Write a Career resources article for seekers." : "Update this Career resources article."}
         </p>
       </div>
       <NotConnectedNotice className="mb-4" />

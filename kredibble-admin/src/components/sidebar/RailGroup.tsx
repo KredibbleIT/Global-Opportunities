@@ -113,11 +113,11 @@ export function RailGroup({ group, pathname, counts, flyoutOpen, onFlyoutChange 
             const next = event.relatedTarget as Node | null;
             if (next && !flyoutRef.current?.contains(next) && !triggerRef.current?.contains(next)) onFlyoutChange(false);
           }}
-          className="dark-surface fixed z-50 w-55 rounded-card bg-sb-bg shadow-pop"
+          className="pop-enter dark-surface fixed z-50 w-55 rounded-card bg-sb-bg shadow-pop"
           style={{ left: position.left, top: position.top }}
         >
           <div className="glass rounded-card p-2">
-            <p className="caption px-3 py-2 font-semibold uppercase tracking-wide">{group.group}</p>
+            <p className="caption px-3 py-2 font-medium">{group.group}</p>
             <ul>
               {group.children.map((child) => {
                 const ChildIcon = child.icon;
