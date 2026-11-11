@@ -11285,12 +11285,12 @@ test.describe('Overview: the prioritised sections', () => {
     await expect(row).toContainText('of 100');
   });
 
-  test('the "Needs your attention" card is the only dark card, and it sits below the programs row, above the trend', async ({ page }) => {
+  test('the "Needs your attention" card is the only dark card, and it leads the page, above the trend and the programs row (SEC-149)', async ({ page }) => {
     await open(page);
     await expect(page.locator('main .dark-feature')).toHaveCount(1);
     await expect(page.locator('main .dark-feature')).toHaveAttribute('data-testid', 'needs-attention');
     const order = await page.evaluate(() => [...document.querySelectorAll('main section[aria-label]')].map((el) => el.getAttribute('aria-label')));
-    expect(order).toEqual(['Programs in progress and upcoming', 'Recent activity', 'Needs your attention', 'Trend', 'Priorities']);
+    expect(order).toEqual(['Needs your attention', 'Trend', 'Priorities', 'Programs in progress and upcoming', 'Recent activity']);
   });
 
   test('the attention rows and the card links follow what the role may see', async ({ page, context }) => {
@@ -11605,15 +11605,16 @@ test.describe('Overview: status words, notes, layout and rankings', () => {
     await expect(page.getByTestId('pro-rating-help')).toHaveCount(0);
   });
 
-  test('the programs row leads the page, the attention card follows it, and no card has a blank band over 24px', async ({ page }) => {
+  test('the attention card leads the page, the programs row shares one top, and no card has a blank band over 24px', async ({ page }) => {
     await open(page);
     // wait for the real content: skeleton bars are aria-hidden, so the band measurement is only meaningful once the rows are in
     await expect(page.getByTestId('upcoming-table')).toBeVisible();
     await expect(page.getByTestId('priorities-list')).toBeVisible();
-    // the review's order: programs and recent activity in one row at the top, attention directly beneath
-    const rows = await page.evaluate(() => ['Programs in progress and upcoming', 'Recent activity', 'Needs your attention'].map((name) => Math.round(document.querySelector(`main section[aria-label="${name}"]`)!.getBoundingClientRect().top)));
-    expect(rows[0]).toBe(rows[1]);
-    expect(rows[2]).toBeGreaterThan(rows[0]);
+    // SEC-149's order: attention first, then the trend and priorities, then programs and recent activity in one row
+    const rows = await page.evaluate(() => ['Needs your attention', 'Priorities', 'Programs in progress and upcoming', 'Recent activity'].map((name) => Math.round(document.querySelector(`main section[aria-label="${name}"]`)!.getBoundingClientRect().top)));
+    expect(rows[1]).toBeGreaterThan(rows[0]);
+    expect(rows[2]).toBeGreaterThan(rows[1]);
+    expect(rows[2]).toBe(rows[3]);
     const bands = await page.evaluate(() =>
       [...document.querySelectorAll('main section[aria-label]')].map((section) => {
         let bottom = 0;

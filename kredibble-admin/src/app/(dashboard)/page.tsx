@@ -8,9 +8,12 @@
  * mock store changes (a target saved in Settings changes a status). There are no automatic retries; the banner's "Try again"
  * re-runs it.
  *
- * Reading order: the programs in progress and upcoming (with the latest activity beside them), the dark "Needs your attention" card,
- * how status is judged, then "Team performance" (the month selector beside its heading): the trend and the priorities. Card rows keep their natural heights (a stretched Trend card left a blank band). The ten KPI cards were removed in the November 2026 design review: the Priorities
- * panel shows the same judgement against the monthly targets in a compact form ("See all" expands to all ten).
+ * Reading order (SEC-149, 2026-11-11, replacing the 4-5 Nov review's programs-first order): the dark "Needs your attention" card
+ * first, so the four queues that wait on a decision are on the first screen; then "Team performance" (the month selector beside its
+ * heading, how status is judged, the trend and the priorities), which is what the subtitle promises; then the programs in progress and
+ * upcoming with the latest activity beside them. Before, a 12-item feed put the attention card about 1,380 px down. Card rows keep
+ * their natural heights (a stretched Trend card left a blank band). The ten KPI cards were removed in the November 2026 design review:
+ * the Priorities panel shows the same judgement against the monthly targets in a compact form ("See all" expands to all ten).
  *
  * Failure handling: a slim banner explains what went wrong, and only the affected sections show "—". Every section keeps its final
  * dimensions while loading, loaded and unavailable, so the layout never jumps.
@@ -59,11 +62,6 @@ export default function DashboardHomePage() {
 
         {issue && !loading && <StatusBanner issue={issue} onRetry={overview.reload} />}
 
-        <div className="grid grid-cols-1 items-start gap-4 min-[1025px]:grid-cols-3">
-          <UpcomingProgramsCard programs={data?.programs ?? null} loading={loading} notConnected={notConnected} className="min-[1025px]:col-span-2" />
-          <RecentActivityCard items={data?.activity ?? null} loading={loading} notConnected={notConnected} />
-        </div>
-
         <NeedsAttentionCard counts={data?.attention ?? null} loading={loading} notConnected={notConnected} />
 
         {/* Team performance: the month selector lives here, beside the heading of the part of the page the month drives. */}
@@ -77,6 +75,11 @@ export default function DashboardHomePage() {
         <div className="grid grid-cols-1 items-start gap-4 min-[1025px]:grid-cols-3">
           <TrendCard trend={data?.trend ?? null} loading={loading} notConnected={notConnected} className="min-[1025px]:col-span-2" />
           <PrioritiesCard cards={data?.kpis ?? null} loading={loading} isPast={data?.isPast ?? false} notConnected={notConnected} />
+        </div>
+
+        <div className="grid grid-cols-1 items-start gap-4 pt-2 min-[1025px]:grid-cols-3">
+          <UpcomingProgramsCard programs={data?.programs ?? null} loading={loading} notConnected={notConnected} className="min-[1025px]:col-span-2" />
+          <RecentActivityCard items={data?.activity ?? null} loading={loading} notConnected={notConnected} />
         </div>
 
       </div>

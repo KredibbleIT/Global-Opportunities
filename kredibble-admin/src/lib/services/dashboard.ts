@@ -258,7 +258,8 @@ function buildForcedMockOverview(state: Exclude<ForcedState, "loading">, month: 
 async function fetchRealOverview(month: MonthKey): Promise<OverviewResult> {
   const [attentionRes, activityRes, summaryRes, kpisRes, trendRes, upcomingRes] = await Promise.allSettled([
     getOverviewAttentionApi(),
-    getOverviewActivityApi(),
+    // SEC-149: the same six entries as mock mode; without a limit the API sent twelve, which pushed "Needs your attention" two screens down.
+    getOverviewActivityApi(FEED_COUNT),
     getDashboardSummary() as Promise<unknown> as Promise<Record<string, number>>,
     getKpiCardsApi<{ month: string; isPast: boolean; kpis: KpiCardData[]; cards: KpiCardData[] }>(month),
     getKpiTrendApi<{ trend: Record<KpiKey, TrendPoint[]> }>({ month, months: TREND_MONTHS }),
