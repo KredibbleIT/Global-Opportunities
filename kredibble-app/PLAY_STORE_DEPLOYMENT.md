@@ -175,7 +175,7 @@ Cause: R8/ProGuard is not enabled (default for Expo).
 Fix: Ignore unless you explicitly enabled code shrinking in `android/app/build.gradle` or `eas.json`.
 
 ### `versionCode 1 already exists` / "Version code N has already been used"
-Cause: Uploading a build whose code Play already has. Before SEC-155, `app.json` pinned `versionCode` to 1, so every CD build after the first production release was code 1.  
+Cause: Uploading a build whose code Play already has. Before SEC-156, `app.json` pinned `versionCode` to 1, so every CD build after the first production release was code 1.  
 Fix: EAS now increments the code on every production build (see §4). If it still happens, the remote counter is behind what Play has: check with `eas build:version:get -p android`, raise it with `eas build:version:set -p android`, and rebuild. Re-running only the submit job re-sends the same build and fails again.
 
 ---
