@@ -93,7 +93,8 @@ export default function NetworkPage() {
   return (
     <ListPage
       title="Network"
-      subtitle="Ambassadors who amplify listings with their referral code."
+      // SEC-150: "Applicant" here is the registry's first stage, not a request from the app (those are on Ambassador Applications).
+      subtitle="Ambassadors who amplify listings with their referral code. Applicant is the first stage here; requests from the app are on Ambassador Applications."
       action={can("network", "edit") ? { label: "New ambassador", href: "/network/new", icon: Plus } : undefined}
       toolbar={
         <div className="space-y-4">

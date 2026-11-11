@@ -50,7 +50,8 @@ export default function AmbassadorApplicationsPage() {
   return (
     <ListPage
       title="Ambassador Applications"
-      subtitle="Review the people who asked to become Global Opportunity Desk ambassadors. Approving adds them to the ambassador registry and, if you choose, a channel."
+      // SEC-150: the Network page has its own "Applicant" stage (people staff added to the registry), which these requests from the app are not.
+      subtitle="Requests from the app to become a Global Opportunity Desk ambassador. Approving adds the person to the Network and, if you choose, a channel. People staff add on the Network page start there as Applicant and are not listed here."
       toolbar={<TableToolbar filters={{ options, value: filter, onChange: setFilter, label: "Filter by status" }} />}
     >
       <DataTable
