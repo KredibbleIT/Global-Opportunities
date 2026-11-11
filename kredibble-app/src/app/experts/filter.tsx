@@ -9,6 +9,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Colors, FontSize, FontWeight, Radius } from '../../constants/design';
 import { professions, experienceLevels, ratingOptions, countries } from '../../constants/mockExperts';
+import { BottomSafeBar } from '../../components/ui/BottomSafeBar';
 
 type Section = 'city' | 'profession' | 'experience' | 'rating' | 'country' | null;
 
@@ -206,7 +207,7 @@ export default function FilterExpertsScreen() {
   );
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen }} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen }} edges={['top', 'left', 'right', 'bottom']}>
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12 }}>
         <TouchableOpacity onPress={() => router.back()} style={{ width: 32 }}>
@@ -415,7 +416,7 @@ export default function FilterExpertsScreen() {
       </ScrollView>
 
       {/* Bottom buttons */}
-      <View
+      <BottomSafeBar
         style={{
           position: 'absolute',
           bottom: 0,
@@ -463,7 +464,7 @@ export default function FilterExpertsScreen() {
             Apply Filters
           </Text>
         </TouchableOpacity>
-      </View>
+      </BottomSafeBar>
     </SafeAreaView>
   );
 }

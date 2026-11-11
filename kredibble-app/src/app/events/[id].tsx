@@ -6,6 +6,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSaved } from '../../lib/useSaved';
 import { Colors, FontSize, FontWeight, Radius } from '../../constants/design';
 import { getEventById, EventItem } from '../../lib/api';
+import { BottomSafeBar } from '../../components/ui/BottomSafeBar';
 
 export default function EventDetailScreen() {
   const router = useRouter();
@@ -52,7 +53,7 @@ export default function EventDetailScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen, justifyContent: 'center', alignItems: 'center' }} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen, justifyContent: 'center', alignItems: 'center' }} edges={['top', 'left', 'right', 'bottom']}>
         <ActivityIndicator size="large" color={Colors.primary} />
         <Text style={{ marginTop: 12, color: Colors.textMuted, fontSize: 14 }} className="font-sans">Loading event details...</Text>
       </SafeAreaView>
@@ -61,7 +62,7 @@ export default function EventDetailScreen() {
 
   if (error || !event) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }} edges={['top', 'left', 'right', 'bottom']}>
         <Text style={{ fontSize: 16, color: Colors.textHeading, fontWeight: '600', marginBottom: 8 }} className="font-sans">
           {error || 'Event not found'}
         </Text>
@@ -76,7 +77,7 @@ export default function EventDetailScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen }} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen }} edges={['top', 'left', 'right', 'bottom']}>
       {/* Floating Header */}
       <View style={[styles.header, { top: insets.top > 0 ? insets.top + 8 : 16 }]}>
         <TouchableOpacity
@@ -204,7 +205,7 @@ export default function EventDetailScreen() {
       </ScrollView>
 
       {/* Bottom Pinned Get Tickets Button */}
-      <View style={styles.footer}>
+      <BottomSafeBar style={styles.footer}>
         <TouchableOpacity
           onPress={() => router.push({
             pathname: '/events/booking',
@@ -216,7 +217,7 @@ export default function EventDetailScreen() {
             Get tickets
           </Text>
         </TouchableOpacity>
-      </View>
+      </BottomSafeBar>
     </SafeAreaView>
   );
 }
