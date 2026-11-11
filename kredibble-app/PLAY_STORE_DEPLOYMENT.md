@@ -14,6 +14,7 @@ EAS project ID: `9d567049-d386-4b4b-b386-6ea3e826d473`
 |------|----------------|
 | Google Play Console account | Owner account for `kredibble-it` |
 | Service account key JSON | Google Cloud Console → IAM & Admin → Service Accounts → Create key (JSON) |
+| Service account access in Play Console | Users and permissions → the service account → Account permissions: **View app information and download bulk reports (read only)**, **Release apps to testing tracks**, **Manage testing tracks and edit tester lists** (and **Release to production…** if CI should ever ship to production). Release rights alone are not enough: without the read-only one, every upload is refused (see Troubleshooting). |
 | `EXPO_TOKEN` GitHub secret | `eas login` → `eas whoami` token; set in repo Settings → Secrets and variables → Actions |
 | `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` GitHub secret | The raw service account key JSON |
 | EAS project | `kredibble-it/kredibble-app` (already created via `eas init`) |
@@ -120,9 +121,11 @@ The secret may be provided either raw or wrapped as `{ "google_play": { "service
 
 ### Submitting a new version
 
-1. Bump `version` and `versionCode` in `app.json` (e.g. `1.0.1` / `2`).
+The Android `versionCode` is managed by EAS, not by `app.json`: `eas.json` sets `cli.appVersionSource` to `remote` and `build.production.autoIncrement` to `true`, so every production build gets the next number automatically. The remote counter started from `app.json`'s `versionCode` (1, the code of the first production release), so the first CD build after the switch is code 2. Changing `versionCode` in `app.json` now does nothing. To see or correct the counter: `eas build:version:get -p android` / `eas build:version:set -p android`.
+
+1. For a native change, bump `version` in `app.json` (e.g. `1.0.1`). JS-only changes ship as OTA updates and need no bump.
 2. Commit and push to `main`.
-3. The CD workflow builds a new AAB and submits it to the **Internal track**.
+3. The CD workflow builds a new AAB (next `versionCode`) and submits it to the **Internal track**. The submit job runs in the `Production` environment, so it waits for approval.
 4. Promote the release to **Closed testing** → **Production** manually in Play Console when ready.
 
 ---
@@ -139,11 +142,13 @@ Channel → runtimeVersion policy: `appVersion` (see `app.json`). An OTA update 
 
 | Change | `version` | `versionCode` | Action |
 |--------|-----------|---------------|--------|
-| Bug fix / OTA-only | no bump | no bump | `eas update` only |
-| Native code / new dependencies | bump patch (`1.0.1`) | increment by 1 | `eas build` + `eas submit` |
-| New features / breaking | bump minor or major | increment by 1 | `eas build` + `eas submit` |
+| Bug fix / OTA-only | no bump | — (no build) | `eas update` only |
+| Native code / new dependencies | bump patch (`1.0.1`) | automatic (EAS) | `eas build` + `eas submit` |
+| New features / breaking | bump minor or major | automatic (EAS) | `eas build` + `eas submit` |
 
-Never reuse a `versionCode`. Google Play rejects uploads with a code that already exists.
+Never reuse a `versionCode`. Google Play rejects uploads with a code that already exists. EAS's remote counter prevents that for builds made through EAS; if a build is ever uploaded by hand with a higher code, raise the counter to match with `eas build:version:set -p android`.
+
+`runtimeVersion` uses the `appVersion` policy, so OTA updates reach every build with the same `version`, whatever its `versionCode`.
 
 ---
 
@@ -152,6 +157,10 @@ Never reuse a `versionCode`. Google Play rejects uploads with a code that alread
 ### `Google Service Account Keys cannot be set up in --non-interactive mode`
 Cause: `eas submit` could not find configured Play credentials.  
 Fix: Ensure `GOOGLE_PLAY_SERVICE_ACCOUNT_JSON` is set in GitHub secrets and `eas.json` has `submit.production.android.serviceAccountKeyPath`. The workflow writes `google-play-service-account.json` before submitting.
+
+### `The Google service account cannot submit this app` (`EAS_GOOGLE_PLAY_PERMISSION_DENIED`)
+Cause: Google's Play API refused the service account for this app (HTTP 403 "The caller does not have permission"). The key itself is usually fine. On 2026-11-11 the account had release rights for all apps but not **View app information and download bulk reports (read only)**, and every upload was refused until that box was ticked (it worked immediately after saving).  
+Fix: Play Console → Users and permissions → the service account → Account permissions → tick the read-only permission plus the release permissions listed in Prerequisites → Save changes. To tell a bad key from a missing permission: a bad or revoked key fails at Google's token exchange; a package Play doesn't know returns 404; a known app with missing permissions returns 403.
 
 ### `Google Play cannot find the app`
 Cause: The app `com.kredibble_it.god` does not exist in Play Console yet.  
@@ -165,9 +174,9 @@ Fix: Setup → Internal track → Testers → add emails / Google Groups. This w
 Cause: R8/ProGuard is not enabled (default for Expo).  
 Fix: Ignore unless you explicitly enabled code shrinking in `android/app/build.gradle` or `eas.json`.
 
-### `versionCode 1 already exists`
-Cause: Re-uploading the same build code.  
-Fix: Increment `versionCode` in `app.json` before rebuilding.
+### `versionCode 1 already exists` / "Version code N has already been used"
+Cause: Uploading a build whose code Play already has. Before SEC-155, `app.json` pinned `versionCode` to 1, so every CD build after the first production release was code 1.  
+Fix: EAS now increments the code on every production build (see §4). If it still happens, the remote counter is behind what Play has: check with `eas build:version:get -p android`, raise it with `eas build:version:set -p android`, and rebuild. Re-running only the submit job re-sends the same build and fails again.
 
 ---
 
@@ -186,6 +195,6 @@ Production releases require full store listing completion (screenshots, descript
 | File | Purpose |
 |------|---------|
 | `kredibble-app/app.json` | App identity, version, package name, EAS project |
-| `kredibble-app/eas.json` | EAS build/submit profiles; `submit.production.android.serviceAccountKeyPath` |
+| `kredibble-app/eas.json` | EAS build/submit profiles; remote `versionCode` with `autoIncrement` on production; `submit.production.android.serviceAccountKeyPath` |
 | `.github/workflows/cd-app.yml` | CI/CD: build AAB, submit to Play, publish OTA updates |
 | `kredibble-app/STORE-LISTINGS.md` | Store listing copy (descriptions, keywords, screenshots notes) |
