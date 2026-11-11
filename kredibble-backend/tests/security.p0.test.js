@@ -710,6 +710,7 @@ const PUBLIC_CONTENT_ROUTES = [
   'GET /news/64b7f1c2a1b2c3d4e5f60718',
   'GET /reference-data',
   'GET /reference-data/64b7f1c2a1b2c3d4e5f60718/64b7f1c2a1b2c3d4e5f60718',
+  'POST /reference-data/64b7f1c2a1b2c3d4e5f60718/64b7f1c2a1b2c3d4e5f60718/items',
   'GET /community/channels',
   'GET /community/channels/64b7f1c2a1b2c3d4e5f60718',
   'GET /community/channels/64b7f1c2a1b2c3d4e5f60718/posts',

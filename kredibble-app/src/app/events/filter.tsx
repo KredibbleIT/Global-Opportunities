@@ -7,6 +7,7 @@ import {
 } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Colors, FontSize, FontWeight, Radius } from '../../constants/design';
+import { BottomSafeBar } from '../../components/ui/BottomSafeBar';
 
 type Section = 'date' | 'region' | 'category' | 'ticketType' | 'eventType' | null;
 
@@ -156,7 +157,7 @@ export default function FilterEventsScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen }} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen }} edges={['top', 'left', 'right', 'bottom']}>
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12 }}>
         <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace('/events')} style={{ width: 32 }}>
@@ -319,7 +320,7 @@ export default function FilterEventsScreen() {
       </ScrollView>
 
       {/* Bottom buttons */}
-      <View
+      <BottomSafeBar
         style={{
           position: 'absolute',
           bottom: 0,
@@ -367,7 +368,7 @@ export default function FilterEventsScreen() {
             Apply Filters
           </Text>
         </TouchableOpacity>
-      </View>
+      </BottomSafeBar>
     </SafeAreaView>
   );
 }

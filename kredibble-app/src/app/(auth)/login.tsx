@@ -13,7 +13,7 @@ import {
   Animated,
   useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Check, X, Eye, EyeOff } from 'lucide-react-native';
 import Svg, { G, Rect, Defs, ClipPath, Path } from 'react-native-svg';
@@ -50,6 +50,7 @@ const SuccessBadge = () => (
 export default function LoginScreen() {
   const router = useRouter();
   const { height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const sheetHeight = windowHeight - LOGO_CLEARANCE;
 
   const [email, setEmail] = useState('');
@@ -480,7 +481,7 @@ export default function LoginScreen() {
 
             <ScrollView
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: 40 }}
+              contentContainerStyle={{ paddingHorizontal: 24, paddingBottom: Math.max(40, insets.bottom + 24) }}
               keyboardShouldPersistTaps="handled"
             >
 
