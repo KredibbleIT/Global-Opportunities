@@ -724,6 +724,13 @@ export const staffUpdateSchema = z.object({
   }),
 });
 
+// SEC-147: suspend or reinstate a seeker's or hirer's account (PATCH /admin/seekers/:id/status, /admin/hirers/:id/status).
+export const accountStatusSchema = z.object({
+  body: z.object({
+    status: z.enum(['active', 'suspended']),
+  }).strict(),
+});
+
 // BE-017: Notification broadcast schemas
 export const notificationBroadcastSchema = z.object({
   body: z.object({

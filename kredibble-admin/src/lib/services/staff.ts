@@ -37,6 +37,17 @@ interface StaffApiRecord {
 
 const write = (rows: StaffMember[]) => setMockCollection("staff", rows, { always: true });
 
+/**
+ * Keeps the team the API returned in this browser's store, so every screen that reads the store agrees with it.
+ * Only a real change is written (SEC-146): every write notifies the store's subscribers, the Team list subscribes and
+ * reloads, and writing the same rows again made it ask the API for the team about 50 times a second, which used up
+ * the admin's whole rate-limit allowance in about 2 seconds. Same rule as cacheListings (services/listings.ts).
+ */
+function cacheStaff(rows: StaffMember[]): void {
+  if (JSON.stringify(getMockCollection("staff")) === JSON.stringify(rows)) return;
+  write(rows);
+}
+
 export const loadStaffRows = async (): Promise<StaffMember[]> => {
   if (isMockMode()) {
     return Promise.resolve([...getMockCollection("staff")]);
@@ -52,7 +63,7 @@ export const loadStaffRows = async (): Promise<StaffMember[]> => {
       status: (item.status === "suspended" ? "suspended" : "active") as "active" | "suspended",
       joinedDate: item.joinedDate || (item.createdAt ? new Date(item.createdAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)),
     }));
-    write(staffList);
+    cacheStaff(staffList);
     return staffList;
   } catch {
     return [...getMockCollection("staff")];

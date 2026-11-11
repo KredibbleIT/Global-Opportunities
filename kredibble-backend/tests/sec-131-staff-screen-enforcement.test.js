@@ -64,6 +64,9 @@ const SCREEN_ROUTES = [
   { screens: ['reference_data'], level: 'edit', method: 'put', path: '/admin/reference-data/countries/probe' },
   { screens: ['channels'], level: 'view', method: 'get', path: '/admin/community/channels' },
   { screens: ['channels'], level: 'edit', method: 'post', path: '/admin/community/channels' },
+  // SEC-147: suspending or reinstating an app account is edit on its page (the matrix's "suspend" permission).
+  { screens: ['seekers'], level: 'edit', method: 'patch', path: () => `/admin/seekers/${randomId()}/status`, body: { status: 'active' } },
+  { screens: ['hirers'], level: 'edit', method: 'patch', path: () => `/admin/hirers/${randomId()}/status`, body: { status: 'active' } },
   // SEC-133: these four had only an older role list; now each has its screen.
   { screens: ['overview'], level: 'view', method: 'get', path: '/admin/dashboard' },
   { screens: ['monthly_report'], level: 'view', method: 'get', path: '/admin/reports/monthly' },

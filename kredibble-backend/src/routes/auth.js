@@ -50,6 +50,20 @@ const publicUser = (user) => {
 
 const PUBLIC_ROLES = ['seeker', 'hirer'];
 
+/** SEC-147: what a suspended seeker or hirer is told when they try to sign in or refresh. */
+const SUSPENDED_MESSAGE = 'This account is suspended. Contact the Global Opportunity Desk for help.';
+
+/**
+ * SEC-147: true when the admin suspended this seeker's or hirer's account (their profile's status).
+ * @param {{ _id: unknown, role: string }} user
+ * @returns {Promise<boolean>}
+ */
+const isSuspendedAppAccount = async (user) => {
+  if (user.role === 'seeker') return Boolean(await SeekerProfile.exists({ userId: user._id, status: 'suspended' }));
+  if (user.role === 'hirer') return Boolean(await HirerAccount.exists({ userId: user._id, status: 'suspended' }));
+  return false;
+};
+
 /**
  * Normalize email: lowercase and trim
  * SEC-028: Email normalization to prevent case-variant duplicate accounts
@@ -280,6 +294,19 @@ authRouter.post(
     if (user.role === 'seeker') profile = await SeekerProfile.findOne({ userId: user._id });
     if (user.role === 'hirer') profile = await HirerAccount.findOne({ userId: user._id });
 
+    // SEC-147: an account suspended from the admin can't sign in. Only a caller who knew the password gets this
+    // far, so saying why (instead of SEC-051's generic message) tells someone guessing nothing new.
+    if (profile?.status === 'suspended') {
+      await auditReq(req, {
+        action: AUDIT_ACTIONS.LOGIN_FAILURE,
+        resourceType: AUDIT_RESOURCE_TYPES.USER,
+        resourceId: user._id,
+        outcome: 'failure',
+        metadata: { reason: 'account_suspended', role: user.role },
+      });
+      throw new ApiError(403, SUSPENDED_MESSAGE);
+    }
+
     const finalUser = user.toObject();
     finalUser[user.role] = profile;
 
@@ -353,6 +380,18 @@ authRouter.post(
       }
 
       const user = tokenDoc.userId;
+
+      // SEC-147: suspending deletes the account's refresh tokens; this also covers one rotated in the same moment.
+      if (await isSuspendedAppAccount(user)) {
+        await auditReq(req, {
+          action: AUDIT_ACTIONS.REFRESH_TOKEN,
+          resourceType: AUDIT_RESOURCE_TYPES.USER,
+          resourceId: user._id,
+          outcome: 'failure',
+          metadata: { reason: 'account_suspended' },
+        });
+        throw new ApiError(403, SUSPENDED_MESSAGE);
+      }
 
       // Rotate: generate new refresh token
       const newRefreshToken = generateRefreshToken();

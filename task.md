@@ -313,6 +313,15 @@ Note: the audit's own text reached the same conclusion on #10 ("Actually this on
 | SEC-143 | Dead authorization code: `requirePortalRoles` is exported with no callers, and three `/admin` routes in `routes/index.js` can never run (the staff-portal router answers them first) | P3 | Backend code health | 🔴 Open — filed 2026-10-19 |
 | SEC-144 | The admin e2e suite signs in as the root admin only, so role bugs pass it; two of its tests are unreliable (a hydration race, and a test that undoes itself on repeat) | P3 | Admin tests | 🔴 Open — filed 2026-10-19 |
 | SEC-145 | CD reported green while deploying nothing: the VPS and Vercel deploy steps printed a notice and exited 0 when their secrets were missing, and a failed staging deploy still let production run | P1 | CI/CD | 🟡 Fix in PR (fails loudly); the owner adds VPS_HOST, VPS_SSH_KEY, VPS_KNOWN_HOSTS and VERCEL_TOKEN |
+| SEC-146 | The Team page reloads the staff list in a loop, about 50 `GET /admin/staff` a second for as long as it is open. The admin API allows 100 requests per 15 minutes per session, so one visit uses it all in about 2 seconds and every admin page then fails with 429 | P1 | Admin UI / API load | 🟡 Fixed on `security/SEC-146-147-admin-p1` (2026-11-11), not merged: the staff list is written to the store only when it changed; e2e counts idle requests on every page |
+| SEC-147 | Suspend and Reinstate on a seeker's or hirer's page say "X was suspended." but send nothing to the server; after a reload the account is Active again | P1 | Admin UI / Trust & safety | 🟡 Fixed on `security/SEC-146-147-admin-p1` (2026-11-11), not merged: `PATCH /admin/{seekers,hirers}/:id/status` saves, signs the person out everywhere; login and refresh refuse a suspended account |
+| SEC-148 | With Mock data off, a failed staff or listing request silently shows the sample team (or a sample listing) as if it were real, against SEC-077 | P2 | Admin UI data | 🔴 Open — filed 2026-11-11 |
+| SEC-149 | The Overview buries the work: "Needs your attention" starts about 1,380 px down, under a 12-item activity feed, so at a laptop height it is two screens down | P2 | Admin UX | 🔴 Open — filed 2026-11-11 |
+| SEC-150 | Screens contradict each other: Partners says the pipeline is "Healthy" while Scorecard and Overview say partners onboarded is 0%, "Off track"; Network lists 5 ambassadors as "Applicant" while Ambassador Applications shows 0; Scorecard shows 273% under "Each metric counts up to 100%" | P2 | Admin UX | 🔴 Open — filed 2026-11-11 |
+| SEC-151 | Rejecting a hirer's posting asks for no reason, sits in a "Danger zone" apart from Approve, and the review page has no deadline, apply link or hirer contact to decide on | P2 | Admin UX / Moderation | 🔴 Open — filed 2026-11-11 |
+| SEC-152 | Ctrl K search finds page names only ("paystack" gives "No pages match"); the bell opens the broadcast composer, not the admin's own alerts | P3 | Admin UX | 🔴 Open — filed 2026-11-11 |
+| SEC-153 | Layout at desktop width: the Partners board splits names mid-word ("Safarico m", "Flutterwa ve"); Network splits emails mid-address and its status pill runs into the Trained column; chart axes tick at odd values (194, 388, 582, 776) | P3 | Admin UI | 🔴 Open — filed 2026-11-11 |
+| SEC-154 | Plural copy: "1 seeker accounts registered", and "1 listings" in the Overview trend's table | P3 | Admin UI copy | 🔴 Open — filed 2026-11-11 |
 
 ---
 
@@ -1780,6 +1789,108 @@ How it works now:
 - [ ] Dev: SEC-142 role labels, stale notices, retire the legacy Invite Staff (P3)
 - [ ] Dev: SEC-143 delete the dead authorization code (P3)
 
+## 2026-11-11 — Admin UI/UX browser review (SEC-146 to SEC-154)
+
+**How it was checked.** `main` at `5fa1d78`, admin dev server with Mock data off against the demo-seeded e2e API (`npm run e2e:server:demo`: 13 staff, 14 listings, 18 partners, 40 ambassadors, 120 beneficiaries), signed in as the e2e root admin. Every sidebar page was opened in the browser at 1440×900 and 390×844, with full-page screenshots, console errors, sideways scroll, unnamed controls and API requests per page recorded; the findings below were then checked by hand. No console errors and no sideways page scroll on any page. A first pass ran on the stale `feature/admin-review-overview-report` branch; items already fixed on `main` (opportunity type tabs, Settings saves, curated listings) were dropped. An "unnamed switch" flag on Settings was a false positive (the switches are named by their `<label for>`).
+
+### SEC-146 — The Team page reloads the staff list in a loop
+**Priority:** P1
+**Evidence (2026-11-11, `main` at `5fa1d78`):** opening `/team` or `/team?tab=roles` sent 206 and 305 `GET /api/admin/staff?limit=100` in 6 seconds and never stopped (every other page sends 3–17 requests in total). The cycle: `MembersTab.tsx:45` loads with `useListData(loadStaffRows, { subscribe: subscribeStaff })`; `services/staff.ts:55` writes the result into the shared store with `setMockCollection("staff", rows, { always: true })`; `mock-store.ts:101-105` then emits a change; `use-list-data.ts:77` hears it and loads again. The e2e API has rate limits off, so locally nothing visible breaks.
+**Risk:** in production `globalApiLimiter` (`kredibble-backend/src/lib/rate-limiters.js:282`) allows 100 requests per 15 minutes per admin session. One visit to Team uses the whole allowance in about 2 seconds, then every admin page answers 429 for up to 15 minutes. The Team list itself then falls back to the sample staff (SEC-148).
+**Fix:** don't emit a store change when the API result equals what is cached (the listings cache already does this since `3f3ae93`), or keep the API result out of the shared mock store. Add a real-API e2e test that counts staff requests on `/team`.
+**Done (2026-11-11, `security/SEC-146-147-admin-p1`):** `services/staff.ts` `cacheStaff` writes the team to the store only when it differs from what is cached, the same rule as `cacheListings`. New `kredibble-admin/tests/idle-requests.spec.ts` (real API): each of 27 dashboard routes, once loaded, may send at most 4 API requests in 4 seconds while idle, and `/team` asks for the team at most 3 times on open (React's dev double-load, plus one reload after the first answer replaces the sample team in the store; 2 in production). With the old `staff.ts` the Team test saw 440 requests.
+**Acceptance criteria:**
+- [x] `/team` and `/team?tab=roles` send at most 3 staff requests on open in development (2 in production) and none while idle
+- [x] An e2e test fails if any dashboard page keeps calling the API while idle (budget 4 requests in 4 seconds)
+
+### SEC-147 — Suspend and Reinstate for seekers and hirers save nothing
+**Priority:** P1
+**Evidence (2026-11-11, `main`):** `app/(dashboard)/seekers/[id]/page.tsx:57-67` and `hirers/[id]/page.tsx:59-69` change the record on screen, toast "X was suspended." / "X was reinstated." and carry `TODO(backend): persist this change`. Checked in the browser: suspending E2E Seeker showed the toast and "Suspended", the network log had no PATCH, and after a reload the account was Active. Neither page shows the not-connected notice.
+**Risk:** a moderator suspends a scam hirer or an abusive seeker, is told it worked, and the account stays fully active.
+**Fix:** wire both actions to the API and wait for its answer (error toast, no change on failure), like the Reports Queue does since GOD-T2. Suspension must stop sign-in: check what `adminCollection('/seekers')` (`kredibble-backend/src/routes/index.js:804`) and the hirers equivalent accept, and revoke sessions (`tokenVersion`) on suspend. Until then, hide the two buttons with Mock data off.
+**Done (2026-11-11, `security/SEC-146-147-admin-p1`):**
+- Backend: `PATCH /admin/seekers/:id/status` and `PATCH /admin/hirers/:id/status` (`routes/admin-api.js`, body `{ status: 'active' | 'suspended' }`, `accountStatusSchema`), guarded by edit on the Seekers or Hirers screen (the matrix's "suspend" permission). Suspending saves the profile status and calls `revokeAllSessions` (token version bump, refresh tokens deleted, sockets closed) on every suspend, so a record marked suspended earlier is signed out too; audited. `POST /auth/login` answers 403 "This account is suspended…" after a correct password; `POST /auth/refresh` refuses too. The generic `PATCH /admin/hirers/:id` no longer accepts `status` (`lib/policies.js`), so nothing suspends without the sign-out.
+- Admin: `services/directory.ts` reads the API's status (was always "active") and `saveSeekerStatus` / `saveHirerStatus` wait for the server; both pages change only after it agrees and show "The account could not be updated: …" otherwise. Dialog and danger-zone text now say the person is signed out and blocked.
+- Tests: `kredibble-backend/tests/sec-147-account-suspension.test.js` (11 tests, seeker and hirer: saved, access and refresh tokens refused, login 403 then 200 after reinstate, audited, Partnerships Officer 403, Moderator allowed, bad status/extra field 400, unknown id 404, generic hirer PATCH can't suspend). `kredibble-admin/tests/account-suspension.spec.ts` (real API: suspend → reload → login refused → reinstate → reload → login works, for a fresh seeker and hirer; a failed save leaves Active).
+- Not covered: a suspended hirer's published listings stay visible; the mobile app shows the server's message on sign-in but has no special screen for it.
+**Acceptance criteria:**
+- [x] Suspending a seeker or hirer persists across a reload, and the suspended account can't sign in or use an existing session
+- [x] A failed save says so and leaves the status unchanged
+- [x] Real-API e2e covers suspend → reload → reinstate for both
+
+### SEC-148 — A failed request silently shows sample data as real
+**Priority:** P2
+**Evidence (2026-11-11, `main`):** with Mock data off the shared store still starts from the sample seed (`mock-store.ts:90-91`). `services/staff.ts:57-59` (`loadStaffRows`) and `:80-82` (`loadStaffMember`) catch every API error and return the sample team; `services/listings.ts:85-88` and `:107-110` fall back the same way for a listing and its metrics. No error is shown.
+**Risk:** after a 429 (SEC-146), a timeout or a deploy blip the Team page lists sample people as the desk's staff, with no hint. SEC-077 says sample data must never ship as if it were real.
+**Fix:** in real mode, rethrow so the page shows its inline error and Retry (as `services/reports.ts` does). Keep the sample fallback for mock mode only.
+**Acceptance criteria:**
+- [ ] With Mock data off and the staff or listing request failing, the page shows an error with Retry and no sample rows
+- [ ] A unit or e2e test covers the failure path for both services
+
+### SEC-149 — The Overview buries "Needs your attention"
+**Priority:** P2
+**Evidence (2026-11-11, `main`):** at 1278×686 the section headings sit at: Programs and Recent activity y=203, **Needs your attention y=1377**, Team performance y=1550, Trend and Priorities y=1657. Recent activity lists 12 items and sets the height of the first row, so the Programs card leaves about 800 px of empty space beside it. The page subtitle promises "how your team is doing against its monthly targets", but the targets only appear in Priorities at the bottom.
+**Risk:** the four queues that need a decision (verifications, reports, testimonials, unvetted drafts) are two screens down on a laptop, so the landing page doesn't lead to the work.
+**Fix:** put Needs your attention directly under the header; cap Recent activity at 5 items with "See all"; bring Priorities (or a compact targets row) into the first screen.
+**Acceptance criteria:**
+- [ ] At 1366×768 the attention row and at least the top Priority are visible without scrolling
+- [ ] No card in the first row leaves more than 200 px of empty space
+
+### SEC-150 — Screens contradict each other
+**Priority:** P2
+**Evidence (2026-11-11, `main`, demo seed):**
+- Partners: "Pipeline health · Healthy · 9 deals needed, 13 open". Scorecard and the Overview's Priorities: "Partners onboarded 0 of 4 · 0% · Off track". Both are right about different things (open deals against closed ones), but nothing says so.
+- Network: the status filter shows "Applicant 5" and five rows marked Applicant. Ambassador Applications: "Pending 0 · All 0 · No applications yet". Two different things share the word "applicant".
+- Scorecard: "Each metric counts up to 100% so one strong result can't hide a weak one" sits beside "Strongest: Opportunities published 273%" and rows at 273%, 136% and 125%. The bar on each row shows progress to the month's target, while the percentage compares with today's pro-rated pace (Beneficiaries verified: bar about 40% full, label "109% · On track").
+**Risk:** staff quote whichever number they saw first; reviewers lose trust in the dashboard.
+**Fix:** say what each figure measures ("open deals" against "signed this month"); rename Network's "Applicant" status (for example "Invited" or "Not started") or link it to the applications queue; show capped values in the score (or label the raw value "273% of pace, counts as 100%") and make the bar and the percentage use the same scale.
+**Acceptance criteria:**
+- [ ] Each pair above reads as consistent to someone who has not seen the code (owner review)
+
+### SEC-151 — Rejecting a posting has no reason and little to go on
+**Priority:** P2
+**Evidence (2026-11-11, `main`, `/opportunities/<E2E Pending Role>`):** Approve sits top right; Reject sits in a red "Danger zone" card further down, and its dialog only confirms ("will be marked Rejected in the moderation queue"), with no reason field (`opportunities/[id]/page.tsx` has none). Details shows Posted, Work Type and Salary; there is no deadline, application link, hirer contact or verification status for the hirer.
+**Risk:** hirers get a rejection they can't act on, and moderators approve or reject without checking the link and deadline that the curated-listing form makes staff vet.
+**Fix:** put Approve and Reject together in the header; make Reject ask for a reason (preset list plus a note) that is stored and shown to the hirer; add deadline, apply link, hirer name/contact and the hirer's verification status to Details.
+**Acceptance criteria:**
+- [ ] A rejection can't be saved without a reason, and the reason reaches the hirer
+- [ ] The review page shows deadline, apply link and hirer verification status (or "—")
+
+### SEC-152 — Search finds pages only; the bell opens the broadcast composer
+**Priority:** P3
+**Evidence (2026-11-11, `main`):** Ctrl K / "Search" in the sidebar matches page names only: "paystack" gives "No pages match 'paystack'" (`components/CommandPalette.tsx:130`) although Paystack is a partner, a program partner and a listing company. The top-bar bell links to `/notifications?tab=history` (`components/TopBar.tsx:143`), the page for sending broadcasts to seekers and hirers, not a list of things waiting for this admin; it showed no dot while 2 verifications, 1 report and 3 testimonials were pending.
+**Risk:** admins expect global search and an alerts bell and find neither; record lookups mean opening each list.
+**Fix:** search partners, people (seekers, hirers, ambassadors, beneficiaries), listings and programs from the palette (one `/admin/search` endpoint, scoped by role); make the bell open a panel of the Needs-your-attention items with a count, and keep Notifications in the sidebar for broadcasts.
+**Acceptance criteria:**
+- [ ] Typing a partner, person or listing name in Ctrl K offers that record
+- [ ] The bell shows the pending count and opens the pending items
+
+### SEC-153 — Layout breaks at desktop width
+**Priority:** P3
+**Evidence (2026-11-11, `main`, 1440×900):**
+- Partners board: six columns leave about 120 px for a card title next to the owner initials, so names break mid-word: "Safarico m", "Flutterwa ve", "Universit y of…", "Masterca rd…".
+- Network: emails wrap mid-address ("mugisha.adeyemi@students.ex / ample.edu") and the Onboarding status pill runs into the Trained column's "—".
+- Charts: the y axis tops at the maximum rounded up to a multiple of 4 (`components/ui/HighlightBarChart.tsx:78`, `GroupedBarChart.tsx:71`), so ticks read 194 / 388 / 582 / 776 (Social) and 3,725 / 7,450 / 11,175 / 14,900 (Monthly report).
+**Fix:** let the board scroll sideways with a minimum card width (about 220 px) or collapse to tabs below about 1600 px as it already does on phones; never break words in names (`break-words` only as a last resort, `truncate` with a title otherwise); give the status column a minimum width; round the axis top to a "nice" step (1, 2, 2.5 or 5 × 10ⁿ).
+**Acceptance criteria:**
+- [ ] No partner name or email is split mid-word at 1280, 1440 or 1920 px
+- [ ] Chart ticks are round numbers
+
+### SEC-154 — Plural copy
+**Priority:** P3
+**Evidence (2026-11-11, `main`):** Seekers subtitle "1 seeker accounts registered on the platform." (`app/(dashboard)/seekers/page.tsx:41`); the Overview trend's data table reads "August 2026 · 1 listings".
+**Fix:** use the shared plural helper (or add one in `lib/format.ts`) for every count in copy.
+**Acceptance criteria:**
+- [ ] A count of 1 reads in the singular on both screens; a quick grep finds no other `${n} <plural>` strings without the helper
+
+**Todos.**
+- [x] Dev: SEC-146 stop the Team reload loop (P1). Do this first: it can lock an admin out of the whole dashboard for 15 minutes (`security/SEC-146-147-admin-p1`)
+- [x] Dev: SEC-147 persist seeker and hirer suspension, or hide the buttons until it does (P1) (`security/SEC-146-147-admin-p1`)
+- [ ] Dev: SEC-148 no sample fallback in real mode (P2)
+- [ ] Dev: SEC-149, SEC-150, SEC-151 Overview order, consistent figures, reject reason (P2)
+- [ ] Dev: SEC-152, SEC-153, SEC-154 search and bell, layout, copy (P3)
+- [ ] Owner: add SEC-146 to SEC-154 to the task sheet if they should carry GOD-T numbers
+
 # Execution Order
 
 Phases run in sequence per `AGENTS.md`. Within a phase, respect this dependency chain:
@@ -2042,6 +2153,8 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
 | 2026-11-04 | App — Android system navigation insets | fix/app-android-bottom-insets | ✅ Fixed | Bottom CTAs are no longer hidden behind Android 3-button/gesture system navigation. Added bottom safe-area padding to non-tab `SafeAreaView`s, created `BottomSafeBar` for sticky/absolute bottom bars (notably Apply/Filter/Submit bars), made the Android tab bar reserve `insets.bottom`, and lifted picker/forgot-password/response sheets and transient banners above the system bar. Mobile: `npm run typecheck`, `expo lint`, and Jest 111/111 green. Real device verification still required. |
 | 2026-11-10 | VPS pulls the image CI pushes (SEC-145 follow-up) | ci/ghcr-image-kredibbleit | 🟡 PR open | With the SSH secrets fixed, `god-deploy` ran on the VPS and failed at `docker pull ... unauthorized`: CI pushes `ghcr.io/kredibbleit/global-opportunities/kredibble-backend` (`ghcr.io/${{ github.repository }}`, the repo now lives under KredibbleIT) but `god-deploy` and `deploy/compose.yml` defaulted to the old `ghcr.io/aeomar999/...` path. Defaults and docs now use the KredibbleIT path. Owner steps: copy the updated `god-deploy` and `compose.yml` to `/opt/god` on the VPS, and make sure the deploy user's Docker is logged in to ghcr.io with a token that can read KredibbleIT packages. |
 | 2026-11-10 | CD Admin: say why Vercel cannot open the project (SEC-145 follow-up) | ci/cd-admin-vercel-preflight | 🟡 PR open | After the repo moved to KredibbleIT, `vercel pull` kept failing with only "Could not retrieve Project Settings", through two token and ID changes. `scripts/vercel-preflight.sh` now runs before `vercel pull` in both Vercel jobs: it asks the Vercel API who the token belongs to, which teams it can see, and whether it can open `VERCEL_PROJECT_ID` in `VERCEL_ORG_ID`, then fails with the exact answer. It never prints the token. |
+| 2026-11-11 | Admin UI/UX browser review (SEC-146 to SEC-154) | main (5fa1d78), not committed | 🔴 Findings recorded | Every sidebar page opened with Mock data off against the demo-seeded e2e API, at 1440×900 and 390×844, with requests per page counted. 9 findings on `main`: P1 Team page staff reload loop (about 50 requests a second; the 100-per-15-minutes admin limit would lock the dashboard), P1 seeker/hirer Suspend and Reinstate save nothing (checked: toast, no request, Active after reload); P2 sample fallback on API errors, Overview order, contradicting figures, reject without a reason; P3 search and bell, desktop layout, plural copy. Items already fixed on `main` (type tabs, Settings, curated listings) were left out. No fixes yet. |
+| 2026-11-11 | SEC-146 Team reload loop, SEC-147 seeker/hirer suspension | security/SEC-146-147-admin-p1 | 🟡 PR open | SEC-146: `services/staff.ts` writes the team to the shared store only when it changed (same rule as `cacheListings`), so the list stops reloading itself. SEC-147: `PATCH /admin/seekers/:id/status` and `/admin/hirers/:id/status` save the status, sign the person out everywhere (`revokeAllSessions`) and are audited; login answers 403 and refresh refuses a suspended account; the generic hirer PATCH no longer takes `status`; the admin pages wait for the save and show errors. Backend: new `tests/sec-147-account-suspension.test.js` 11/11; SEC-131 route table gains the two routes (49/49 with SEC-147); full suite 856 passed, 2 failed before those fixes: SEC-131's table check (fixed), BE-016's WordPress test (local `.env` has WordPress keys; 17/17 with them blank, as in CI). Admin: lint and typecheck clean; new real-API specs `idle-requests.spec.ts` (28) and `account-suspension.spec.ts` (3) pass; with the old `staff.ts` the Team test saw 440 requests; mock-mode suspend tests 2/2. |
 | 2026-10-26 | CI: Admin typecheck + Playwright mock mode | (this commit) | Done | `kredibble-admin/tests/admin.e2e.spec.ts` used `stat()`/`num()` in the 'Social: phones and the platform table and chart' describe block (line ~9033) but the helpers were only defined in sibling blocks, so `tsc --noEmit` (TS2304 'Cannot find name stat/num') failed; added `num`/`stat` helpers matching the existing pattern at line 8017-8018. The mock-mode run then failed at line 9078 because `platform-row-whatsapp` cell text uses `toLocaleString` commas while `String(beforeWhatsappReach + 321)` has none, and `beforeWhatsappNums[0]` read the posts cell not reach. Fixed by reading reach/engagement from the correct `<td>` cells (nth(1)/nth(2)) via `num(...)`, comparing numerically after the post is logged. Admin `npm run lint` clean; `npm run typecheck` 0 errors. | |
 
 ---

@@ -4,19 +4,35 @@
  * They follow the same switch as the Overview (see mock-mode.ts):
  * - Mock mode: the mock accounts WITH this session's changes laid over them (mock-store.ts).
  * - Real mode: the admin data API (GET /admin/seekers, /admin/hirers and their /:id routes, via lib/api.ts),
- *   mapped to the same shapes the pages already use. The API has no suspension flag, so every real account
- *   is shown as "active"; counts the API does not send are 0 and text it does not send is "—".
+ *   mapped to the same shapes the pages already use. An account is "suspended" when the API says so (SEC-147),
+ *   otherwise "active"; counts the API does not send are 0 and text it does not send is "—".
+ *
+ * saveSeekerStatus / saveHirerStatus suspend or reinstate an account. Real mode waits for the server and throws its
+ * error, so the page changes only after a save (SEC-147: before, the change stayed on screen and was lost on reload).
  *
  * The list loaders return ALL rows (the API is read page by page, 100 at a time); the pages filter and count on
  * the client, as they do for the mock data. Errors reject with the server's message and the pages show them
  * inline with a retry button. A missing record resolves with undefined (the pages show "not found").
  */
-import { getHirerById, getHirers, getSeekerById, getSeekers, type HirerAccount as ApiHirer, type SeekerProfile } from "@/lib/api";
+import {
+  getHirerById,
+  getHirers,
+  getSeekerById,
+  getSeekers,
+  setHirerStatus,
+  setSeekerStatus,
+  type AccountStatus,
+  type HirerAccount as ApiHirer,
+  type SeekerProfile,
+} from "@/lib/api";
 import { hirerAccounts, type HirerAccount } from "@/lib/mock-hirers";
 import { seekerAccounts, type SeekerAccount } from "@/lib/mock-seekers";
 import { overlayRows } from "@/lib/mock-store";
 import { MISSING, fetchAll, orMissing } from "./api-helpers";
 import { isMockMode } from "./mock-mode";
+
+/** The API's profile status as the pages show it: "suspended", or "active" for anything else (an older record has none). */
+const toAccountStatus = (status: string | undefined): AccountStatus => (status === "suspended" ? "suspended" : "active");
 
 function toSeeker(profile: SeekerProfile): SeekerAccount {
   return {
@@ -29,7 +45,7 @@ function toSeeker(profile: SeekerProfile): SeekerAccount {
     joinedDate: profile.createdAt,
     applicationsCount: profile.applicationsCount ?? 0,
     savedCount: profile.savedCount ?? 0,
-    status: "active",
+    status: toAccountStatus(profile.status),
   };
 }
 
@@ -53,7 +69,7 @@ function toHirer(account: ApiHirer): HirerAccount {
     joinedDate: account.createdAt,
     postingsCount: account.postingsCount ?? 0,
     verification: summary,
-    status: "active",
+    status: toAccountStatus(account.status),
     linkedVerificationId: account.linkedVerificationId,
   };
 }
@@ -76,4 +92,20 @@ export async function loadHirerRows(): Promise<HirerAccount[]> {
 export async function loadHirer(id: string): Promise<HirerAccount | undefined> {
   if (isMockMode()) return hirerAccounts.find((hirer) => hirer.id === id);
   return getHirerById(id).then(toHirer, orMissing<HirerAccount>);
+}
+
+/**
+ * Suspends or reinstates a seeker's account and resolves with the status the server saved. Suspending signs the
+ * person out of every device and stops them signing in. Mock mode saves nothing here: the page keeps the change in
+ * the shared mock store.
+ */
+export async function saveSeekerStatus(id: string, status: AccountStatus): Promise<AccountStatus> {
+  if (isMockMode()) return status;
+  return toAccountStatus((await setSeekerStatus(id, status)).status);
+}
+
+/** saveSeekerStatus for a hirer's account. */
+export async function saveHirerStatus(id: string, status: AccountStatus): Promise<AccountStatus> {
+  if (isMockMode()) return status;
+  return toAccountStatus((await setHirerStatus(id, status)).status);
 }
