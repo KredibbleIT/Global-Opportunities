@@ -7,6 +7,7 @@ import { useSaved } from '../../lib/useSaved';
 import { Colors, FontWeight, FontSize, Radius } from '../../constants/design';
 import { useToast } from '../../components/ui/ToastProvider';
 import { getOpportunityById, applyForOpportunity } from '../../lib/api';
+import { BottomSafeBar } from '../../components/ui/BottomSafeBar';
 
 const DEFAULT_RESPONSIBILITIES = [
   "Assist team members in executing key initiatives and workflows.",
@@ -70,7 +71,7 @@ export default function InternshipDetailScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen, justifyContent: 'center', alignItems: 'center' }} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen, justifyContent: 'center', alignItems: 'center' }} edges={['top', 'left', 'right', 'bottom']}>
         <ActivityIndicator size="large" color={Colors.primary} />
         <Text style={{ marginTop: 12, color: Colors.textMuted, fontSize: 14 }} className="font-sans">Loading internship details...</Text>
       </SafeAreaView>
@@ -79,7 +80,7 @@ export default function InternshipDetailScreen() {
 
   if (error || !internship) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }} edges={['top', 'left', 'right', 'bottom']}>
         <Text style={{ fontSize: 16, color: Colors.textHeading, fontWeight: '600', marginBottom: 8 }} className="font-sans">
           {error || 'Internship not found'}
         </Text>
@@ -100,7 +101,7 @@ export default function InternshipDetailScreen() {
     : DEFAULT_RESPONSIBILITIES;
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen }} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen }} edges={['top', 'left', 'right', 'bottom']}>
       {/* Navigation Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -221,7 +222,7 @@ export default function InternshipDetailScreen() {
       </ScrollView>
 
       {/* Sticky Footer Apply CTA */}
-      <View style={styles.footer}>
+      <BottomSafeBar style={styles.footer}>
         <TouchableOpacity
           onPress={handleApply}
           style={[styles.applyButton, (applied || applying) && styles.applyButtonInactive]}
@@ -232,7 +233,7 @@ export default function InternshipDetailScreen() {
             {applying ? 'Submitting...' : applied ? 'Applied' : 'Send application'}
           </Text>
         </TouchableOpacity>
-      </View>
+      </BottomSafeBar>
     </SafeAreaView>
   );
 }

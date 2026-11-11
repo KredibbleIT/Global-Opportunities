@@ -7,6 +7,7 @@ import { useSaved } from '../../lib/useSaved';
 import { getOpportunityById, applyForOpportunity } from '../../lib/api';
 import { Colors, FontSize, FontWeight, Radius } from '../../constants/design';
 import { useToast } from '../../components/ui/ToastProvider';
+import { BottomSafeBar } from '../../components/ui/BottomSafeBar';
 
 export default function JobDetailScreen() {
   const router = useRouter();
@@ -63,7 +64,7 @@ export default function JobDetailScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen, justifyContent: 'center', alignItems: 'center' }} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen, justifyContent: 'center', alignItems: 'center' }} edges={['top', 'left', 'right', 'bottom']}>
         <ActivityIndicator size="large" color={Colors.primary} />
         <Text style={{ marginTop: 12, color: Colors.textMuted, fontSize: 14 }} className="font-sans">Loading job details...</Text>
       </SafeAreaView>
@@ -72,7 +73,7 @@ export default function JobDetailScreen() {
 
   if (error || !job) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen, paddingHorizontal: 20, justifyContent: 'center', alignItems: 'center' }} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen, paddingHorizontal: 20, justifyContent: 'center', alignItems: 'center' }} edges={['top', 'left', 'right', 'bottom']}>
         <Text style={{ color: Colors.textHeading, fontSize: 16, fontWeight: 'bold', marginBottom: 8, textAlign: 'center' }} className="font-sans">
           {error || 'Job not found'}
         </Text>
@@ -95,7 +96,7 @@ export default function JobDetailScreen() {
   const initial = (job.company || 'J').charAt(0).toUpperCase();
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen }} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen }} edges={['top', 'left', 'right', 'bottom']}>
       {/* Navigation Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -216,7 +217,7 @@ export default function JobDetailScreen() {
       </ScrollView>
 
       {/* Sticky Footer Apply CTA */}
-      <View style={styles.footer}>
+      <BottomSafeBar style={styles.footer}>
         <TouchableOpacity
           onPress={handleApply}
           style={[styles.applyButton, applied && styles.applyButtonInactive]}
@@ -227,7 +228,7 @@ export default function JobDetailScreen() {
             {applied ? 'Applied' : 'Apply now'}
           </Text>
         </TouchableOpacity>
-      </View>
+      </BottomSafeBar>
     </SafeAreaView>
   );
 }

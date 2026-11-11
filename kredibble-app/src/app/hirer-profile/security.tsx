@@ -71,7 +71,7 @@ export default function HirerSecurityScreen() {
   const isPasswordValid = currentPassword.length > 0 && newPassword.length >= 10 && newPassword === confirmPassword && !isUpdatingPassword;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton} activeOpacity={0.7}>
           <ChevronLeft size={20} color="#1A1A1A" />

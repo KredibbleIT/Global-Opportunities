@@ -127,7 +127,7 @@ export default function NewsScreen() {
   const open = (id: string) => router.push({ pathname: '/news/[id]', params: { id } } as any);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen }} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen }} edges={['top', 'left', 'right', 'bottom']}>
       <Header
         title="News"
         showBack
