@@ -6,6 +6,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSaved } from '../../lib/useSaved';
 import { Colors, FontSize, FontWeight, Radius } from '../../constants/design';
 import { getGrantById, Grant } from '../../lib/api';
+import { BottomSafeBar } from '../../components/ui/BottomSafeBar';
 
 export default function GrantDetailScreen() {
   const router = useRouter();
@@ -47,7 +48,7 @@ export default function GrantDetailScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen, justifyContent: 'center', alignItems: 'center' }} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen, justifyContent: 'center', alignItems: 'center' }} edges={['top', 'left', 'right', 'bottom']}>
         <ActivityIndicator size="large" color={Colors.primary} />
         <Text style={{ marginTop: 12, color: Colors.textMuted, fontSize: 14 }} className="font-sans">Loading grant details...</Text>
       </SafeAreaView>
@@ -56,7 +57,7 @@ export default function GrantDetailScreen() {
 
   if (error || !grant) {
     return (
-      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }} edges={['top', 'left', 'right', 'bottom']}>
         <Text style={{ fontSize: 16, color: Colors.textHeading, fontWeight: '600', marginBottom: 8 }} className="font-sans">
           {error || 'Grant not found'}
         </Text>
@@ -71,7 +72,7 @@ export default function GrantDetailScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen }} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen }} edges={['top', 'left', 'right', 'bottom']}>
       {/* Navigation Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -210,7 +211,7 @@ export default function GrantDetailScreen() {
       </ScrollView>
 
       {/* Sticky Footer Apply CTA */}
-      <View style={styles.footer}>
+      <BottomSafeBar style={styles.footer}>
         <TouchableOpacity
           onPress={handleApply}
           style={styles.applyButton}
@@ -219,7 +220,7 @@ export default function GrantDetailScreen() {
             Apply for Grant
           </Text>
         </TouchableOpacity>
-      </View>
+      </BottomSafeBar>
     </SafeAreaView>
   );
 }
