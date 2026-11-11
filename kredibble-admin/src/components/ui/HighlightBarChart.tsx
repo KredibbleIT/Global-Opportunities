@@ -27,9 +27,12 @@
  * padding for them instead of right-aligning the last label).
  * - axisMax: a FIXED top for the y axis (100 for a score out of 100: ticks at 0, 25, 50, 75, 100). Default: the data maximum, rounded up.
  * - height: CSS height class (default "h-chart", 260px), fixed so nothing shifts
+ * - fill: draw at the container's measured height instead of 260px (never shorter), for a chart that fills a stretched card;
+ *   pass a height class such as "min-h-chart flex-1" with it
  */
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { cn } from "@/lib/cn";
+import { niceAxis } from "./chart-axis";
 
 interface BarPoint {
   label: string;
@@ -43,6 +46,7 @@ interface HighlightBarChartProps {
   unit?: string;
   height?: string;
   axisMax?: number;
+  fill?: boolean;
 }
 
 // Drawing-space constants (SVG user units = pixels). Top padding leaves room for value labels.
@@ -53,16 +57,20 @@ const PAD = { top: 28, right: 20, bottom: 28, left: 32 };
 const GRID_LINES = 4;
 const MAX_LABELLED_BARS = 14; // above this, labels do not fit and bars get the darker colour
 
-export function HighlightBarChart({ data, ariaLabel, unit = "", height = "h-chart", axisMax }: HighlightBarChartProps) {
+export function HighlightBarChart({ data, ariaLabel, unit = "", height = "h-chart", axisMax, fill = false }: HighlightBarChartProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(0);
+  const [boxHeight, setBoxHeight] = useState(HEIGHT);
   const [active, setActive] = useState<number | null>(null);
 
-  // Track the container width so the SVG always fills it.
+  // Track the container width (and, with fill, its height) so the SVG always fills it.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const observer = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
+    const observer = new ResizeObserver(([entry]) => {
+      setWidth(entry.contentRect.width);
+      setBoxHeight(entry.contentRect.height);
+    });
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
@@ -73,14 +81,17 @@ export function HighlightBarChart({ data, ariaLabel, unit = "", height = "h-char
   const highlighted = active ?? lastIndex; // the latest bar unless one is hovered / focused
   const labelAllBars = data.length <= MAX_LABELLED_BARS;
 
-  // Round the top of the y axis up to a multiple of GRID_LINES so ticks are whole numbers.
-  const maxValue = Math.max(...data.map((d) => d.value), 1);
-  const yMax = axisMax ?? Math.ceil(maxValue / GRID_LINES) * GRID_LINES;
+  // A whole 1, 2 or 5 step (chart-axis.ts), or four even steps up to a fixed axisMax.
+  const axis = axisMax === undefined ? niceAxis(Math.max(...data.map((d) => d.value))) : { top: axisMax, lines: GRID_LINES };
+  const yMax = axis.top;
   // The left padding grows with the widest axis label (a 5-digit number needs more room than "100"), so a label is never clipped.
   const pad = { ...PAD, left: Math.max(PAD.left, String(yMax).length * 7 + 14) };
 
   const innerW = Math.max(width - pad.left - PAD.right, 1);
-  const innerH = HEIGHT - PAD.top - PAD.bottom;
+  // With fill the container has contain: size, so its own classes (min-h-chart flex-1) set the height and the SVG never does: an SVG
+  // sized from an earlier measurement would otherwise hold the box open at an old, taller height when the card should shrink.
+  const chartHeight = fill ? Math.max(HEIGHT, Math.floor(boxHeight)) : HEIGHT;
+  const innerH = chartHeight - PAD.top - PAD.bottom;
   const slot = innerW / data.length;
   const barW = Math.min(slot * 0.6, 28);
   const baseline = PAD.top + innerH;
@@ -128,18 +139,18 @@ export function HighlightBarChart({ data, ariaLabel, unit = "", height = "h-char
       onPointerLeave={() => setActive(null)}
       onKeyDown={onKeyDown}
       onBlur={() => setActive(null)}
-      className={cn("relative w-full rounded-control", height)}
+      className={cn("relative w-full rounded-control", fill && "[contain:size]", height)}
     >
       {width > 0 && (
-        <svg width={width} height={HEIGHT} aria-hidden="true" className="block">
+        <svg width={width} height={chartHeight} aria-hidden="true" className="block">
           {/* Dashed gridlines + y labels */}
-          {Array.from({ length: GRID_LINES + 1 }, (_, i) => {
-            const y = PAD.top + (i / GRID_LINES) * innerH;
+          {Array.from({ length: axis.lines + 1 }, (_, i) => {
+            const y = PAD.top + (i / axis.lines) * innerH;
             return (
               <g key={i}>
                 <line x1={pad.left} x2={width - PAD.right} y1={y} y2={y} strokeDasharray="4 4" className="stroke-line" />
                 <text x={pad.left - 8} y={y + 4} textAnchor="end" fontSize={12} className="fill-muted">
-                  {Math.round(yMax - (i / GRID_LINES) * yMax)}
+                  {Math.round(yMax - (i / axis.lines) * yMax)}
                 </text>
               </g>
             );
@@ -178,7 +189,7 @@ export function HighlightBarChart({ data, ariaLabel, unit = "", height = "h-char
           {data.map((d, i) =>
             showLabel(i) ? (
               // Every label is centred under its bar (the chart has padding for the first and last).
-              <text key={i} x={bars[i].cx} y={HEIGHT - 6} textAnchor="middle" fontSize={12} className="fill-muted">
+              <text key={i} x={bars[i].cx} y={chartHeight - 6} textAnchor="middle" fontSize={12} className="fill-muted">
                 {d.label}
               </text>
             ) : null,

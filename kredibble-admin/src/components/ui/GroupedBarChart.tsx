@@ -21,6 +21,7 @@
  */
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { cn } from "@/lib/cn";
+import { niceAxis } from "./chart-axis";
 
 export interface GroupedBarPoint {
   /** Short axis text ("Oct"). */
@@ -42,7 +43,6 @@ interface GroupedBarChartProps {
 
 const HEIGHT = 260; // matches the default h-chart container
 const PAD = { top: 28, right: 20, bottom: 28, left: 32 };
-const GRID_LINES = 4;
 const BAR_GAP = 6;
 
 const format = (value: number) => value.toLocaleString("en-US");
@@ -66,9 +66,9 @@ export function GroupedBarChart({ data, ariaLabel, unit = "", height = "h-chart"
   const lastIndex = data.length - 1;
   const highlighted = active ?? lastIndex;
 
-  // Round the top of the y axis up to a multiple of GRID_LINES so ticks are whole numbers.
-  const maxValue = Math.max(1, ...data.flatMap((d) => [d.website, d.app ?? 0]));
-  const yMax = Math.ceil(maxValue / GRID_LINES) * GRID_LINES;
+  // A whole 1, 2 or 5 step between gridlines (chart-axis.ts), so the labels are round numbers.
+  const axis = niceAxis(Math.max(...data.flatMap((d) => [d.website, d.app ?? 0])));
+  const yMax = axis.top;
   // The left padding grows with the widest axis label (a 5-digit number needs more room than "100"), so nothing clips.
   const pad = { ...PAD, left: Math.max(PAD.left, String(format(yMax)).length * 7 + 14) };
 
@@ -142,13 +142,13 @@ export function GroupedBarChart({ data, ariaLabel, unit = "", height = "h-chart"
         {width > 0 && (
           <svg width={width} height={HEIGHT} aria-hidden="true" className="block">
             {/* Dashed gridlines + y labels */}
-            {Array.from({ length: GRID_LINES + 1 }, (_, i) => {
-              const y = PAD.top + (i / GRID_LINES) * innerH;
+            {Array.from({ length: axis.lines + 1 }, (_, i) => {
+              const y = PAD.top + (i / axis.lines) * innerH;
               return (
                 <g key={i}>
                   <line x1={pad.left} x2={width - PAD.right} y1={y} y2={y} strokeDasharray="4 4" className="stroke-line" />
                   <text x={pad.left - 8} y={y + 4} textAnchor="end" fontSize={12} className="fill-muted">
-                    {format(Math.round(yMax - (i / GRID_LINES) * yMax))}
+                    {format(Math.round(yMax - (i / axis.lines) * yMax))}
                   </text>
                 </g>
               );
