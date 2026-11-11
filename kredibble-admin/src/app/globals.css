@@ -492,19 +492,18 @@ body {
 }
 
 /*
- * Unslop pass: menus, popovers, dialogs, toasts and tooltips used to appear in one frame. They now fade in and rise 4px
- * (160ms, one ease-out curve) from where they open; dialogs also settle from 98% scale. Reduced motion shows them at once.
+ * Unslop pass: menus, popovers, dialogs, toasts and tooltips used to appear in one frame. They now fade in (160ms; dialogs 200ms;
+ * one ease-out curve). Opacity only: a rise or a scale would put them a few px off (or 2% small) for the first frames, which is
+ * exactly when a click lands or a test measures them. Reduced motion shows them at once.
  */
 @keyframes pop-in {
   from {
     opacity: 0;
-    transform: translateY(4px);
   }
 }
 @keyframes dialog-in {
   from {
     opacity: 0;
-    transform: translateY(6px) scale(0.98);
   }
 }
 .pop-enter {

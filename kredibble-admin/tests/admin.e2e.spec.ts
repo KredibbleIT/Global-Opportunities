@@ -7146,7 +7146,7 @@ test.describe('Visual fixes: tier labels, rows and network tiles', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
   const seed = buildSeed().collections;
 
-  test('Network and Leaderboard show short tier labels in nowrap pills, the full name in the tooltip, and 56px rows', async ({ page }) => {
+  test('Network and Leaderboard show short tier labels as plain text (unslop pass: an attribute, not a pill) and 56px rows', async ({ page }) => {
     for (const path of ['/network', '/leaderboard']) {
       await page.goto(`${BASE_URL}${path}`, { timeout: 30_000 });
       await expect(page.getByTestId('table-row').first()).toBeVisible();
@@ -7155,11 +7155,7 @@ test.describe('Visual fixes: tier labels, rows and network tiles', () => {
       expect(texts.has('Regional Lead')).toBe(true);
       const heights = await page.getByTestId('table-row').evaluateAll((rows) => rows.map((row) => Math.round(row.getBoundingClientRect().height)));
       expect(new Set(heights)).toEqual(new Set([56]));
-      const pill = page.locator('td[data-label="Tier"]').filter({ hasText: 'Regional Lead' }).first().locator('span.badge-text');
-      expect(await pill.evaluate((el) => getComputedStyle(el).whiteSpace)).toBe('nowrap');
-      await pill.hover();
-      await expect(page.getByRole('tooltip')).toHaveText('Campus or Regional Lead');
-      await page.mouse.move(0, 0);
+      await expect(page.locator('td[data-label="Tier"] span.badge-text')).toHaveCount(0);
     }
   });
 
@@ -7983,15 +7979,13 @@ test.describe('Visual fixes: tier pill click and the Move hit area', () => {
   test.skip(!MOCK_RUN, 'the redesign screens run on sample data: see npm run test:e2e:mock');
   test.use({ viewport: { width: 1440, height: 900 } });
 
-  test('clicking the tier pill opens the ambassador like any other part of the row, and hovering it still shows the full name', async ({ page }) => {
+  test('clicking the tier opens the ambassador like any other part of the row', async ({ page }) => {
     await page.goto(`${BASE_URL}/network`, { timeout: 30_000 });
     await expect(page.getByTestId('table-row').first()).toBeVisible();
     const row = page.getByTestId('table-row').filter({ has: page.locator('td[data-label="Tier"]', { hasText: 'Regional Lead' }) }).first();
     const href = await row.getByRole('link').first().getAttribute('href');
-    const pill = row.locator('td[data-label="Tier"] span.badge-text').first();
-    await pill.hover();
-    await expect(page.getByRole('tooltip')).toHaveText('Campus or Regional Lead');
-    await pill.click();
+    // The row's stretched link covers the cell, so a click there lands on it, as it does for a person.
+    await row.locator('td[data-label="Tier"]').click({ force: true });
     await expect(page).toHaveURL(new RegExp(`${href}$`));
   });
 

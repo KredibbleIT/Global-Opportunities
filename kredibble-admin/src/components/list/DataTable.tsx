@@ -90,6 +90,8 @@ interface DataTableProps<T> {
 
 // Narrowest a progress column may get: the 180px cell plus its 12px side padding.
 const PROGRESS_MIN_PX = 204;
+/** The widest status chip ("Onboarding", "Unvetted": about 88px) plus the cell's 24px of padding. */
+const STATUS_MIN_PX = 112;
 
 // A primary cell's title is one line unless the column says titleLines: 2; its subtitle (description) clamps to two lines. The full text is in the tooltip and on the detail page.
 export function DataTable<T>({
@@ -145,12 +147,19 @@ export function DataTable<T>({
           : emptyNoData
         : null;
 
-  // A progress column is a percentage of the table, so the table keeps a minimum width that
-  // leaves that column at least PROGRESS_MIN_PX wide (cell padding included).
-  const progressColumn = columns.find((column) => column.type === "progress" && column.width?.endsWith("%"));
-  const tableMinWidth = progressColumn
-    ? Math.ceil(PROGRESS_MIN_PX / (parseFloat(progressColumn.width as string) / 100))
-    : undefined;
+  // Columns are a percentage of the table, so the table keeps a minimum width that leaves each column room for what it holds
+  // (cell padding included): a progress bar PROGRESS_MIN_PX, a status chip STATUS_MIN_PX, or the column's own minWidth. Below that
+  // width the table scrolls sideways inside its card. Unslop pass (owner report 2026-11-11): status chips and the Database Verify
+  // button used to spill into the next column at 1024-1440px.
+  const minFor = (column: Column<T>): number | undefined =>
+    column.minWidth ?? (column.type === "progress" ? PROGRESS_MIN_PX : column.type === "status" ? STATUS_MIN_PX : undefined);
+  const needed = columns
+    .map((column) => {
+      const min = minFor(column);
+      return min && column.width?.endsWith("%") ? Math.ceil(min / (parseFloat(column.width) / 100)) : 0;
+    })
+    .reduce((widest, px) => Math.max(widest, px), 0);
+  const tableMinWidth = needed > 0 ? needed : undefined;
 
   return (
     <Card flush as="section" ariaLabel={label}>
@@ -465,12 +474,15 @@ function Cell<T>({ column, row, href, isBadgeColumn }: CellProps<T>) {
       );
     case "pill":
       return (
-        <td className={cn(base, labelled)} data-label={label}>
-          <div className="flex flex-wrap gap-1.5 max-sm:justify-end">
+        // py-2: a cell with two pills (two roles) grows past 56px and keeps 8px above and below instead of touching the row lines.
+        <td className={cn(base, labelled, "py-2 max-sm:py-0")} data-label={label}>
+          <div className="flex min-w-0 flex-wrap gap-1.5 max-sm:justify-end">
             {[column.label(row)].flat().map((text) => {
               const full = column.tooltip?.(row);
+              // A pill is never wider than the cell (it ends in an ellipsis; the full text is the title). Before, whitespace-nowrap let a
+              // long role run into the Status column at medium widths.
               const pill = <TagPill className="whitespace-nowrap">{text}</TagPill>;
-              if (!full || full === text) return <span key={text}>{pill}</span>;
+              if (!full || full === text) return <span key={text} title={text} className="flex min-w-0 max-w-full">{pill}</span>;
               // The pill sits above the row's stretched link so the tooltip can be hovered; a click on it is passed on to that link,
               // so the pill behaves like any other part of the row.
               return (
