@@ -4,7 +4,7 @@
  *
  * The percentage is the value against the target the month has earned so far (the full target in a past month, and for a running total such
  * as Active ambassadors): the same number the Overview's Priorities panel ranks by. Above 300% it reads "300%+" (exact figure in a Tooltip). The bar shows the progress to the FULL target, like the Overview card, with the tick where the
- * pace is.
+ * pace is. Above 100% the row adds "counts as 100% in the score" (SEC-150): the composite caps each metric, the row does not.
  *
  * Props:
  * - row: the MetricResult from lib/scorecard.ts
@@ -42,6 +42,12 @@ export function MetricRow({ row }: { row: MetricResult }) {
             ? `of ${format(row.target)} ${kpiUnit(row.key, row.target)}${row.isPast || !row.prorated ? "" : ` · pro-rated to ${formatPro(row.proratedTarget)} by today`}`
             : `No target for ${row.unit}`}
         </span>
+        {row.attainment !== null && row.attainment > 1 && (
+          <span data-testid="metric-capped" className="text-muted">
+            {" "}
+            · counts as 100% in the score
+          </span>
+        )}
       </p>
       <div className="mt-2">
         <TargetBar card={bar} label={row.label} showPace={!row.isPast && row.prorated} />

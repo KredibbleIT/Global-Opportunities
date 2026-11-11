@@ -11901,8 +11901,10 @@ test.describe('Scorecard: My scorecard and Team (mock mode)', () => {
         if (metric.prorated) await expect(rows.nth(index).getByTestId('metric-of')).toContainText('pro-rated');
         else await expect(rows.nth(index).getByTestId('metric-of')).not.toContainText('pro-rated'); // a running total: judged against the full target
         await expect(rows.nth(index).getByTestId('kpi-pace-tick')).toHaveCount(metric.prorated ? 1 : 0);
+        // SEC-150: a row above 100% says the score counts it as 100%; a row at or below 100% doesn't
+        await expect(rows.nth(index).getByTestId('metric-capped')).toHaveCount(metric.attainment !== null && metric.attainment > 1 ? 1 : 0);
       }
-      await expect(page.getByTestId('composite-note')).toHaveText("Each metric counts up to 100% so one strong result can't hide a weak one.");
+      await expect(page.getByTestId('composite-note')).toHaveText("Percentages compare each metric with where it should be by today. The score counts each at 100% at most, so one strong result can't hide a weak one.");
       // the trend: six months, the hidden table holds the values
       const table = page.getByRole('table', { name: 'Composite score, last six months' });
       await expect(table.getByRole('row')).toHaveCount(6);

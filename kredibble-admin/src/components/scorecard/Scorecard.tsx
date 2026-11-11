@@ -60,7 +60,11 @@ interface ScorecardProps {
   isPast?: boolean;
 }
 
-const MUTED_LINE = "Each metric counts up to 100% so one strong result can't hide a weak one.";
+/**
+ * SEC-150: the rows can show more than 100% (against where the metric should be by today), so the note says what the percentage
+ * compares with and that the SCORE caps each metric at 100%. Before, "Each metric counts up to 100%" sat beside "273%".
+ */
+const MUTED_LINE = "Percentages compare each metric with where it should be by today. The score counts each at 100% at most, so one strong result can't hide a weak one.";
 
 /** The note for a past month. */
 function PastNote({ month }: { month: MonthKey }) {

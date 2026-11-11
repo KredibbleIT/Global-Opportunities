@@ -93,7 +93,11 @@ export function PipelineHealthCard({ health, standalone, target, demo }: { healt
   return (
     <Card as="section" ariaLabel="Pipeline health" padding="sm" className="space-y-1.5 py-2.5 xl:h-full">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="font-display text-sm font-bold leading-5 text-ink">Pipeline health</h2>
+        {/* SEC-150: "Healthy" here is about NEXT month (enough open deals for its target); the Scorecard's "Partners onboarded … Off
+            track" is about partners signed THIS month. The heading says which, so the two no longer read as a contradiction. */}
+        <h2 data-testid="pipeline-title" className="font-display text-sm font-bold leading-5 text-ink">
+          Pipeline health <span className="font-medium text-muted">· next month</span>
+        </h2>
         <span data-testid="pipeline-status">
           <StatusBadge status={health.status} />
         </span>
