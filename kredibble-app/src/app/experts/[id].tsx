@@ -6,6 +6,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Colors, FontWeight, Radius } from '../../constants/design';
 import { mockExperts } from '../../constants/mockExperts';
 import { authStore } from '../../constants/authStore';
+import { BottomSafeBar } from '../../components/ui/BottomSafeBar';
 
 export default function ExpertProfileDetailScreen() {
   const router = useRouter();
@@ -93,7 +94,7 @@ export default function ExpertProfileDetailScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.white }} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.white }} edges={['top', 'left', 'right', 'bottom']}>
       {/* Toast Feedback Banner */}
       {showToast && (
         <View style={styles.toastContainer}>
@@ -347,7 +348,7 @@ export default function ExpertProfileDetailScreen() {
       </ScrollView>
 
       {role === 'hirer' && (
-        <View style={styles.footer}>
+        <BottomSafeBar style={styles.footer}>
           <TouchableOpacity
             style={styles.connectButton}
             onPress={() => Alert.alert('Success', `Downloading CV/Resume for ${expert.name}...`)}
@@ -356,7 +357,7 @@ export default function ExpertProfileDetailScreen() {
               Download Resume
             </Text>
           </TouchableOpacity>
-        </View>
+        </BottomSafeBar>
       )}
 
       {/* Rating Modal */}

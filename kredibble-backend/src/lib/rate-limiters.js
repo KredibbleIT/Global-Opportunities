@@ -273,6 +273,15 @@ export const testimonialLimiter = createRateLimiter({
   keyGenerator: (req) => req.auth?.sub || ipKeyGenerator(req.ip, { ipv6Subnet: 56 }),
 });
 
+/** Rate limit for anonymous reference-data suggestions (10 per hour per IP). */
+export const referenceDataLimiter = createRateLimiter({
+  prefix: 'reference-data',
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  message: { error: { message: 'Too many suggested entries, please try again after an hour' } },
+  keyGenerator: (req) => ipKeyGenerator(req.ip, { ipv6Subnet: 56 }),
+});
+
 /**
  * 100 requests per 15 minutes across the whole API.
  * SEC-105: If an admin cookie or bearer token is present, key on its hash

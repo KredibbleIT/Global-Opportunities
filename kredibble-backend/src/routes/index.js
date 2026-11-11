@@ -34,12 +34,12 @@ import { Channel, ChannelPost, CommunityMembership, Report } from '../models/Com
 import { Article, Notification } from '../models/Content.js';
 import { Ambassador, OpportunityEngagement, Testimonial } from '../models/AdminPortal.js';
 import { auditReq, AUDIT_ACTIONS, AUDIT_RESOURCE_TYPES } from '../lib/audit.js';
-import { searchLimiter, chatLimiter, testimonialLimiter } from '../lib/rate-limiters.js';
+import { searchLimiter, chatLimiter, testimonialLimiter, referenceDataLimiter } from '../lib/rate-limiters.js';
 import { normalizeLegacyRole } from '../lib/permissions.js';
 import { postChannelMessage, listChannelMessages, getThread, findPost } from '../lib/chat.js';
 import { evictFromChannelRoom } from '../socket.js';
 import { chatMessageSchema } from '../schemas/ambassador.js';
-import { getReferenceDataGroups, getReferenceDataList } from '../lib/reference-data.js';
+import { getReferenceDataGroups, getReferenceDataList, addReferenceDataItem, addReferenceDataAlias } from '../lib/reference-data.js';
 import { callerSegments, channelSegments, normalizeSegments, resolveSegments, segmentsClause, sharesSegment, GENERAL_SEGMENT } from '../lib/segments.js';
 
 const parseJson = (value, fallback = []) => {
@@ -900,6 +900,27 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
     const list = await getReferenceDataList(req.params.group, req.params.key);
     if (!list) throw notFound('Reference list');
     itemResponse(res, list);
+  }));
+
+  // Anonymous suggestion endpoint for the four seeker registration lists. It returns an action
+  // rather than an HTTP error for duplicate conflicts so the app can offer existing matches.
+  router.post('/reference-data/:group/:key/items', referenceDataLimiter, asyncHandler(async (req, res) => {
+    const body = req.body ?? {};
+    if (typeof body !== 'object' || Array.isArray(body)) {
+      throw new ApiError(400, 'Expected a JSON object');
+    }
+
+    const { label, item } = body;
+    if (typeof label !== 'string') {
+      throw new ApiError(400, 'label is required');
+    }
+
+    const result = typeof item === 'string' && item.trim()
+      ? await addReferenceDataAlias(req.params.group, req.params.key, label, item)
+      : await addReferenceDataItem(req.params.group, req.params.key, label);
+
+    if (!result) throw notFound('Reference list');
+    itemResponse(res, result);
   }));
 
   router.get('/health', (req, res) => {

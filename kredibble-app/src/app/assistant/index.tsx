@@ -162,7 +162,7 @@ export default function AssistantScreen() {
       style={{ flex: 1, backgroundColor: Colors.bgScreen }}
       keyboardVerticalOffset={0}
     >
-      <SafeAreaView style={{ flex: 1 }} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={{ flex: 1 }} edges={['top', 'left', 'right', 'bottom']}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
