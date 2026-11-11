@@ -98,7 +98,7 @@ export default function ThreadScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.white }} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.white }} edges={['top', 'left', 'right', 'bottom']}>
       <Header title="Replies" showBack />
       <KeyboardAvoidingView style={{ flex: 1, backgroundColor: Colors.bgScreen }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         {loading ? (

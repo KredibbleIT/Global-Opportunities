@@ -34,7 +34,7 @@ const TabIcon = ({ Icon, focused }: { Icon: any; focused: boolean }) => (
 export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const TAB_PAD_TOP = 10;
-  const TAB_BAR_HEIGHT = (Platform.OS === 'ios' ? 49 + insets.bottom : Size.tabBarHeight) + TAB_PAD_TOP;
+  const TAB_BAR_HEIGHT = (Platform.OS === 'ios' ? 49 : Size.tabBarHeight) + TAB_PAD_TOP + insets.bottom;
   const [role, setRole] = useState(authStore.role);
   const params = useGlobalSearchParams();
   const viewMode = params.view;
@@ -56,7 +56,7 @@ export default function TabLayout() {
       shadowOpacity: 0,
       height: TAB_BAR_HEIGHT,
       paddingTop: TAB_PAD_TOP,
-      paddingBottom: Platform.OS === 'ios' ? insets.bottom : 0,
+      paddingBottom: insets.bottom,
     },
     tabBarActiveTintColor: Colors.tabIcon,
     tabBarInactiveTintColor: Colors.tabIcon,

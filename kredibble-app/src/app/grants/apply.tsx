@@ -8,6 +8,7 @@ import { useToast } from '../../components/ui/ToastProvider';
 import { applyForGrant, getGrantById, Grant, uploadFile } from '../../lib/api';
 import { authStore } from '../../constants/authStore';
 import { pickDocument, PickedFile } from '../../lib/file-picker';
+import { BottomSafeBar } from '../../components/ui/BottomSafeBar';
 
 const DURATION_OPTIONS = ['Less than 3 months', '3 - 6 months', '6 - 12 months', '1 - 2 years', 'More than 2 years'];
 const ENTITY_OPTIONS = ['Non-Governmental Organization (NGO)', 'Startup', 'Corporation', 'Individual / Freelancer', 'Academic Institution', 'Other'];
@@ -164,7 +165,7 @@ export default function ApplyGrantScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
           <ActivityIndicator size="large" color={Colors.primary} />
           <Text style={{ marginTop: 12, color: Colors.textMuted, fontSize: 14 }} className="font-sans">Loading grant details...</Text>
@@ -174,7 +175,7 @@ export default function ApplyGrantScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -436,7 +437,7 @@ export default function ApplyGrantScreen() {
       </ScrollView>
 
       {/* Sticky Footer Apply CTA */}
-      <View style={styles.footer}>
+      <BottomSafeBar style={styles.footer}>
         <TouchableOpacity
           onPress={handleSubmit}
           style={[styles.applyButton, (isSubmitting || isApplied) && styles.applyButtonDisabled]}
@@ -446,7 +447,7 @@ export default function ApplyGrantScreen() {
             {isSubmitting ? 'Submitting...' : isApplied ? 'Applied' : 'Submit Application'}
           </Text>
         </TouchableOpacity>
-      </View>
+      </BottomSafeBar>
     </SafeAreaView>
   );
 }

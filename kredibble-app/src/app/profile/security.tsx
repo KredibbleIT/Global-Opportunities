@@ -75,7 +75,7 @@ export default function ManageSecurityScreen() {
   const isPasswordValid = currentPassword.length > 0 && newPassword.length >= 10 && newPassword === confirmPassword && !isUpdatingPassword;
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity 
