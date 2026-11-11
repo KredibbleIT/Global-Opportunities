@@ -2004,7 +2004,7 @@ const AUDIT_ROUTES: { path: string; mockOnly?: string }[] = [
   { path: '/notifications/compose' },
   { path: '/notifications/history' },
   { path: '/staff' },
-  { path: '/staff/staff-1' },
+  { path: '/staff/staff-1', mockOnly: 'staff-1 is a mock record id (the real run shows "not found" since SEC-148; no-sample-fallback.spec.ts checks it)' },
   { path: '/staff/invite' },
   { path: '/roles' },
   { path: '/taxonomy/seeker' },

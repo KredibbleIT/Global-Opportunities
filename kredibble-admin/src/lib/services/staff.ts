@@ -12,6 +12,7 @@ import { MAX_STAFF_ROLES } from "@/config/staff-roles";
 import type { StaffMember, StaffStatus } from "@/lib/mock-entities";
 import { getMockCollection, setMockCollection, subscribeMockStore } from "@/lib/mock-store";
 import { isMockMode } from "@/lib/services/mock-mode";
+import { orMissing } from "@/lib/services/api-helpers";
 import {
   getStaff,
   getStaffById,
@@ -48,49 +49,36 @@ function cacheStaff(rows: StaffMember[]): void {
   write(rows);
 }
 
+/** A staff record as the API sends it, in the shape the pages use. */
+const toStaffMember = (record: StaffApiRecord): StaffMember => ({
+  id: record.id || record._id || "",
+  name: record.name,
+  email: record.email,
+  roles: (Array.isArray(record.roles) && record.roles.length > 0 ? record.roles : [record.role || "support"]).slice(0, MAX_STAFF_ROLES) as Role[],
+  status: record.status === "suspended" ? "suspended" : "active",
+  joinedDate: record.joinedDate || (record.createdAt ? new Date(record.createdAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)),
+});
+
+/**
+ * The team. Real mode asks the API and rejects when it fails, so the Team page shows its error and Retry. It never
+ * falls back to the store, which starts from the sample team even with Mock data off: a failed request used to list
+ * sample people as the desk's staff (SEC-148).
+ */
 export const loadStaffRows = async (): Promise<StaffMember[]> => {
-  if (isMockMode()) {
-    return Promise.resolve([...getMockCollection("staff")]);
-  }
-  try {
-    const res = await getStaff({ limit: 100 });
-    const rawItems = (res.data || []) as unknown as StaffApiRecord[];
-    const staffList: StaffMember[] = rawItems.map((item) => ({
-      id: item.id || item._id || "",
-      name: item.name,
-      email: item.email,
-      roles: (Array.isArray(item.roles) && item.roles.length > 0 ? item.roles : [item.role || "support"]).slice(0, MAX_STAFF_ROLES) as Role[],
-      status: (item.status === "suspended" ? "suspended" : "active") as "active" | "suspended",
-      joinedDate: item.joinedDate || (item.createdAt ? new Date(item.createdAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)),
-    }));
-    cacheStaff(staffList);
-    return staffList;
-  } catch {
-    return [...getMockCollection("staff")];
-  }
+  if (isMockMode()) return [...getMockCollection("staff")];
+  const res = await getStaff({ limit: 100 });
+  const staffList = ((res.data || []) as unknown as StaffApiRecord[]).map(toStaffMember);
+  cacheStaff(staffList);
+  return staffList;
 };
 
+/** One team member. Real mode: the API's record, undefined on a 404 ("not found"); any other failure rejects (SEC-148). */
 export const loadStaffMember = async (id: string): Promise<StaffMember | undefined> => {
-  if (isMockMode()) {
-    return Promise.resolve(getMockCollection("staff").find((person) => person.id === id));
-  }
-  try {
-    const item = await getStaffById<StaffApiRecord>(id);
-    const data = ((item && typeof item === "object" && "data" in item)
-      ? (item as { data: StaffApiRecord }).data
-      : item) as StaffApiRecord;
-    const mapped: StaffMember = {
-      id: data.id || data._id || "",
-      name: data.name,
-      email: data.email,
-      roles: (Array.isArray(data.roles) && data.roles.length > 0 ? data.roles : [data.role || "support"]).slice(0, MAX_STAFF_ROLES) as Role[],
-      status: (data.status === "suspended" ? "suspended" : "active") as "active" | "suspended",
-      joinedDate: data.joinedDate || (data.createdAt ? new Date(data.createdAt).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10)),
-    };
-    return mapped;
-  } catch {
-    return getMockCollection("staff").find((person) => person.id === id);
-  }
+  if (isMockMode()) return getMockCollection("staff").find((person) => person.id === id);
+  const item = await getStaffById<StaffApiRecord>(id).catch(orMissing<StaffApiRecord>);
+  if (!item) return undefined;
+  const data = (typeof item === "object" && "data" in item ? (item as { data: StaffApiRecord }).data : item) as StaffApiRecord;
+  return toStaffMember(data);
 };
 
 /** The team as it is in the store right now (a plain read, for rules that need everyone, such as "is this email taken"). */
