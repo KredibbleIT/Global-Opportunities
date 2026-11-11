@@ -317,6 +317,7 @@ Note: the audit's own text reached the same conclusion on #10 ("Actually this on
 | SEC-147 | Suspend and Reinstate on a seeker's or hirer's page say "X was suspended." but send nothing to the server; after a reload the account is Active again | P1 | Admin UI / Trust & safety | 🟡 Fixed on `security/SEC-146-147-admin-p1` (2026-11-11), not merged: `PATCH /admin/{seekers,hirers}/:id/status` saves, signs the person out everywhere; login and refresh refuse a suspended account |
 | SEC-148 | With Mock data off, a failed staff or listing request silently shows the sample team (or a sample listing) as if it were real, against SEC-077 | P2 | Admin UI data | 🟡 Fixed on `security/SEC-148-no-sample-fallback` (2026-11-11), not merged: real-mode staff and listing loads show the page's error or "not found"; also stops a curated-listing page request loop (674 requests in 4 s) |
 | SEC-149 | The Overview buries the work: "Needs your attention" starts about 1,380 px down, under a 12-item activity feed, so at a laptop height it is two screens down | P2 | Admin UX | 🟡 Fixed on `feature/SEC-149-overview-order` (2026-11-11), not merged: attention card first, then Team performance, then programs and activity; real-mode feed capped at 6 |
+| SEC-149 | The Overview buries the work: "Needs your attention" starts about 1,380 px down, under a 12-item activity feed, so at a laptop height it is two screens down | P2 | Admin UX | 🔴 Open — filed 2026-11-11 |
 | SEC-150 | Screens contradict each other: Partners says the pipeline is "Healthy" while Scorecard and Overview say partners onboarded is 0%, "Off track"; Network lists 5 ambassadors as "Applicant" while Ambassador Applications shows 0; Scorecard shows 273% under "Each metric counts up to 100%" | P2 | Admin UX | 🔴 Open — filed 2026-11-11 |
 | SEC-151 | Rejecting a hirer's posting asks for no reason, sits in a "Danger zone" apart from Approve, and the review page has no deadline, apply link or hirer contact to decide on | P2 | Admin UX / Moderation | 🔴 Open — filed 2026-11-11 |
 | SEC-152 | Ctrl K search finds page names only ("paystack" gives "No pages match"); the bell opens the broadcast composer, not the admin's own alerts | P3 | Admin UX | 🔴 Open — filed 2026-11-11 |
@@ -1903,6 +1904,7 @@ How it works now:
 - [ ] Dev: start the real-mode store empty instead of from the sample seed (SEC-148 leftover)
 - [x] Dev: SEC-149 Overview order (P2) (`feature/SEC-149-overview-order`)
 - [ ] Dev: SEC-150, SEC-151 consistent figures, reject reason (P2)
+- [ ] Dev: SEC-149, SEC-150, SEC-151 Overview order, consistent figures, reject reason (P2)
 - [ ] Dev: SEC-152, SEC-153, SEC-154 search and bell, layout, copy (P3)
 - [ ] Owner: add SEC-146 to SEC-154 to the task sheet if they should carry GOD-T numbers
 
