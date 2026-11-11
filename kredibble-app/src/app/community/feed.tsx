@@ -312,7 +312,7 @@ export default function ChannelFeedScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen }} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen }} edges={['top', 'left', 'right', 'bottom']}>
       {/* Header */}
       <View
         style={{
@@ -688,7 +688,7 @@ export default function ChannelFeedScreen() {
         <View
           style={{
             position: 'absolute',
-            bottom: 40,
+            bottom: insets.bottom + 24,
             alignSelf: 'center',
             backgroundColor: Colors.primary,
             borderRadius: 20,
@@ -727,7 +727,7 @@ export default function ChannelFeedScreen() {
                 backgroundColor: Colors.white,
                 borderTopLeftRadius: 20,
                 borderTopRightRadius: 20,
-                paddingBottom: 24,
+                paddingBottom: Math.max(24, insets.bottom + 16),
                 transform: [{ translateY: bottomSheetAnim }],
               }}
             >

@@ -9,6 +9,7 @@ import {
   Sprout, CircleDot, Cloud, Crown,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
+import { BottomSafeBar } from '../../components/ui/BottomSafeBar';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -147,7 +148,7 @@ export default function FilterJobsScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#F7F7F9' }} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F7F7F9' }} edges={['top', 'left', 'right', 'bottom']}>
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12 }}>
         <TouchableOpacity onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)/opportunities')} style={{ width: 32 }}>
@@ -297,7 +298,7 @@ export default function FilterJobsScreen() {
       </ScrollView>
 
       {/* Bottom buttons */}
-      <View
+      <BottomSafeBar
         style={{
           position: 'absolute', bottom: 0, left: 0, right: 0,
           flexDirection: 'row', gap: 12,
@@ -331,7 +332,7 @@ export default function FilterJobsScreen() {
             Apply Filters
           </Text>
         </TouchableOpacity>
-      </View>
+      </BottomSafeBar>
     </SafeAreaView>
   );
 }
