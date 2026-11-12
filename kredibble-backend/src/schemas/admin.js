@@ -801,3 +801,10 @@ export const postModerateSchema = z.object({
 
 
 
+
+/** SEC-157: an admin decision on a pending grant application (PATCH /admin/grant-applications/:id). */
+export const grantApplicationDecisionSchema = z.object({
+  body: z.object({
+    status: z.enum(['approved', 'rejected'], { message: 'Status must be approved or rejected' }),
+  }),
+});

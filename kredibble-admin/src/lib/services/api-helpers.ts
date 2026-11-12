@@ -23,6 +23,12 @@ export async function fetchAll<T>(getPage: (page: number, limit: number) => Prom
   return rows;
 }
 
+/**
+ * Whether an id can name a database record (a 24-hex MongoDB id). The generic admin collections answer a malformed id with 400, not 404,
+ * so a loader checks this first and treats anything else (a sample id such as "event-1") as "not found" without asking (SEC-157).
+ */
+export const isRecordId = (id: string): boolean => /^[0-9a-f]{24}$/i.test(id);
+
 /** A 404 from the API means "no such record"; anything else is a real error. */
 export const orMissing = <T>(error: unknown): T | undefined => {
   if (error instanceof ApiError && error.status === 404) return undefined;

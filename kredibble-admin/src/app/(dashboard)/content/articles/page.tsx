@@ -3,11 +3,12 @@
 /**
  * Career resources: the articles shown in the app's Career resources section.
  * Built on the shared list template; this file holds the column config and the data.
- * Data: mock articles (src/lib/mock-articles.ts), unchanged. "New article" is the primary action.
+ * Data: lib/services/articles.ts (SEC-157): the samples in mock mode, GET /admin/articles in real mode. "New article" is the primary action.
  */
 import { useState } from "react";
 import { FileText, Plus } from "lucide-react";
-import { articles, type Article } from "@/lib/mock-articles";
+import type { Article } from "@/lib/mock-articles";
+import { loadArticleRows } from "@/lib/services/articles";
 import { pluralize } from "@/lib/plural";
 import { useListData } from "@/lib/use-list-data";
 import { EmptyAction } from "@/components/list/EmptyAction";
@@ -15,9 +16,7 @@ import { DataTable } from "@/components/list/DataTable";
 import { ListPage } from "@/components/list/ListPage";
 import { TableToolbar } from "@/components/list/TableToolbar";
 import type { Column } from "@/components/list/types";
-import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 
-const loadArticles = () => Promise.resolve(articles);
 
 const COLUMNS: Column<Article>[] = [
   {
@@ -31,14 +30,14 @@ const COLUMNS: Column<Article>[] = [
     leading: (r) => ({ icon: FileText, imageSrc: r.bannerImage }),
   },
   { key: "category", header: "Category", type: "text", width: "20%", value: (r) => r.category },
-  { key: "readTime", header: "Read time", type: "text", width: "16%", value: (r) => r.duration },
+  { key: "readTime", header: "Read time", type: "text", width: "16%", value: (r) => r.duration || "—" },
   { key: "status", header: "Status", type: "status", width: "22%", status: (r) => r.status },
 ];
 
 type StatusFilter = "all" | "published" | "draft";
 
 export default function ArticlesListPage() {
-  const { rows, isLoading, error, retry } = useListData(loadArticles);
+  const { rows, isLoading, error, retry } = useListData(loadArticleRows);
   // GOD-T41: a search (title or category) and a status filter, as on the other lists; the counts follow the search.
   const [status, setStatus] = useState<StatusFilter>("all");
   const [search, setSearch] = useState("");
@@ -62,7 +61,6 @@ export default function ArticlesListPage() {
           : "Articles shown in the Career resources section of the app."
       }
       action={{ label: "New article", href: "/content/articles/new", icon: Plus }}
-      notice={<NotConnectedNotice />}
       toolbar={
         <TableToolbar
           search={{ value: search, onChange: setSearch, placeholder: "Search by title or category", label: "Search articles" }}
