@@ -94,10 +94,30 @@ jobs:
           NEXT_PUBLIC_API_URL: /api
           API_PROXY_TARGET: https://kredibble-api.onrender.com/api
 
-  admin-e2e:
-    name: Admin (Playwright end-to-end)
+  # SEC-159: the real-API run and the mock-mode run used to share one job with a 30-minute limit. By 2026-11-12 they took
+  # about 8.5 and 20 minutes, so the job was cancelled at the limit with the mock run nearly done (the merges of #172 and #173
+  # never finished their e2e). They now run side by side: the real API as one job, mock mode split in two shards. Each leg
+  # starts its own in-memory API and admin dev server. The "Admin (Playwright end-to-end)" job below is the required check.
+  admin-e2e-run:
+    name: Admin e2e (${{ matrix.label }})
     runs-on: ubuntu-latest
-    timeout-minutes: 30  # two Playwright runs (real API + mock mode)
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: real API
+            key: real
+            mocks: ''
+            shard: 1/1
+          - label: mock mode 1 of 2
+            key: mock-1
+            mocks: '1'
+            shard: 1/2
+          - label: mock mode 2 of 2
+            key: mock-2
+            mocks: '1'
+            shard: 2/2
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -135,26 +155,39 @@ jobs:
           echo "E2E_ADMIN_EMAIL=ci-admin@example.com" >> "$GITHUB_ENV"
           echo "E2E_ADMIN_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
       # playwright.config.ts starts the in-memory API and the admin dev server itself.
-      # Two runs (tests/mode.ts): against the real API (what ships), then with NEXT_PUBLIC_USE_MOCKS=true on port 3100
+      # Two modes (tests/mode.ts): against the real API (what ships), and with NEXT_PUBLIC_USE_MOCKS=true on port 3100
       # for the checks that need mock records, the mock store or the dev-only ?state= switch.
-      - name: Run Playwright (real API)
-        run: npx playwright test
+      - name: Run Playwright (${{ matrix.label }})
+        run: npx playwright test --shard="$SHARD"
         working-directory: kredibble-admin
         env:
           NEXT_TELEMETRY_DISABLED: 1
-      - name: Run Playwright (mock mode)
-        run: npx playwright test
-        working-directory: kredibble-admin
-        env:
-          NEXT_TELEMETRY_DISABLED: 1
-          E2E_MOCKS: '1'
+          E2E_MOCKS: ${{ matrix.mocks }}
+          SHARD: ${{ matrix.shard }}
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.key }}
           path: kredibble-admin/playwright-report/
           retention-days: 14
+
+  # The required check (branch protection names it): green only when every e2e leg above passed. It always runs, so a leg
+  # that fails, times out or is skipped turns it red instead of leaving the check missing or skipped (a skipped check counts
+  # as passing).
+  admin-e2e:
+    name: Admin (Playwright end-to-end)
+    needs: admin-e2e-run
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Every Playwright leg passed
+        env:
+          RESULT: ${{ needs.admin-e2e-run.result }}
+        run: |
+          echo "Playwright legs: $RESULT"
+          test "$RESULT" = success
 
   app:
     name: Mobile app (lint, typecheck, test, bundle)
