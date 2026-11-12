@@ -1246,6 +1246,7 @@ test.describe('Forms: article editor', () => {
   });
 
   test('editing an existing article is prefilled and starts clean', async ({ page }) => {
+    test.skip(!MOCK_RUN, 'article-1 is a mock record id (SEC-157: the real run edits an article it creates)');
     await page.goto(`${BASE_URL}/content/articles/article-1`, { timeout: 30_000 });
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Edit article');
     await expect(page.getByLabel('Title')).not.toHaveValue('');
@@ -1758,6 +1759,7 @@ test.describe('Forms: wording and layout fixes', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
   test('GOD-T41: Career resources has a search and a status filter whose counts follow the search; one draft is singular', async ({ page }) => {
+    test.skip(!MOCK_RUN, 'pins the four sample articles; the real run lists the database (SEC-157)');
     await page.goto(`${BASE_URL}/content/articles`, { timeout: 30_000 });
     await expect(page.getByTestId('table-row').first()).toBeVisible();
     const radio = (name: string) => page.getByRole('radiogroup', { name: 'Filter by status' }).getByRole('radio', { name: new RegExp(`^${name}`) });
@@ -1995,12 +1997,12 @@ const AUDIT_ROUTES: { path: string; mockOnly?: string }[] = [
   { path: '/community' },
   { path: '/community/ch-1', mockOnly: 'ch-1 is a mock record id' },
   { path: '/content/articles' },
-  { path: '/content/articles/article-1' },
+  { path: '/content/articles/article-1', mockOnly: 'article-1 is a mock record id (SEC-157: the real run reads the API; "Events, Grants and Career resources: the real API" opens the seeded records)' },
   { path: '/content/articles/new' },
   { path: '/events' },
-  { path: '/events/event-1' },
+  { path: '/events/event-1', mockOnly: 'event-1 is a mock record id (SEC-157: the real run reads the API; "Events, Grants and Career resources: the real API" opens the seeded records)' },
   { path: '/grants' },
-  { path: '/grants/grant-1' },
+  { path: '/grants/grant-1', mockOnly: 'grant-1 is a mock record id (SEC-157: the real run reads the API; "Events, Grants and Career resources: the real API" opens the seeded records)' },
   { path: '/notifications/compose' },
   { path: '/notifications/history' },
   { path: '/staff' },
@@ -2515,6 +2517,7 @@ for (const width of [434, 390]) {
     });
 
     test('Grant applications: labelled Approve / Reject buttons on a second row, 44px tall; badges line up', async ({ page }) => {
+    test.skip(!MOCK_RUN, 'grant-1 is a mock record id (SEC-157)');
       await page.goto(`${BASE_URL}/grants/grant-1`, { timeout: 30_000 });
       const approve = page.getByRole('button', { name: /^Approve / }).filter({ hasText: 'Approve' });
       await expect(approve.first()).toBeVisible();
@@ -5177,10 +5180,15 @@ test.describe('Opportunity detail (real API)', () => {
 });
 
 test.describe('Not connected yet', () => {
-  test('a page without a backend says it shows sample data (real API run only)', async ({ page }) => {
+  test('Team, a staff profile and Invite staff read and save through the API: no sample-data notice (SEC-157)', async ({ page }) => {
     test.skip(MOCK_RUN, 'the notice only shows outside mock mode');
     await page.goto(`${BASE_URL}/team`);
-    await expect(page.getByTestId('not-connected-notice')).toBeVisible();
+    await expect(page.getByTestId('page-title')).toBeVisible();
+    await expect(page.getByText('E2E Support', { exact: true }).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
+    await page.goto(`${BASE_URL}/staff/invite`);
+    await expect(page.getByTestId('page-title').first()).toBeVisible();
+    await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
   });
 
   test('Network, Leaderboard, Programs, Partners, Database, Social and Testimonials read the API in the real run: no sample-data notice', async ({ page }) => {
@@ -5208,13 +5216,90 @@ test.describe('Not connected yet', () => {
     await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
   });
 
-  test('the screens that still show only sample data say so in the real run: Events, Grants and Career resources, lists and records', async ({ page }) => {
+  test('Events, Grants and Career resources read the API in the real run: no notice, the seeded records listed, sample ids "not found" (SEC-157)', async ({ page }) => {
     test.skip(MOCK_RUN, 'the notice only shows outside mock mode');
-    for (const path of ['/events', '/events/event-1', '/grants', '/grants/grant-1', '/content/articles', '/content/articles/new']) {
+    for (const [path, seeded] of [['/events', 'E2E Career Fair'], ['/grants', 'E2E Seed Fund'], ['/content/articles', 'E2E Career Guide']] as const) {
       await page.goto(`${BASE_URL}${path}`);
       await expect(page.getByTestId('page-title').first(), path).toBeVisible();
-      await expect(page.getByTestId('not-connected-notice'), path).toBeVisible();
+      await expect(page.getByText(seeded, { exact: true }).first(), path).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByTestId('not-connected-notice'), path).toHaveCount(0);
     }
+    for (const [path, sample] of [['/events/event-1', 'Founders & Funders Demo Night'], ['/grants/grant-1', 'Early-Stage EdTech Innovation Grant'], ['/content/articles/article-1', 'How to write a developer resume that gets noticed']] as const) {
+      await page.goto(`${BASE_URL}${path}`);
+      // the page body, not the breadcrumb (which also reads "Not found" while a record is unavailable)
+      await expect(page.locator('main').getByText(/could not find|not found|no longer exists/i).first(), path).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText('Could not load this record'), path).toHaveCount(0);
+      await expect(page.getByText(sample), path).toHaveCount(0);
+      await expect(page.getByTestId('not-connected-notice'), path).toHaveCount(0);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SEC-157: Events, Grants and Career resources against the real API. Before, the pages read hard-coded samples in every mode and their
+// saves only changed the page. Each test saves, reloads, and checks the server kept it. Serial: one seeded event and grant are shared.
+// ---------------------------------------------------------------------------
+test.describe('Events, Grants and Career resources: the real API (SEC-157)', () => {
+  test.skip(MOCK_RUN, 'real API run only: see npm run test:e2e');
+  test.describe.configure({ mode: 'serial' });
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test('the new capacity of an event is saved: a reload shows it', async ({ page }) => {
+    await page.goto(`${BASE_URL}/events`, { timeout: 30_000 });
+    await page.getByText('E2E Career Fair', { exact: true }).first().click();
+    await expect(page).toHaveURL(/\/events\/[0-9a-f]{24}$/);
+    const capacity = page.getByRole('spinbutton', { name: 'Capacity' });
+    await expect(capacity).toHaveValue('50');
+    await capacity.fill('60');
+    const saved = page.waitForResponse((response) => /\/admin\/events\/[0-9a-f]{24}$/.test(response.url()) && response.request().method() === 'PATCH');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    expect((await saved).status()).toBe(200);
+    await page.reload();
+    await expect(page.getByRole('spinbutton', { name: 'Capacity' })).toHaveValue('60');
+    await expect(page.getByText('5 of 60 spots filled', { exact: false })).toBeVisible();
+    // put the seed back for any later run against the same server
+    await page.getByRole('spinbutton', { name: 'Capacity' }).fill('50');
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(page.getByText('5 of 50 spots filled', { exact: false })).toBeVisible();
+  });
+
+  test('rejecting a grant application frees its amount in the pool, and the decision is kept', async ({ page }) => {
+    await page.goto(`${BASE_URL}/grants`, { timeout: 30_000 });
+    await page.getByText('E2E Seed Fund', { exact: true }).first().click();
+    await expect(page).toHaveURL(/\/grants\/[0-9a-f]{24}$/);
+    const pool = page.getByRole('region', { name: 'Funding pool' }).or(page.locator('section', { hasText: 'Funding pool' })).first();
+    await expect(pool).toContainText('USD 2,000 allocated of USD 10,000'); // the pending request holds its amount
+    await expect(page.getByTestId('grant-reservation-note')).toBeVisible();
+    await page.getByRole('button', { name: 'Reject E2E Applicant' }).first().click();
+    const decided = page.waitForResponse((response) => /\/admin\/grant-applications\/[0-9a-f]{24}$/.test(response.url()) && response.request().method() === 'PATCH');
+    await page.getByRole('button', { name: 'Reject application' }).click();
+    expect((await decided).status()).toBe(200);
+    await expect(pool).toContainText('USD 0 allocated of USD 10,000');
+    await page.reload();
+    await expect(page.locator('section', { hasText: 'Funding pool' }).first()).toContainText('USD 0 allocated of USD 10,000');
+    await expect(page.getByRole('button', { name: 'Reject E2E Applicant' })).toHaveCount(0); // decided: no actions left
+  });
+
+  test('a new article is saved on the server, listed, and its edits are kept', async ({ page }) => {
+    const title = `E2E article ${Date.now()}`;
+    await page.goto(`${BASE_URL}/content/articles/new`, { timeout: 30_000 });
+    await page.getByLabel('Title').fill(title);
+    await page.getByLabel('Summary').fill('Saved by a test.');
+    await page.getByLabel('Body').fill('First paragraph.\n\nSecond paragraph.');
+    await page.getByLabel('Category').fill('Testing');
+    const created = page.waitForResponse((response) => response.url().endsWith('/admin/articles') && response.request().method() === 'POST');
+    await page.getByRole('button', { name: 'Save draft' }).click();
+    expect((await created).status()).toBe(201);
+    await expect(page).toHaveURL(`${BASE_URL}/content/articles`);
+    await page.reload();
+    await page.getByText(title, { exact: true }).first().click();
+    await expect(page.getByLabel('Title')).toHaveValue(title);
+    await page.getByLabel('Read time').fill('3 min read');
+    const updated = page.waitForResponse((response) => /\/admin\/articles\/[0-9a-f]{24}$/.test(response.url()) && response.request().method() === 'PATCH');
+    await page.getByRole('button', { name: 'Save changes' }).click();
+    expect((await updated).status()).toBe(200);
+    await page.goto(`${BASE_URL}/content/articles`);
+    await expect(page.getByTestId('table-row').filter({ hasText: title })).toContainText('3 min read');
   });
 });
 

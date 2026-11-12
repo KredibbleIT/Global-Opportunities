@@ -107,10 +107,23 @@ const grant = await Grant.create({
   hirer: 'E2E Holdings',
   sector: 'Agriculture',
   fundingPool: 10000,
-  allocated: 0,
+  // The pending application below reserves its 2,000, as applying through the app does (SEC-060, SEC-157).
+  allocated: 2000,
   status: 'open',
 });
 await GrantApplication.create({ grantId: grant._id, applicantName: 'E2E Applicant', requestedAmount: 2000 });
+
+const { Article } = await import('../src/models/Content.js');
+
+// Career resources (SEC-157): one published article, so the real-API list has a row to open.
+await Article.create({
+  title: 'E2E Career Guide',
+  category: 'Career Planning',
+  duration: '4 min read',
+  summary: 'A seeded article for the admin tests.',
+  content: 'First paragraph.\n\nSecond paragraph.',
+  status: 'published',
+});
 
 const { Channel, ChannelPost } = await import('../src/models/Community.js');
 

@@ -3,20 +3,18 @@
 /**
  * Grants: funding-pool allocation and application review across all posted grants.
  * Built on the shared list template; this file holds the column config and the data.
- * Data: mock grants (src/lib/mock-grant-ops.ts), unchanged.
+ * Data: lib/services/grants.ts (SEC-157): the samples in mock mode, GET /admin/grants in real mode (amounts in USD).
  */
 import { HandCoins } from "lucide-react";
-import { grantRecords, type GrantRecord } from "@/lib/mock-grant-ops";
-import { overlayRows, subscribeMockStore } from "@/lib/mock-store";
+import type { GrantRecord } from "@/lib/mock-grant-ops";
+import { subscribeMockStore } from "@/lib/mock-store";
+import { loadGrantRows } from "@/lib/services/grants";
 import { useListData } from "@/lib/use-list-data";
 import { DataTable } from "@/components/list/DataTable";
 import { formatMoney } from "@/lib/format";
 import { ListPage } from "@/components/list/ListPage";
 import type { Column } from "@/components/list/types";
-import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 
-// Mock records with this session's changes (see mock-store.ts) laid over them.
-const loadGrants = () => Promise.resolve(overlayRows("grants", grantRecords));
 
 const COLUMNS: Column<GrantRecord>[] = [
   { key: "grant", header: "Grant", type: "primary", width: "30%", title: (r) => r.title, titleLines: 2, leading: () => ({ icon: HandCoins }) },
@@ -31,16 +29,16 @@ const COLUMNS: Column<GrantRecord>[] = [
     minWidth: 272,
     // "USD 75,000 / USD 200,000": the code is always explicit.
     label: (r) => `${formatMoney(r.allocated, r.currency)} / ${formatMoney(r.fundingPool, r.currency)}`,
-    percent: (r) => Math.round((r.allocated / r.fundingPool) * 100),
+    percent: (r) => (r.fundingPool > 0 ? Math.round((r.allocated / r.fundingPool) * 100) : 0),
   },
   { key: "status", header: "Status", type: "status", width: "18%", status: (r) => r.status },
 ];
 
 export default function GrantsOpsPage() {
-  const { rows, isLoading, error, retry } = useListData(loadGrants, { subscribe: subscribeMockStore });
+  const { rows, isLoading, error, retry } = useListData(loadGrantRows, { subscribe: subscribeMockStore });
 
   return (
-    <ListPage title="Grants" subtitle="Funding pool allocation and application review across all posted grants." notice={<NotConnectedNotice />}>
+    <ListPage title="Grants" subtitle="Funding pool allocation and application review across all posted grants.">
       <DataTable
         label="Grants"
         columns={COLUMNS}
