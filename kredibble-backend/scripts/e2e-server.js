@@ -113,6 +113,18 @@ const grant = await Grant.create({
 });
 await GrantApplication.create({ grantId: grant._id, applicantName: 'E2E Applicant', requestedAmount: 2000 });
 
+const { Article } = await import('../src/models/Content.js');
+
+// Career resources (SEC-157): one published article, so the real-API list has a row to open.
+await Article.create({
+  title: 'E2E Career Guide',
+  category: 'Career Planning',
+  duration: '4 min read',
+  summary: 'A seeded article for the admin tests.',
+  content: 'First paragraph.\n\nSecond paragraph.',
+  status: 'published',
+});
+
 const { Channel, ChannelPost } = await import('../src/models/Community.js');
 
 // Community moderation (SEC-077 Task 8). The channel itself is flagged so the

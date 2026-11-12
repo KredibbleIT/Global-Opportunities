@@ -1759,6 +1759,7 @@ test.describe('Forms: wording and layout fixes', () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
   test('GOD-T41: Career resources has a search and a status filter whose counts follow the search; one draft is singular', async ({ page }) => {
+    test.skip(!MOCK_RUN, 'pins the four sample articles; the real run lists the database (SEC-157)');
     await page.goto(`${BASE_URL}/content/articles`, { timeout: 30_000 });
     await expect(page.getByTestId('table-row').first()).toBeVisible();
     const radio = (name: string) => page.getByRole('radiogroup', { name: 'Filter by status' }).getByRole('radio', { name: new RegExp(`^${name}`) });
@@ -5217,15 +5218,17 @@ test.describe('Not connected yet', () => {
 
   test('Events, Grants and Career resources read the API in the real run: no notice, the seeded records listed, sample ids "not found" (SEC-157)', async ({ page }) => {
     test.skip(MOCK_RUN, 'the notice only shows outside mock mode');
-    for (const [path, seeded] of [['/events', 'E2E Career Fair'], ['/grants', 'E2E Seed Fund'], ['/content/articles', null]] as const) {
+    for (const [path, seeded] of [['/events', 'E2E Career Fair'], ['/grants', 'E2E Seed Fund'], ['/content/articles', 'E2E Career Guide']] as const) {
       await page.goto(`${BASE_URL}${path}`);
       await expect(page.getByTestId('page-title').first(), path).toBeVisible();
-      if (seeded) await expect(page.getByText(seeded, { exact: true }).first(), path).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText(seeded, { exact: true }).first(), path).toBeVisible({ timeout: 15_000 });
       await expect(page.getByTestId('not-connected-notice'), path).toHaveCount(0);
     }
     for (const [path, sample] of [['/events/event-1', 'Founders & Funders Demo Night'], ['/grants/grant-1', 'Early-Stage EdTech Innovation Grant'], ['/content/articles/article-1', 'How to write a developer resume that gets noticed']] as const) {
       await page.goto(`${BASE_URL}${path}`);
-      await expect(page.getByText(/could not find|not found|no longer exists/i).first(), path).toBeVisible({ timeout: 15_000 });
+      // the page body, not the breadcrumb (which also reads "Not found" while a record is unavailable)
+      await expect(page.locator('main').getByText(/could not find|not found|no longer exists/i).first(), path).toBeVisible({ timeout: 15_000 });
+      await expect(page.getByText('Could not load this record'), path).toHaveCount(0);
       await expect(page.getByText(sample), path).toHaveCount(0);
       await expect(page.getByTestId('not-connected-notice'), path).toHaveCount(0);
     }
@@ -5245,17 +5248,17 @@ test.describe('Events, Grants and Career resources: the real API (SEC-157)', () 
     await page.goto(`${BASE_URL}/events`, { timeout: 30_000 });
     await page.getByText('E2E Career Fair', { exact: true }).first().click();
     await expect(page).toHaveURL(/\/events\/[0-9a-f]{24}$/);
-    const capacity = page.getByLabel('Capacity');
+    const capacity = page.getByRole('spinbutton', { name: 'Capacity' });
     await expect(capacity).toHaveValue('50');
     await capacity.fill('60');
     const saved = page.waitForResponse((response) => /\/admin\/events\/[0-9a-f]{24}$/.test(response.url()) && response.request().method() === 'PATCH');
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     expect((await saved).status()).toBe(200);
     await page.reload();
-    await expect(page.getByLabel('Capacity')).toHaveValue('60');
+    await expect(page.getByRole('spinbutton', { name: 'Capacity' })).toHaveValue('60');
     await expect(page.getByText('5 of 60 spots filled', { exact: false })).toBeVisible();
     // put the seed back for any later run against the same server
-    await page.getByLabel('Capacity').fill('50');
+    await page.getByRole('spinbutton', { name: 'Capacity' }).fill('50');
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(page.getByText('5 of 50 spots filled', { exact: false })).toBeVisible();
   });

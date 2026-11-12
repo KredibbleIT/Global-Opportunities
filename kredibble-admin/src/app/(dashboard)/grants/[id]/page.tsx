@@ -19,7 +19,7 @@ import { Check, HandCoins, X } from "lucide-react";
 import { useBreadcrumbLabel } from "@/lib/breadcrumb-label";
 import { formatMoney } from "@/lib/format";
 import type { GrantApplication } from "@/lib/mock-grant-ops";
-import { approvalExceedsPool, decideGrantApplication, loadGrant, pendingIsReserved } from "@/lib/services/grants";
+import { allocatedFromApplications, approvalExceedsPool, decideGrantApplication, loadGrant, pendingIsReserved } from "@/lib/services/grants";
 import { useDetailData } from "@/lib/use-detail-data";
 import { DetailHeader } from "@/components/detail/DetailHeader";
 import { DetailPage } from "@/components/detail/DetailPage";
@@ -54,11 +54,10 @@ export default function GrantDetailPage() {
   const decide = async (app: GrantApplication, next: Exclude<GrantApplication["status"], "pending">, done: string) => {
     try {
       const saved = await decideGrantApplication(grant, app.id, next);
-      setRecord((prev) => ({
-        ...prev,
-        allocated: saved.allocated,
-        applications: prev.applications.map((a) => (a.id === app.id ? { ...a, status: saved.status } : a)),
-      }));
+      setRecord((prev) => {
+        const applications = prev.applications.map((a) => (a.id === app.id ? { ...a, status: saved.status } : a));
+        return { ...prev, applications, allocated: saved.allocated ?? allocatedFromApplications(applications) };
+      });
       toast.success(done);
     } catch (saveError) {
       toast.error(saveError instanceof Error ? `The application could not be updated: ${saveError.message}` : "The application could not be updated.");

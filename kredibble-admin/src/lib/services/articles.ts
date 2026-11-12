@@ -10,7 +10,7 @@
  */
 import { createArticle, getArticleById, getArticles, updateArticle, uploadArticleBanner, type ArticleInput, type ArticleRecord } from "@/lib/api";
 import { articles as sampleArticles, type Article, type ArticleStatus } from "@/lib/mock-articles";
-import { dataUrlToFile, fetchAll, orMissing } from "./api-helpers";
+import { dataUrlToFile, fetchAll, isRecordId, orMissing } from "./api-helpers";
 import { isMockMode } from "./mock-mode";
 
 /** What the editor saves. */
@@ -40,6 +40,7 @@ export async function loadArticleRows(): Promise<Article[]> {
 /** One article, or undefined when there is no such article. */
 export async function loadArticle(id: string): Promise<Article | undefined> {
   if (isMockMode()) return sampleArticles.find((article) => article.id === id);
+  if (!isRecordId(id)) return undefined;
   return getArticleById(id).then(toArticle, orMissing<Article>);
 }
 

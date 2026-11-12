@@ -14,7 +14,7 @@
 import { getGrantApplications, getGrantById, getGrants, updateGrantApplication, type GrantApplicationRecord, type GrantRecord as ApiGrantRecord } from "@/lib/api";
 import { grantRecords, type GrantApplication, type GrantOpsStatus, type GrantRecord } from "@/lib/mock-grant-ops";
 import { overlayRows } from "@/lib/mock-store";
-import { MISSING, fetchAll, orMissing } from "./api-helpers";
+import { MISSING, fetchAll, isRecordId, orMissing } from "./api-helpers";
 import { isMockMode } from "./mock-mode";
 
 /** The currency of every real-mode amount (see the note above). */
@@ -58,6 +58,7 @@ export async function loadGrantRows(): Promise<GrantRecord[]> {
 /** One grant with every application, or undefined when there is no such grant. */
 export async function loadGrant(id: string): Promise<GrantRecord | undefined> {
   if (isMockMode()) return grantRecords.find((grant) => grant.id === id);
+  if (!isRecordId(id)) return undefined;
   const record = await getGrantById(id).catch(orMissing<ApiGrantRecord>);
   if (!record) return undefined;
   const applications = await fetchAll((page, limit) => getGrantApplications(id, { page, limit }));
@@ -70,21 +71,21 @@ export function approvalExceedsPool(grant: GrantRecord, application: GrantApplic
   return application.requestedAmount > grant.fundingPool - grant.allocated;
 }
 
+/** Mock mode's rule: what is allocated is the sum of the approved applications. */
+export const allocatedFromApplications = (applications: GrantApplication[]): number =>
+  applications.filter((application) => application.status === "approved").reduce((sum, application) => sum + application.requestedAmount, 0);
+
 /**
  * Approves or rejects a pending application and resolves with the saved status and the grant's allocated amount afterwards.
  * Real mode: PATCH /admin/grant-applications/:id, then the grant is read again for the server's `allocated`. Mock mode: allocated is
- * the sum of the approved applications after the change.
+ * null, and the page works it out from its latest applications (allocatedFromApplications), so two quick decisions both count.
  */
 export async function decideGrantApplication(
   grant: GrantRecord,
   applicationId: string,
   decision: Exclude<GrantApplication["status"], "pending">,
-): Promise<{ status: GrantApplication["status"]; allocated: number }> {
-  if (isMockMode()) {
-    const applications = grant.applications.map((application) => (application.id === applicationId ? { ...application, status: decision } : application));
-    const allocated = applications.filter((application) => application.status === "approved").reduce((sum, application) => sum + application.requestedAmount, 0);
-    return { status: decision, allocated };
-  }
+): Promise<{ status: GrantApplication["status"]; allocated: number | null }> {
+  if (isMockMode()) return { status: decision, allocated: null };
   const saved = toGrantApplication(await updateGrantApplication(applicationId, { status: decision }));
   const fresh = await getGrantById(grant.id);
   return { status: saved.status, allocated: Number(fresh.allocated) || 0 };

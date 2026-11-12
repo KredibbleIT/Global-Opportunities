@@ -12,7 +12,7 @@
 import { getEventById, getEvents, updateEvent, type EventRecord as ApiEventRecord } from "@/lib/api";
 import { eventRecords, type EventRecord, type EventStatus } from "@/lib/mock-events";
 import { overlayRows } from "@/lib/mock-store";
-import { MISSING, fetchAll, orMissing } from "./api-helpers";
+import { MISSING, fetchAll, isRecordId, orMissing } from "./api-helpers";
 import { isMockMode } from "./mock-mode";
 
 const STATUSES: EventStatus[] = ["upcoming", "past", "cancelled"];
@@ -40,6 +40,7 @@ export async function loadEventRows(): Promise<EventRecord[]> {
 /** One event, or undefined when there is no such event. */
 export async function loadEvent(id: string): Promise<EventRecord | undefined> {
   if (isMockMode()) return eventRecords.find((event) => event.id === id);
+  if (!isRecordId(id)) return undefined;
   return getEventById(id).then(toEvent, orMissing<EventRecord>);
 }
 
