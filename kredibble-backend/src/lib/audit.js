@@ -25,6 +25,7 @@ export const AUDIT_ACTIONS = {
   ADMIN_DELETE: 'admin.delete',
   ADMIN_USER_UPDATE: 'admin.user.update',
   ADMIN_OPPORTUNITY_MODERATE: 'admin.opportunity.moderate',
+  ADMIN_GRANT_DECISION: 'admin.grant.decision',
   AMBASSADOR_REQUEST: 'ambassador.request',
   ADMIN_AMBASSADOR_DECISION: 'admin.ambassador.decision',
   ROLES_PERMISSIONS_UPDATE: 'ROLES_PERMISSIONS_UPDATE',

@@ -12,7 +12,7 @@ import { asyncHandler, itemResponse, listResponse, notFound, stripSensitive, Api
 import { requireAuth, optionalAuth, requireEmailVerified } from '../middleware/auth.js';
 import { env } from '../config/env.js';
 import { validate } from '../middleware/validate.js';
-import { staffInviteSchema } from '../schemas/admin.js';
+import { staffInviteSchema, grantApplicationDecisionSchema } from '../schemas/admin.js';
 import { pushTokenSchema, notificationPreferencesSchema } from '../schemas/auth.js';
 import {
   RESOURCE_POLICIES,
@@ -852,6 +852,39 @@ const mountAdminDataRoutes = (router) => {
     populate: { path: 'authorId', select: 'name email avatarUrl' },
     searchFields: ['title', 'body'], filterFields: ['channelId', 'flagged'],
   });
+  // SEC-157: deciding a pending grant application. Applying reserved its amount in the grant's `allocated` (SEC-060); approving keeps
+  // that reservation and rejecting releases it. Only a pending application can be decided, and the status moves with a conditional
+  // update, so two admins deciding at the same moment can't release the same amount twice. Registered before the generic collection
+  // route, which would change the status without touching the pool.
+  router.patch('/admin/grant-applications/:id', requireAdminScreen('grants'), validate(grantApplicationDecisionSchema), asyncHandler(async (req, res) => {
+    if (!mongoose.isValidObjectId(req.params.id)) throw notFound('GrantApplication');
+    const { status } = req.body;
+    const application = await GrantApplication.findOneAndUpdate(
+      { _id: req.params.id, status: 'pending' },
+      { $set: { status } },
+      { returnDocument: 'after' },
+    );
+    if (!application) {
+      if (await GrantApplication.exists({ _id: req.params.id })) throw new ApiError(409, 'This application has already been decided');
+      throw notFound('GrantApplication');
+    }
+    if (status === 'rejected') {
+      // Never below zero: an application stored without a reservation (older data) must not drive the pool negative.
+      await Grant.updateOne(
+        { _id: application.grantId },
+        [{ $set: { allocated: { $max: [0, { $subtract: ['$allocated', application.requestedAmount] }] } } }],
+        { updatePipeline: true }, // Mongoose 9 refuses an update pipeline unless it is asked for
+      );
+    }
+    await auditReq(req, {
+      action: AUDIT_ACTIONS.ADMIN_GRANT_DECISION,
+      resourceType: AUDIT_RESOURCE_TYPES.GRANT_APPLICATION,
+      resourceId: application._id,
+      outcome: 'success',
+      metadata: { status, grantId: String(application.grantId), requestedAmount: application.requestedAmount },
+    });
+    itemResponse(res, toClientObject(application));
+  }));
   adminCollection('/grant-applications', {
     Model: GrantApplication, resourceName: 'GrantApplication', policyKey: 'grant-applications', screen: 'grants',
     searchFields: ['applicantName'], filterFields: ['grantId', 'status'],

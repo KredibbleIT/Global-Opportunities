@@ -325,6 +325,7 @@ Note: the audit's own text reached the same conclusion on #10 ("Actually this on
 | SEC-153 | Layout at desktop width: the Partners board splits names mid-word ("Safarico m", "Flutterwa ve"); Network splits emails mid-address and its status pill runs into the Trained column; chart axes tick at odd values (194, 388, 582, 776) | P3 | Admin UI | 🔴 Open — filed 2026-11-11 |
 | SEC-154 | Plural copy: "1 seeker accounts registered", and "1 listings" in the Overview trend's table | P3 | Admin UI copy | 🔴 Open — filed 2026-11-11 |
 | SEC-156 | CD App could never ship a store build after the first: the Play service account lacked "View app information" so every upload got 403, and `app.json` pinned `versionCode` to 1, which Play's production track already holds | P1 | CI/CD | 🟡 Permission fixed live 2026-11-11; versionCode fix in PR |
+| SEC-157 | Events, Grants and Career resources read hard-coded samples and drop their edits although `/admin/events`, `/admin/grants`, `/admin/grant-applications` and `/admin/articles` exist; Team says "not connected" though it is live; a rejected grant application never releases its reserved amount | P2 | Admin data / Backend | 🟡 In progress 2026-11-12 |
 
 ---
 
@@ -1944,6 +1945,19 @@ How it works now:
 - [x] No uppercase tracked labels; headings and figures at 600 at most
 - [x] Every page captured at desktop and phone width with no sideways scroll
 - [ ] Full e2e (both modes) green in CI
+
+### SEC-157 — Events, Grants and Career resources show sample data while their API exists; Team's notice is wrong
+**Priority:** P2
+**Finding (2026-11-12, owner question "are pages with this notice ready for data?"):** the backend has had `/admin/events`, `/admin/grants`, `/admin/grant-applications` and `/admin/articles` (SEC-075/077) with the same fields the admin shows, and `lib/api.ts` has their client calls, but the six pages read the hard-coded `mock-events.ts`, `mock-grant-ops.ts` and `mock-articles.ts` in every mode, and their edits ("Save capacity", "Cancel event", Approve/Reject, Save article) only changed the page's memory (`TODO(backend)`). Team, the staff profile and Invite staff have read and saved through `/admin/staff` for a while, yet still show "This page isn't connected to live data yet". Separately, an application reserves its amount in the grant's `allocated` when it is made (SEC-060), but a rejection through the generic PATCH never gave it back, so a rejected request kept pool money locked.
+**Fix:**
+- Services `lib/services/events.ts`, `grants.ts`, `articles.ts`: mock mode keeps the sample records; real mode reads every page of the admin API, saves through it and throws the API's error (no fallback to samples, as SEC-148).
+- Pages: the lists, the Event and Grant records and the article editor use them; the sample-data notices go from these pages and from Team, the staff profile and Invite staff.
+- Backend: `PATCH /admin/grant-applications/:id` decides a pending application only (approved or rejected), and a rejection releases its amount from the grant's `allocated` atomically.
+**Acceptance criteria:**
+- [ ] Real-API mode lists the seeded event, grant and articles from the database; a sample id is "not found"
+- [ ] Save capacity, Cancel event, Approve, Reject and Save article persist (a reload shows them)
+- [ ] Rejecting an application frees its amount in the pool; a decided application can't be decided again
+- [ ] No sample-data notice on Events, Grants, Career resources, Team, staff profile, Invite staff in real-API mode
 
 # Execution Order
 

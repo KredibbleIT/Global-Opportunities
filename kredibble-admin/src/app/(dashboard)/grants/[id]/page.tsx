@@ -8,14 +8,18 @@
  * application (applicant, requested amount, status).
  * Actions: Approve (per pending application, disabled when the request exceeds what remains) and Reject
  * (per pending application, confirm dialog). Allocated is recalculated from approved applications.
- * Data: mock grants (src/lib/mock-grant-ops.ts), changed in LOCAL state only.
+ * Data: lib/services/grants.ts (SEC-157). Mock mode keeps changes in the shared store and counts an approved request as allocated.
+ * Real mode reads the grant and its applications from the API and decides through PATCH /admin/grant-applications/:id; there an
+ * application reserves its amount when it is made, so "allocated" includes requests awaiting a decision, approving never exceeds the
+ * pool, and rejecting gives the amount back. A failed decision leaves the application as it was and says so.
  */
 import { useCallback } from "react";
 import { useParams } from "next/navigation";
 import { Check, HandCoins, X } from "lucide-react";
 import { useBreadcrumbLabel } from "@/lib/breadcrumb-label";
 import { formatMoney } from "@/lib/format";
-import { grantRecords, type GrantApplication } from "@/lib/mock-grant-ops";
+import type { GrantApplication } from "@/lib/mock-grant-ops";
+import { approvalExceedsPool, decideGrantApplication, loadGrant, pendingIsReserved } from "@/lib/services/grants";
 import { useDetailData } from "@/lib/use-detail-data";
 import { DetailHeader } from "@/components/detail/DetailHeader";
 import { DetailPage } from "@/components/detail/DetailPage";
@@ -28,11 +32,10 @@ import { KeyValueList } from "@/components/ui/KeyValueList";
 import { MiniStat } from "@/components/ui/MiniStat";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useToast } from "@/components/ui/Toast";
-import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 
 export default function GrantDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const load = useCallback(() => Promise.resolve(grantRecords.find((g) => g.id === id)), [id]);
+  const load = useCallback(() => loadGrant(id), [id]);
   const { status, record: grant, setRecord, error, retry } = useDetailData(load, { collection: "grants" });
   const toast = useToast();
   const { confirm, dialog } = useConfirmDialog();
@@ -44,22 +47,26 @@ export default function GrantDetailPage() {
   if (!grant) return <DetailNotFound noun="Grant" listLabel="Grants" listHref="/grants" />;
 
   const money = (amount: number) => formatMoney(amount, grant.currency); // always with the currency code (USD 5,000)
-  const pct = Math.round((grant.allocated / grant.fundingPool) * 100);
+  const pct = grant.fundingPool > 0 ? Math.round((grant.allocated / grant.fundingPool) * 100) : 0;
   const remaining = grant.fundingPool - grant.allocated;
 
-  const setAppStatus = (appId: string, next: GrantApplication["status"]) => {
-    // TODO(backend): persist this change
-    setRecord((prev) => {
-      const applications = prev.applications.map((a) => (a.id === appId ? { ...a, status: next } : a));
-      const allocated = applications.filter((a) => a.status === "approved").reduce((sum, a) => sum + a.requestedAmount, 0);
-      return { ...prev, applications, allocated };
-    });
+  // Saves first; the page changes only once the server has the decision (allocated comes back with it).
+  const decide = async (app: GrantApplication, next: Exclude<GrantApplication["status"], "pending">, done: string) => {
+    try {
+      const saved = await decideGrantApplication(grant, app.id, next);
+      setRecord((prev) => ({
+        ...prev,
+        allocated: saved.allocated,
+        applications: prev.applications.map((a) => (a.id === app.id ? { ...a, status: saved.status } : a)),
+      }));
+      toast.success(done);
+    } catch (saveError) {
+      toast.error(saveError instanceof Error ? `The application could not be updated: ${saveError.message}` : "The application could not be updated.");
+    }
   };
 
-  const approve = (app: GrantApplication) => {
-    setAppStatus(app.id, "approved");
-    toast.success(`${app.applicantName}'s request for ${money(app.requestedAmount)} was approved.`);
-  };
+  const approve = (app: GrantApplication) =>
+    void decide(app, "approved", `${app.applicantName}'s request for ${money(app.requestedAmount)} was approved.`);
 
   const reject = (app: GrantApplication) =>
     confirm({
@@ -71,16 +78,12 @@ export default function GrantDetailPage() {
         </>
       ),
       confirmLabel: "Reject application",
-      onConfirm: () => {
-        setAppStatus(app.id, "rejected");
-        toast.success(`${app.applicantName}'s request was rejected.`);
-      },
+      onConfirm: () => decide(app, "rejected", `${app.applicantName}'s request was rejected.`),
     });
 
   return (
     <>
       <DetailPage
-        notice={<NotConnectedNotice />}
         header={
           <DetailHeader
             leading={{ icon: HandCoins }}
@@ -98,6 +101,11 @@ export default function GrantDetailPage() {
               <p className="body-sm mt-2 text-muted">
                 {money(grant.allocated)} allocated of {money(grant.fundingPool)} ({pct}%) · {money(remaining)} remaining
               </p>
+              {pendingIsReserved() && (
+                <p data-testid="grant-reservation-note" className="caption mt-1">
+                  Includes requests awaiting a decision: each application holds its amount until it is rejected.
+                </p>
+              )}
             </InfoCard>
 
             <InfoCard title="Applications">
@@ -125,7 +133,7 @@ export default function GrantDetailPage() {
                               label={`Approve ${app.applicantName}`}
                               icon={Check}
                               tone="success"
-                              disabled={app.requestedAmount > remaining}
+                              disabled={approvalExceedsPool(grant, app)}
                               onClick={() => approve(app)}
                             />
                             <IconButton label={`Reject ${app.applicantName}`} icon={X} tone="danger" onClick={() => reject(app)} />
@@ -141,7 +149,7 @@ export default function GrantDetailPage() {
                             icon={Check}
                             className="h-11"
                             aria-label={`Approve ${app.applicantName}`}
-                            disabled={app.requestedAmount > remaining}
+                            disabled={approvalExceedsPool(grant, app)}
                             onClick={() => approve(app)}
                           >
                             Approve

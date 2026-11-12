@@ -12,13 +12,17 @@
  *
  * Behaviour: errors show after a field is left and on submit; Save shows a spinner while saving, then a
  * toast and back to the list; leaving with unsaved changes asks first (see useUnsavedGuard).
- * Data: mock articles (src/lib/mock-articles.ts). Nothing is persisted yet.
+ * Data: lib/services/articles.ts (SEC-157). Real mode loads the article from GET /admin/articles/:id and saves with POST (new) or PATCH;
+ * a picked cover image is uploaded first. A failed save keeps the form as typed, says why, and stays on the page. Mock mode keeps nothing.
+ * The page loads the article, then renders the form with it (ArticleEditor), so the form starts from the saved values.
  */
-import { useRef, useState, type FormEvent } from "react";
+import { useCallback, useRef, useState, type FormEvent } from "react";
 import { useParams } from "next/navigation";
 import { useBreadcrumbLabel } from "@/lib/breadcrumb-label";
-import { articles, type ArticleStatus } from "@/lib/mock-articles";
-import { DetailNotFound } from "@/components/detail/DetailStates";
+import type { Article, ArticleStatus } from "@/lib/mock-articles";
+import { loadArticle, saveArticle } from "@/lib/services/articles";
+import { useAsync } from "@/lib/use-async";
+import { DetailError, DetailNotFound, DetailSkeleton } from "@/components/detail/DetailStates";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { Field } from "@/components/ui/form/Field";
 import { FileDrop } from "@/components/ui/form/FileDrop";
@@ -29,7 +33,6 @@ import { Textarea } from "@/components/ui/form/Textarea";
 import { focusFirstInvalid, useTouched } from "@/components/ui/form/use-touched";
 import { useUnsavedGuard } from "@/components/ui/form/use-unsaved-guard";
 import { useToast } from "@/components/ui/Toast";
-import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 
 const LIST_HREF = "/content/articles";
 
@@ -55,10 +58,26 @@ function validate(form: ArticleForm) {
   return errors;
 }
 
+/** Loads the article (unless it is new), then shows the form with it. */
 export default function ArticleEditorPage() {
   const { id } = useParams<{ id: string }>();
   const isNew = id === "new";
-  const existing = isNew ? undefined : articles.find((a) => a.id === id);
+  // Wrapped in an object: useAsync's data is null while loading, so "no such article" needs its own value.
+  const load = useCallback(async () => ({ article: isNew ? undefined : await loadArticle(id) }), [id, isNew]);
+  const loaded = useAsync(load);
+
+  useBreadcrumbLabel(isNew ? "New article" : loaded.data ? (loaded.data.article?.title ?? "Not found") : undefined);
+
+  if (isNew) return <ArticleEditor id={null} />;
+  if (loaded.isLoading) return <DetailSkeleton />;
+  if (loaded.error || !loaded.data) return <DetailError message={loaded.error?.message ?? "Could not load this article."} onRetry={loaded.reload} />;
+  if (!loaded.data.article) return <DetailNotFound noun="Article" listLabel="Career resources" listHref={LIST_HREF} />;
+  return <ArticleEditor id={loaded.data.article.id} existing={loaded.data.article} />;
+}
+
+/** The form itself. `id` null creates a new article; `existing` is the saved article being edited. */
+function ArticleEditor({ id, existing }: { id: string | null; existing?: Article }) {
+  const isNew = id === null;
 
   const initial: ArticleForm = existing
     ? {
@@ -82,12 +101,6 @@ export default function ArticleEditorPage() {
   const guard = useUnsavedGuard(dirty && !saving);
   const errors = validate(form);
 
-  useBreadcrumbLabel(isNew ? "New article" : existing ? existing.title : "Not found");
-
-  if (!isNew && !existing) {
-    return <DetailNotFound noun="Article" listLabel="Career resources" listHref={LIST_HREF} />;
-  }
-
   const set = <K extends keyof ArticleForm>(key: K, value: ArticleForm[K]) => setForm((current) => ({ ...current, [key]: value }));
 
   const submit = async (event: FormEvent) => {
@@ -98,9 +111,13 @@ export default function ArticleEditorPage() {
       return;
     }
     setSaving(true);
-    // TODO(backend): persist this change (create or update the article). Until then this only waits briefly,
-    // like a request would, and returns to the list.
-    await new Promise((resolve) => setTimeout(resolve, 700));
+    try {
+      await saveArticle(id, form);
+    } catch (saveError) {
+      setSaving(false);
+      toast.error(saveError instanceof Error ? `The article could not be saved: ${saveError.message}` : "The article could not be saved.");
+      return;
+    }
     toast.success(isNew ? (form.status === "published" ? "The article was published." : "The draft was saved.") : "Your changes were saved.");
     guard.leaveNow(LIST_HREF);
   };
@@ -115,7 +132,6 @@ export default function ArticleEditorPage() {
           {isNew ? "Write a Career resources article for seekers." : "Update this Career resources article."}
         </p>
       </div>
-      <NotConnectedNotice className="mb-4" />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Main column: the writing */}

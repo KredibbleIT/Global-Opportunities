@@ -8,14 +8,15 @@
  * percent, spots left), the capacity input adjusts it, and the side panel holds the extra info (hirer, status).
  * Actions: Save capacity (cannot go below the current attendee count) and Cancel event (danger zone,
  * confirm dialog; hidden once cancelled).
- * Data: mock events (src/lib/mock-events.ts), changed in LOCAL state only.
+ * Data: lib/services/events.ts (SEC-157): mock mode keeps changes in the shared store; real mode reads GET /admin/events/:id and saves
+ * with PATCH (capacity, status). Each save waits for the server; a failed one leaves the event as it was and says so.
  */
 import { useCallback, useState } from "react";
 import { useParams } from "next/navigation";
 import { CalendarDays, XCircle } from "lucide-react";
 import { useBreadcrumbLabel } from "@/lib/breadcrumb-label";
 import { eventStatus } from "@/lib/event-status";
-import { eventRecords } from "@/lib/mock-events";
+import { cancelEvent as saveCancelled, loadEvent, saveEventCapacity } from "@/lib/services/events";
 import { useDetailData } from "@/lib/use-detail-data";
 import { DangerZone } from "@/components/detail/DangerZone";
 import { DetailHeader } from "@/components/detail/DetailHeader";
@@ -27,16 +28,16 @@ import { useConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { KeyValueList } from "@/components/ui/KeyValueList";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { useToast } from "@/components/ui/Toast";
-import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 
 export default function EventDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const load = useCallback(() => Promise.resolve(eventRecords.find((e) => e.id === id)), [id]);
+  const load = useCallback(() => loadEvent(id), [id]);
   const { status, record: event, setRecord, error, retry } = useDetailData(load, { collection: "events" });
   const toast = useToast();
   const { confirm, dialog } = useConfirmDialog();
   // null = untouched: the input then shows the saved capacity.
   const [capacityDraft, setCapacityDraft] = useState<string | null>(null);
+  const [savingCapacity, setSavingCapacity] = useState(false);
 
   useBreadcrumbLabel(status === "loading" ? undefined : event ? event.title : "Not found");
 
@@ -47,14 +48,23 @@ export default function EventDetailPage() {
   const capacityInput = capacityDraft ?? String(event.capacity);
   const parsed = parseInt(capacityInput, 10);
   const capacityInvalid = Number.isNaN(parsed) || parsed < event.attendeesCount;
-  const pct = Math.round((event.attendeesCount / event.capacity) * 100);
+  const pct = event.capacity > 0 ? Math.round((event.attendeesCount / event.capacity) * 100) : 0;
+  const failed = (what: string, saveError: unknown) =>
+    toast.error(saveError instanceof Error ? `${what}: ${saveError.message}` : `${what}.`);
 
-  const saveCapacity = () => {
-    if (capacityInvalid) return;
-    // TODO(backend): persist this change
-    setRecord((prev) => ({ ...prev, capacity: parsed }));
-    setCapacityDraft(null);
-    toast.success(`Capacity for ${event.title} was set to ${parsed}.`);
+  const saveCapacity = async () => {
+    if (capacityInvalid || savingCapacity) return;
+    setSavingCapacity(true);
+    try {
+      const saved = await saveEventCapacity(event.id, parsed);
+      setRecord((prev) => ({ ...prev, capacity: saved }));
+      setCapacityDraft(null);
+      toast.success(`Capacity for ${event.title} was set to ${saved}.`);
+    } catch (saveError) {
+      failed("The capacity could not be saved", saveError);
+    } finally {
+      setSavingCapacity(false);
+    }
   };
 
   const cancelEvent = () =>
@@ -67,17 +77,20 @@ export default function EventDetailPage() {
         </>
       ),
       confirmLabel: "Cancel event",
-      onConfirm: () => {
-        // TODO(backend): persist this change
-        setRecord((prev) => ({ ...prev, status: "cancelled" }));
-        toast.success(`${event.title} was cancelled.`);
+      onConfirm: async () => {
+        try {
+          const saved = await saveCancelled(event.id);
+          setRecord((prev) => ({ ...prev, status: saved }));
+          toast.success(`${event.title} was cancelled.`);
+        } catch (saveError) {
+          failed("The event could not be cancelled", saveError);
+        }
       },
     });
 
   return (
     <>
       <DetailPage
-        notice={<NotConnectedNotice />}
         header={
           <DetailHeader
             leading={{ icon: CalendarDays }}
@@ -108,7 +121,7 @@ export default function EventDetailPage() {
                   min={event.attendeesCount}
                   className="input-text h-10 flex-1 rounded-control border border-input bg-surface px-3 text-ink"
                 />
-                <Button onClick={saveCapacity} disabled={capacityInvalid}>
+                <Button onClick={() => void saveCapacity()} disabled={capacityInvalid} loading={savingCapacity}>
                   Save
                 </Button>
               </div>
