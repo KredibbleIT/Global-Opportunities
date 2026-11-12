@@ -29,7 +29,7 @@ import { useRoles } from "@/components/access/RoleProvider";
 import { ListPage } from "@/components/list/ListPage";
 import { EmptyAction } from "@/components/list/EmptyAction";
 import { FilterSelect, TableToolbar } from "@/components/list/TableToolbar";
-import { PartnerCard } from "@/components/partners/PartnerCard";
+import { PartnerCard, PartnerCardFooter } from "@/components/partners/PartnerCard";
 import { PartnerSummary } from "@/components/partners/PartnerSummary";
 import { PipelineHealthCard } from "@/components/partners/PipelineHealthCard";
 import { Button } from "@/components/ui/Button";
@@ -173,6 +173,7 @@ export default function PartnersPage() {
           getColumnKey={(row) => row.stage}
           getName={(row) => row.name}
           renderCard={(row) => <PartnerCard partner={row} />}
+          renderFooter={(row) => <PartnerCardFooter partner={row} />}
           onMove={onMove}
           canMove={canEdit}
           itemNoun="partners"

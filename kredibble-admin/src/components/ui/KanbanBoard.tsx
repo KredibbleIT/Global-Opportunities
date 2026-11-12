@@ -17,13 +17,19 @@
  * Every move is announced in a polite live region ("Acme Foundation moved to Proposal"). With canMove = false (a
  * view-only role) there is no menu and no drag handle at all.
  *
- * Look: a column has its label, a count pill, an optional marker (e.g. "Closed") and a thin purple line; cards are white
- * with a 1px line border. A column is never narrower than 13rem (208px; at 11rem names such as "Safaricom" split mid-word), so all six
- * columns need 1308px of board (6 x 208px plus five 12px gaps). The board is the page width minus the sidebar (248px expanded, 72px
- * as a rail) and 56px of padding, so it FITS on wide screens (1920px) and SCROLLS at 1440px with the sidebar open (1136px of board),
- * at 1280px (976px, or 1152px as a rail) and at 1024px (720px). The measured numbers are in the
- * "Partners board width" test. When it scrolls, it does so sideways inside itself (the page never scrolls sideways), a soft
- * fade shows on each edge that has more columns, and the scroller takes keyboard focus (arrow keys, Home and End scroll it).
+ * Look (SEC-158): a column header is ONE line (the label, which truncates, and a count pill), then a line row of the same height in
+ * every column: a thin purple line, or for a closed stage a green line with "Closed" at its end. So every column's cards start at
+ * the same height (the marker used to wrap under a long label such as "Onboarded" and push that column down by 24px).
+ * A card: a horizontal grip centred at the top (the drag handle; it darkens on hover), the content, then a footer (no divider)
+ * with the item's short facts on the left (renderFooter) and the "Move to…" button on the right. With the grip on top the content
+ * gets the full width of the card.
+ * A column is never narrower than 12rem (192px; at 11rem names such as "Safaricom" split mid-word), so all six columns need 1212px
+ * of board (6 x 192px plus five 12px gaps). The board is the page width minus the sidebar (248px expanded, 72px as a rail) and 56px
+ * of padding, so it FITS at 1536px with the sidebar open and wider, and SCROLLS at 1440px with the sidebar open (1136px of board),
+ * at 1280px (976px, or 1152px as a rail) and at 1024px (720px). The measured numbers are in the "Partners board width" test.
+ * When it scrolls, it does so sideways inside itself (the page never scrolls sideways), a soft fade shows on each edge that has
+ * more columns, the scroller takes keyboard focus (arrow keys, Home and End scroll it), and arrow buttons sit at the edges level
+ * with the column headers (they used to float lower, over the cards, and cover their text).
  * Structure ideas (native drag and drop, a column drop highlight, a live region) come from the 21st.dev "Kanban Board"
  * candidates; the look and the keyboard menu are ours.
  *
@@ -32,15 +38,17 @@
  * - columns: [{ key, label, marker? }] in order; the keys are fixed, the labels may be edited elsewhere
  * - items, getId, getColumnKey, getName: the cards and where each one sits (getName is what is announced)
  * - renderCard(item): the content of a card (the board adds the grip and the menu)
+ * - renderFooter(item): optional short facts for the card's footer, left of the "Move to…" button (one line; it truncates)
  * - onMove(item, toKey): called after a drop or a menu choice; the page changes the data and shows a toast
  * - canMove: false hides the menu and the grip and turns dragging off
  * - itemNoun / itemNounOne: "partners" / "partner" (for the column names and the empty text; counts use the right number)
- * - Arrow buttons (left / right) appear while more columns are out of view, so the last stage is always reachable by mouse, touch or keyboard.
+ * - Arrow buttons (left / right), level with the column headers, each drawn while there is more that way, so the last stage is
+ *   always reachable by mouse, touch or keyboard.
  * - loading: shows skeleton columns
  * Test ids: kanban-column-<key>, kanban-count-<key>, kanban-card-<id>, kanban-live, kanban-grip.
  */
 import { useEffect, useRef, useState, type DragEvent, type ReactNode } from "react";
-import { ArrowRightLeft, CheckCircle2, ChevronLeft, ChevronRight, GripVertical } from "lucide-react";
+import { ArrowRightLeft, CheckCircle2, ChevronLeft, ChevronRight, GripHorizontal } from "lucide-react";
 import { pluralWord } from "@/lib/plural";
 import { cn } from "@/lib/cn";
 import { useMediaQuery } from "@/lib/use-media-query";
@@ -64,6 +72,8 @@ interface KanbanBoardProps<T> {
   getColumnKey: (item: T) => string;
   getName: (item: T) => string;
   renderCard: (item: T) => ReactNode;
+  /** Short facts for the card footer, left of the "Move to…" button. */
+  renderFooter?: (item: T) => ReactNode;
   onMove: (item: T, toKey: string) => void;
   canMove: boolean;
   itemNoun?: string;
@@ -76,7 +86,7 @@ interface KanbanBoardProps<T> {
 const MENU_TRIGGER =
   "relative inline-flex items-center justify-center gap-1.5 rounded-control text-sm font-semibold text-purple-700 transition-colors duration-150 ease-out hover:bg-purple-50 max-sm:h-10 max-sm:px-2 sm:size-7 sm:before:absolute sm:before:-inset-1.5 sm:before:content-['']";
 
-export function KanbanBoard<T>({ ariaLabel, columns, items, getId, getColumnKey, getName, renderCard, onMove, canMove, itemNoun = "items", itemNounOne, loading = false }: KanbanBoardProps<T>) {
+export function KanbanBoard<T>({ ariaLabel, columns, items, getId, getColumnKey, getName, renderCard, renderFooter, onMove, canMove, itemNoun = "items", itemNounOne, loading = false }: KanbanBoardProps<T>) {
   const phone = useMediaQuery("(max-width: 639px)");
   const [announcement, setAnnouncement] = useState("");
   const [dragId, setDragId] = useState<string | null>(null);
@@ -154,59 +164,75 @@ export function KanbanBoard<T>({ ariaLabel, columns, items, getId, getColumnKey,
           setOverKey(null);
         }}
         className={cn(
-          "rounded-card border border-line bg-surface px-3 pt-3 pb-2 shadow-card transition-opacity",
+          "group rounded-card border border-line bg-surface shadow-card transition-[border-color,opacity] duration-150 ease-out hover:border-purple-200",
           draggable && "cursor-grab active:cursor-grabbing",
           dragId === id && "opacity-50",
         )}
       >
-        <div className="flex items-start gap-2">
-          {draggable && <GripVertical data-testid="kanban-grip" size={16} strokeWidth={1.75} aria-hidden="true" className="mt-0.5 shrink-0 text-muted" />}
-          <div className="min-w-0 flex-1">{renderCard(item)}</div>
-        </div>
-        {canMove && (
-          <div className="mt-1 flex justify-end">
-            <Tooltip label="Move to…" placement="top" disabled={phone}>
-              <Menu
-                label={`Move ${name} to another stage`}
-                sheetTitle={`Move ${name} to`}
-                align="end"
-                triggerAriaLabel={`Move ${name} to another stage`}
-                triggerClassName={MENU_TRIGGER}
-                items={columns.filter((column) => column.key !== current).map((column) => ({ label: column.label, onSelect: () => move(item, column.key) }))}
-              >
-                <ArrowRightLeft size={16} strokeWidth={1.75} aria-hidden="true" />
-                {/* The words show on phones only; from 640px the icon stands alone (the name comes from the aria-label). */}
-                <span className="sm:hidden">Move to…</span>
-              </Menu>
-            </Tooltip>
+        {/* The grip: centred at the top, so the content below keeps the full width of the card. */}
+        {draggable ? (
+          <div className="flex justify-center pt-1">
+            <GripHorizontal data-testid="kanban-grip" size={16} strokeWidth={1.75} aria-hidden="true" className="text-line-strong transition-colors duration-150 group-hover:text-muted" />
           </div>
+        ) : (
+          <div aria-hidden="true" className="h-3" />
+        )}
+        <div className="px-3">{renderCard(item)}</div>
+        {canMove || renderFooter ? (
+          // No divider above the footer (an earlier visual fix took it out): spacing and the muted facts set it apart.
+          <div className="mt-2 flex min-h-10 items-center gap-2 pr-1.5 pb-0.5 pl-3">
+            <div className="min-w-0 flex-1">{renderFooter?.(item)}</div>
+            {canMove && (
+              <Tooltip label="Move to…" placement="top" disabled={phone}>
+                <Menu
+                  label={`Move ${name} to another stage`}
+                  sheetTitle={`Move ${name} to`}
+                  align="end"
+                  triggerAriaLabel={`Move ${name} to another stage`}
+                  triggerClassName={MENU_TRIGGER}
+                  items={columns.filter((column) => column.key !== current).map((column) => ({ label: column.label, onSelect: () => move(item, column.key) }))}
+                >
+                  <ArrowRightLeft size={16} strokeWidth={1.75} aria-hidden="true" />
+                  {/* The words show on phones only; from 640px the icon stands alone (the name comes from the aria-label). */}
+                  <span className="sm:hidden">Move to…</span>
+                </Menu>
+              </Tooltip>
+            )}
+          </div>
+        ) : (
+          <div aria-hidden="true" className="h-3" />
         )}
       </li>
     );
   };
 
+  // One line for the label and count, then a line row of the same height in every column (the Closed marker lives there), so
+  // every column's cards start at the same height.
   const header = (column: KanbanColumn, count: number) => (
     <div>
-      {/* flex-wrap: a long stage name ("Onboarded") plus the Closed marker wraps the marker to a second line instead of widening the column. */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <h3 className="font-display text-sm font-semibold leading-5 text-ink">{column.label}</h3>
-        <span data-testid={`kanban-count-${column.key}`} className="badge-text rounded-pill bg-surface-2 px-2 py-0.5 tabular-nums text-muted" aria-label={`${count} ${nounFor(count)}`}>
+      <div className="flex h-6 items-center gap-2">
+        <h3 title={column.label} className="min-w-0 truncate font-display text-sm font-semibold leading-5 text-ink">
+          {column.label}
+        </h3>
+        <span data-testid={`kanban-count-${column.key}`} className="badge-text shrink-0 rounded-pill bg-surface-2 px-2 py-0.5 tabular-nums text-muted" aria-label={`${count} ${nounFor(count)}`}>
           {count}
         </span>
+      </div>
+      <div className="mt-1 flex h-5 items-center gap-2">
+        <div aria-hidden="true" className={cn("h-0.5 flex-1 rounded-pill", column.marker ? "bg-success" : "bg-purple-500")} />
         {column.marker && (
-          <span data-testid={`kanban-marker-${column.key}`} className="ml-auto inline-flex items-center gap-1 rounded-pill bg-success-soft px-2 py-0.5 text-xs font-semibold text-success">
+          <span data-testid={`kanban-marker-${column.key}`} className="inline-flex shrink-0 items-center gap-1 text-xs font-semibold leading-4 text-success">
             <CheckCircle2 size={12} strokeWidth={2} aria-hidden="true" />
             {column.marker}
           </span>
         )}
       </div>
-      <div aria-hidden="true" className="mt-2 h-0.5 rounded-pill bg-purple-500" />
     </div>
   );
 
   if (loading) {
     return (
-      <div aria-busy="true" aria-label={`${ariaLabel} (loading)`} className="grid grid-flow-col auto-cols-[minmax(13rem,1fr)] gap-3 overflow-hidden max-sm:auto-cols-[100%]">
+      <div aria-busy="true" aria-label={`${ariaLabel} (loading)`} className="grid grid-flow-col auto-cols-[minmax(12rem,1fr)] gap-3 overflow-hidden max-sm:auto-cols-[100%]">
         {columns.slice(0, phone ? 1 : columns.length).map((column) => (
           <div key={column.key} className="space-y-3">
             <Skeleton className="h-5 w-24" />
@@ -252,78 +278,81 @@ export function KanbanBoard<T>({ ariaLabel, columns, items, getId, getColumnKey,
   }
 
   return (
-    <section aria-label={ariaLabel} className="relative">
-      <div
-        ref={scrollRef}
-        data-edge-fade="true"
-        data-testid="kanban-scroller"
-        // A scroller that overflows must be reachable and scrollable from the keyboard (arrow keys, Home, End).
-        tabIndex={overflowing ? 0 : undefined}
-        role={overflowing ? "group" : undefined}
-        aria-label={overflowing ? `${ariaLabel} columns (scrolls sideways)` : undefined}
-        onScroll={measure}
-        // The arrow keys already scroll a focused scroller sideways; Home and End jump to its two ends.
-        onKeyDown={(event) => {
-          if (event.target !== event.currentTarget || (event.key !== "Home" && event.key !== "End")) return;
-          event.preventDefault();
-          event.currentTarget.scrollTo({ left: event.key === "Home" ? 0 : event.currentTarget.scrollWidth });
-        }}
-        // "relative": the screen-reader-only text inside the cards is absolutely positioned; without a positioned scroller it would
-        // escape the scrolling box and make the whole PAGE scroll sideways.
-        className="no-scrollbar relative grid grid-flow-col auto-cols-[minmax(13rem,1fr)] gap-3 overflow-x-auto pb-2"
-      >
-        {columns.map((column) => {
-          const cards = inColumn(column.key);
-          return (
-            <section
-              key={column.key}
-              data-testid={`kanban-column-${column.key}`}
-              aria-label={`${column.label}, ${cards.length} ${nounFor(cards.length)}`}
-              onDragOver={canMove ? (event) => { event.preventDefault(); setOverKey(column.key); } : undefined}
-              onDragLeave={canMove ? () => setOverKey((current) => (current === column.key ? null : current)) : undefined}
-              onDrop={canMove ? (event) => onDrop(event, column.key) : undefined}
-              data-drag-state={dragState(column.key)}
-              className={cn(
-                "min-w-0 rounded-card bg-surface-2/60 p-3 transition-colors",
-                dragState(column.key) === "source" && "opacity-60",
-                dragState(column.key) === "accept" && "outline-2 outline-dashed outline-purple-300",
-                dragState(column.key) === "over" && "bg-purple-50 outline-2 outline-dashed outline-purple-500",
-              )}
-            >
-              {header(column, cards.length)}
-              {cards.length === 0 ? (
-                // An empty column is still a drop target: a dashed zone says so.
-                <div data-testid={`kanban-empty-${column.key}`} className="caption mt-3 flex min-h-24 items-center justify-center rounded-card border-2 border-dashed border-line px-3 text-center">
-                  No {itemNoun} here
-                </div>
-              ) : (
-                <ul className="mt-3 space-y-3">{cards.map(card)}</ul>
-              )}
-            </section>
-          );
-        })}
+    <section aria-label={ariaLabel}>
+      <div className="relative">
+        <div
+          ref={scrollRef}
+          data-edge-fade="true"
+          data-testid="kanban-scroller"
+          // A scroller that overflows must be reachable and scrollable from the keyboard (arrow keys, Home, End).
+          tabIndex={overflowing ? 0 : undefined}
+          role={overflowing ? "group" : undefined}
+          aria-label={overflowing ? `${ariaLabel} columns (scrolls sideways)` : undefined}
+          onScroll={measure}
+          // The arrow keys already scroll a focused scroller sideways; Home and End jump to its two ends.
+          onKeyDown={(event) => {
+            if (event.target !== event.currentTarget || (event.key !== "Home" && event.key !== "End")) return;
+            event.preventDefault();
+            event.currentTarget.scrollTo({ left: event.key === "Home" ? 0 : event.currentTarget.scrollWidth });
+          }}
+          // "relative": the screen-reader-only text inside the cards is absolutely positioned; without a positioned scroller it would
+          // escape the scrolling box and make the whole PAGE scroll sideways.
+          className="no-scrollbar relative grid grid-flow-col auto-cols-[minmax(12rem,1fr)] gap-3 overflow-x-auto pb-2"
+        >
+          {columns.map((column) => {
+            const cards = inColumn(column.key);
+            return (
+              <section
+                key={column.key}
+                data-testid={`kanban-column-${column.key}`}
+                aria-label={`${column.label}, ${cards.length} ${nounFor(cards.length)}`}
+                onDragOver={canMove ? (event) => { event.preventDefault(); setOverKey(column.key); } : undefined}
+                onDragLeave={canMove ? () => setOverKey((current) => (current === column.key ? null : current)) : undefined}
+                onDrop={canMove ? (event) => onDrop(event, column.key) : undefined}
+                data-drag-state={dragState(column.key)}
+                className={cn(
+                  "min-w-0 rounded-card bg-surface-2/60 p-3 transition-colors",
+                  dragState(column.key) === "source" && "opacity-60",
+                  dragState(column.key) === "accept" && "outline-2 outline-dashed outline-purple-300",
+                  dragState(column.key) === "over" && "bg-purple-50 outline-2 outline-dashed outline-purple-500",
+                )}
+              >
+                {header(column, cards.length)}
+                {cards.length === 0 ? (
+                  // An empty column is still a drop target: a dashed zone says so.
+                  <div data-testid={`kanban-empty-${column.key}`} className="caption mt-2 flex min-h-24 items-center justify-center rounded-card border-2 border-dashed border-line px-3 text-center">
+                    No {itemNoun} here
+                  </div>
+                ) : (
+                  <ul className="mt-2 space-y-3">{cards.map(card)}</ul>
+                )}
+              </section>
+            );
+          })}
+        </div>
+        <span
+          aria-hidden="true"
+          data-testid="kanban-fade-start"
+          className={cn("pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-linear-to-r from-canvas to-transparent transition-opacity", edges.start ? "opacity-100" : "opacity-0")}
+        />
+        <span
+          aria-hidden="true"
+          data-testid="kanban-fade-end"
+          className={cn("pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-linear-to-l from-canvas to-transparent transition-opacity", edges.end ? "opacity-100" : "opacity-0")}
+        />
+        {/* Arrow buttons while there is more that way, level with the column headers at the edges: they cover no card and add no
+            height (a bar above the board pushed the headers below the fold; over the cards they hid their text). */}
+        {edges.start && (
+          <button type="button" data-testid="kanban-scroll-start" aria-label="Scroll the board left" onClick={() => scrollBoard(-1)} className="left-1 absolute top-2 z-20 inline-flex size-8 items-center justify-center rounded-pill border border-line bg-surface text-ink shadow-card transition-colors duration-150 ease-out before:absolute before:-inset-1 before:content-[''] hover:bg-surface-2">
+            <ChevronLeft size={18} strokeWidth={1.75} aria-hidden="true" />
+          </button>
+        )}
+        {edges.end && (
+          <button type="button" data-testid="kanban-scroll-end" aria-label="Scroll the board right" onClick={() => scrollBoard(1)} className="right-1 absolute top-2 z-20 inline-flex size-8 items-center justify-center rounded-pill border border-line bg-surface text-ink shadow-card transition-colors duration-150 ease-out before:absolute before:-inset-1 before:content-[''] hover:bg-surface-2">
+            <ChevronRight size={18} strokeWidth={1.75} aria-hidden="true" />
+          </button>
+        )}
       </div>
-      <span
-        aria-hidden="true"
-        data-testid="kanban-fade-start"
-        className={cn("pointer-events-none absolute inset-y-0 left-0 z-10 w-8 bg-linear-to-r from-canvas to-transparent transition-opacity", edges.start ? "opacity-100" : "opacity-0")}
-      />
-      <span
-        aria-hidden="true"
-        data-testid="kanban-fade-end"
-        className={cn("pointer-events-none absolute inset-y-0 right-0 z-10 w-8 bg-linear-to-l from-canvas to-transparent transition-opacity", edges.end ? "opacity-100" : "opacity-0")}
-      />
-      {/* Arrow buttons while there is more to scroll to in that direction (the fades only hint; these are clickable). */}
-      {edges.start && (
-        <button type="button" data-testid="kanban-scroll-start" aria-label="Scroll the board left" onClick={() => scrollBoard(-1)} className="absolute left-1 top-24 z-20 inline-flex size-10 items-center justify-center rounded-pill border border-line bg-surface text-ink shadow-pop transition-colors hover:bg-surface-2">
-          <ChevronLeft size={18} strokeWidth={1.75} aria-hidden="true" />
-        </button>
-      )}
-      {edges.end && (
-        <button type="button" data-testid="kanban-scroll-end" aria-label="Scroll the board right" onClick={() => scrollBoard(1)} className="absolute right-1 top-24 z-20 inline-flex size-10 items-center justify-center rounded-pill border border-line bg-surface text-ink shadow-pop transition-colors hover:bg-surface-2">
-          <ChevronRight size={18} strokeWidth={1.75} aria-hidden="true" />
-        </button>
-      )}
       {liveRegion}
     </section>
   );

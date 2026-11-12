@@ -6293,10 +6293,12 @@ test.describe('Partners: summary tiles, health states and the empty filter', () 
 test.describe('Partners board width', () => {
   test.skip(!MOCK_RUN, 'the redesign screens run on sample data: see npm run test:e2e:mock');
 
-  // 6 columns x 13rem (208px) + 5 gaps x 12px: the board needs this much room to show every column (unslop pass: 11rem split names mid-word).
-  const NEEDED = 1308;
+  // 6 columns x 12rem (192px) + 5 gaps x 12px: the board needs this much room to show every column (unslop pass: 11rem split names
+  // mid-word; SEC-158 went from 13rem to 12rem once the grip moved to the top of the card, so all six fit at 1536px).
+  const NEEDED = 1212;
   const CASES = [
     { label: '1920 sidebar open', width: 1920, rail: false, fits: true },
+    { label: '1536 sidebar open', width: 1536, rail: false, fits: true },
     { label: '1440 sidebar open', width: 1440, rail: false, fits: false },
     { label: '1280 sidebar open', width: 1280, rail: false, fits: false },
     { label: '1280 rail', width: 1280, rail: true, fits: false },
@@ -6326,7 +6328,7 @@ test.describe('Partners board width', () => {
         return;
       }
 
-      // It scrolls: the columns keep their 13rem, so the content is exactly 1308px wide.
+      // It scrolls: the columns keep their 12rem, so the content is exactly 1212px wide.
       expect(m.sw).toBe(NEEDED);
       expect(m.cw).toBeLessThan(NEEDED);
       await expect(scroller).toHaveAttribute('tabindex', '0');
@@ -6551,6 +6553,53 @@ test.describe('Partners: polish', () => {
     await page.mouse.up(); // dropped: it moves, and everything goes back to normal
     await expect(page.getByTestId('kanban-column-outreach').getByTestId('kanban-card-ptn-15')).toBeVisible();
     for (const stage of ['prospect', 'outreach', 'proposal', 'mou', 'onboard', 'renew']) expect(await state(stage)).toBe('idle');
+  });
+
+  test('SEC-158: every column starts its cards at the same height; Closed sits on the line row; the grip is centred at the top', async ({ page }) => {
+    await open(page, 1536, 900);
+    const stages = ['prospect', 'outreach', 'proposal', 'mou', 'onboard', 'renew'];
+    const tops = await Promise.all(stages.map(async (stage) => Math.round((await box(page.getByTestId(`kanban-column-${stage}`).locator('ul').first())).y)));
+    expect(new Set(tops).size).toBe(1); // "Onboarded" + "Closed" used to wrap and push that column down by 24px
+    for (const stage of ['onboard', 'renew']) {
+      const column = page.getByTestId(`kanban-column-${stage}`);
+      const heading = await box(column.locator('h3'));
+      const marker = await box(page.getByTestId(`kanban-marker-${stage}`));
+      expect(marker.y).toBeGreaterThanOrEqual(heading.y + heading.height - 1); // below the label, on the line row
+      expect(Math.round(heading.height)).toBe(20); // the label stays on one line
+    }
+    // the grip: centred across the card, above the name
+    const card = page.getByTestId('kanban-card-ptn-15');
+    const cardBox = await box(card);
+    const grip = await box(card.getByTestId('kanban-grip'));
+    expect(Math.abs(grip.x + grip.width / 2 - (cardBox.x + cardBox.width / 2))).toBeLessThanOrEqual(1);
+    expect(grip.y + grip.height).toBeLessThanOrEqual((await box(card.getByRole('link', { name: 'Google Africa' }))).y);
+    // the name starts at the card's left padding (no grip beside it any more)
+    expect(Math.round((await box(card.getByRole('link', { name: 'Google Africa' }))).x - cardBox.x)).toBeLessThanOrEqual(13);
+    // the footer: country and contact on the Move button's row
+    const move = await box(card.getByRole('button', { name: 'Move Google Africa to another stage' }));
+    const facts = await box(card.getByText(/^Kenya · /));
+    expect(Math.abs(facts.y + facts.height / 2 - (move.y + move.height / 2))).toBeLessThanOrEqual(2);
+  });
+
+  test('SEC-158: while the board scrolls, the arrow buttons sit level with the column headers and never cover a card', async ({ page }) => {
+    await open(page, 1280, 900);
+    const cards = page.locator('[data-testid^="kanban-card-"]');
+    const coversNoCard = async (testId: string) => {
+      const arrow = await box(page.getByTestId(testId));
+      const header = await box(page.getByTestId('kanban-column-prospect').locator('h3'));
+      expect(Math.abs(arrow.y + arrow.height / 2 - (header.y + header.height / 2)), `${testId} is level with the headers`).toBeLessThanOrEqual(4);
+      for (const card of await cards.all()) {
+        const other = await card.boundingBox();
+        if (other) expect(overlaps(arrow, other), `${testId} covers a card`).toBe(false);
+      }
+    };
+    const end = page.getByTestId('kanban-scroll-end');
+    await expect(end).toBeVisible();
+    await coversNoCard('kanban-scroll-end');
+    await end.click();
+    await expect(page.getByTestId('kanban-scroll-start')).toBeVisible();
+    await page.waitForTimeout(600); // the smooth scroll settles
+    await coversNoCard('kanban-scroll-start');
   });
 
   test('a view-only role has no Move button, grip or avatar overlap to worry about', async ({ page, context }) => {
