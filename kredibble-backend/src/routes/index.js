@@ -39,7 +39,7 @@ import { normalizeLegacyRole } from '../lib/permissions.js';
 import { postChannelMessage, listChannelMessages, getThread, findPost } from '../lib/chat.js';
 import { evictFromChannelRoom } from '../socket.js';
 import { chatMessageSchema } from '../schemas/ambassador.js';
-import { getReferenceDataGroups, getReferenceDataList, addReferenceDataItem, addReferenceDataAlias } from '../lib/reference-data.js';
+import { getReferenceDataGroups, getReferenceDataList, addReferenceDataItem, addReferenceDataAlias, toPublicReferenceList } from '../lib/reference-data.js';
 import { callerSegments, channelSegments, normalizeSegments, resolveSegments, segmentsClause, sharesSegment, GENERAL_SEGMENT } from '../lib/segments.js';
 
 const parseJson = (value, fallback = []) => {
@@ -947,7 +947,8 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
   router.get('/reference-data/:group/:key', asyncHandler(async (req, res) => {
     const list = await getReferenceDataList(req.params.group, req.params.key);
     if (!list) throw notFound('Reference list');
-    itemResponse(res, list);
+    // GOD-T59: never the review queue, aliases or the last editor's id.
+    itemResponse(res, toPublicReferenceList(list));
   }));
 
   // Anonymous suggestion endpoint for the four seeker registration lists. It returns an action

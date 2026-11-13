@@ -10,6 +10,7 @@
  *
  * In mock mode: State stays in memory.
  * In live mode: Fetches from /admin/reference-data and persists changes via PUT /admin/reference-data/:group/:key.
+ * GOD-T59: each list also shows "Suggested at registration" (the review queue) with Approve / Reject (live mode only).
  */
 import { PageHeader } from "@/components/ui/PageHeader";
 import { useCallback, useEffect, useState } from "react";
@@ -17,6 +18,7 @@ import { Database } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { REFERENCE_GROUPS, type ReferenceGroupKey } from "@/lib/reference-data";
 import { ReferenceListEditor } from "@/components/reference/ReferenceListEditor";
+import { ReferenceSuggestions, type SuggestionDecision } from "@/components/reference/ReferenceSuggestions";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Tabs, tabId, tabPanelId } from "@/components/ui/Tabs";
 import { Button } from "@/components/ui/Button";
@@ -25,7 +27,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { isMockMode } from "@/lib/services/mock-mode";
-import { getAdminReferenceData, updateAdminReferenceList } from "@/lib/api";
+import { getAdminReferenceData, reviewAdminReferenceSuggestion, updateAdminReferenceList, type ReferenceSuggestionApi } from "@/lib/api";
 
 const GROUP_PARAM = "tab";
 
@@ -41,6 +43,9 @@ export default function ReferenceDataPage() {
   const sampleItems = () => Object.fromEntries(REFERENCE_GROUPS.flatMap((group) => group.lists.map((list) => [list.key, list.items])));
   const [items, setItems] = useState<Record<string, string[]>>(() => (live ? {} : sampleItems()));
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">(live ? "loading" : "ready");
+  // GOD-T59: the review queue per list key, and the suggestion being decided right now.
+  const [pending, setPending] = useState<Record<string, ReferenceSuggestionApi[]>>({});
+  const [deciding, setDeciding] = useState<string | null>(null);
   const [openList, setOpenList] = useState<Record<string, string>>(() =>
     Object.fromEntries(REFERENCE_GROUPS.map((group) => [group.key, group.lists[0].key])),
   );
@@ -49,8 +54,9 @@ export default function ReferenceDataPage() {
   const fetchLists = useCallback(() => {
     getAdminReferenceData()
       .then((groups) => {
-        const loaded = Array.isArray(groups) ? Object.fromEntries(groups.flatMap((g) => g.lists.map((l) => [l.key, l.items]))) : {};
-        setItems(loaded);
+        const lists = Array.isArray(groups) ? groups.flatMap((g) => g.lists) : [];
+        setItems(Object.fromEntries(lists.map((l) => [l.key, l.items])));
+        setPending(Object.fromEntries(lists.map((l) => [l.key, l.pending ?? []])));
         setLoadState("ready");
       })
       .catch(() => setLoadState("error"));
@@ -82,6 +88,21 @@ export default function ReferenceDataPage() {
     });
   };
 
+  // Approve adds the entry to the list for everyone, Reject drops it; either way it leaves the queue. A failure says so.
+  const decideSuggestion = (groupKey: ReferenceGroupKey, listKey: string, label: string, decision: SuggestionDecision) => {
+    setDeciding(label);
+    reviewAdminReferenceSuggestion(groupKey, listKey, label, decision)
+      .then((result) => {
+        setItems((current) => ({ ...current, [listKey]: result.items }));
+        setPending((current) => ({ ...current, [listKey]: (current[listKey] ?? []).filter((s) => s.label !== label) }));
+        toast.success(decision === "approve" ? `"${label}" added to the list.` : `"${label}" rejected.`);
+      })
+      .catch((error: unknown) => {
+        toast.error(error instanceof Error ? `The suggestion could not be saved: ${error.message}` : "The suggestion could not be saved.");
+      })
+      .finally(() => setDeciding(null));
+  };
+
   const idPrefix = `reference-${group.key}`;
 
   return (
@@ -100,7 +121,12 @@ export default function ReferenceDataPage() {
         idPrefix={idPrefix}
         value={list.key}
         onChange={(key) => setOpenList((current) => ({ ...current, [group.key]: key }))}
-        tabs={group.lists.map((l) => ({ value: l.key, label: l.label, count: loadState === "ready" ? (items[l.key] || []).length : undefined }))}
+        tabs={group.lists.map((l) => ({
+          value: l.key,
+          // GOD-T59: a list with suggestions waiting says so on its tab.
+          label: (pending[l.key]?.length ?? 0) > 0 ? `${l.label} (${pending[l.key].length} new)` : l.label,
+          count: loadState === "ready" ? (items[l.key] || []).length : undefined,
+        }))}
       />
 
       <div role="tabpanel" id={tabPanelId(idPrefix, list.key)} aria-labelledby={tabId(idPrefix, list.key)}>
@@ -116,6 +142,13 @@ export default function ReferenceDataPage() {
             <EmptyState icon={Database} tone="danger" title="Could not load the reference lists" description="Please try again." action={<Button variant="secondary" onClick={retry}>Try again</Button>} />
           </Card>
         ) : (
+          <div className="space-y-4">
+          <ReferenceSuggestions
+            label={list.label}
+            suggestions={pending[list.key] ?? []}
+            busyLabel={deciding}
+            onDecide={(label, decision) => decideSuggestion(group.key, list.key, label, decision)}
+          />
           <ReferenceListEditor
             key={list.key}
             label={list.label}
@@ -123,6 +156,7 @@ export default function ReferenceDataPage() {
             items={items[list.key] || []}
             onChange={(next) => handleListChange(group.key, list.key, next)}
           />
+          </div>
         )}
       </div>
     </div>

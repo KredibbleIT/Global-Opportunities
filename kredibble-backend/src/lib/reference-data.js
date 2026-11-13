@@ -477,25 +477,81 @@ export async function addReferenceDataItem(group, key, rawValue) {
     return { action: 'similar', matches: match.matches, created: false };
   }
 
-  const updated = await ReferenceDataList.findOneAndUpdate(
-    { group, key, normalizedItems: { $nin: [match.normalized] } },
-    { $push: { items: value, normalizedItems: match.normalized } },
-    { new: true },
-  );
+  // GOD-T59: a new entry waits for staff review instead of joining the shared list
+  // straight away. The person who typed it keeps it on their own profile (the app
+  // stores the text); everyone else sees it only after an admin approves it.
+  await queueReferenceSuggestion(group, key, value, match.normalized);
+  return { action: 'created', item: value, created: true, pending: true };
+}
 
-  if (!updated) {
-    const retry = await backfillReferenceList(group, key);
-    const retryMatch = retry ? findReferenceMatches(retry, value) : null;
-    if (retryMatch?.kind === 'exact' || retryMatch?.kind === 'alias') {
-      return { action: 'use_existing', item: retryMatch.item, created: false, aliased: retryMatch.kind === 'alias' };
-    }
-    if (retryMatch?.kind === 'similar') {
-      return { action: 'similar', matches: retryMatch.matches, created: false };
-    }
-    throw new Error('Reference list changed while adding the suggestion');
+/**
+ * Adds a suggestion to the list's review queue, or counts one more request for a
+ * suggestion already waiting. Two requests at once can't create two entries: the
+ * push only matches while that spelling isn't queued.
+ * @param {string} group - list group, e.g. 'seeker'
+ * @param {string} key - list key, e.g. 'universities'
+ * @param {string} label - the entry as typed (already cleaned)
+ * @param {string} normalized - its normalized form
+ */
+async function queueReferenceSuggestion(group, key, label, normalized) {
+  const now = new Date();
+  const counted = await ReferenceDataList.updateOne(
+    { group, key, 'pendingItems.normalized': normalized },
+    { $inc: { 'pendingItems.$.count': 1 }, $set: { 'pendingItems.$.lastSuggestedAt': now } },
+  );
+  if (counted.matchedCount > 0) return;
+
+  const queued = await ReferenceDataList.updateOne(
+    { group, key, 'pendingItems.normalized': { $ne: normalized } },
+    { $push: { pendingItems: { label, normalized, count: 1, firstSuggestedAt: now, lastSuggestedAt: now } } },
+  );
+  if (queued.matchedCount === 0) {
+    // Another request queued the same spelling in between: count this one too.
+    await ReferenceDataList.updateOne(
+      { group, key, 'pendingItems.normalized': normalized },
+      { $inc: { 'pendingItems.$.count': 1 }, $set: { 'pendingItems.$.lastSuggestedAt': now } },
+    );
+  }
+}
+
+/** The review queue of one list, oldest first, for the admin portal. */
+function toPendingSuggestions(list) {
+  return (list?.pendingItems ?? [])
+    .map(({ label, count, firstSuggestedAt, lastSuggestedAt }) => ({ label, count, firstSuggestedAt, lastSuggestedAt }))
+    .sort((left, right) => new Date(left.firstSuggestedAt) - new Date(right.firstSuggestedAt));
+}
+
+/**
+ * Staff decision on a suggestion: 'approve' adds it to the list (unless the list
+ * already has that entry) and 'reject' drops it. Either way it leaves the queue.
+ * @param {string} group - list group
+ * @param {string} key - list key
+ * @param {string} rawLabel - the suggestion as shown in the queue
+ * @param {'approve' | 'reject'} decision - what staff decided
+ * @param {string | null} updatedBy - the admin's user id, for the record
+ * @returns {Promise<{ list: object, item: string, added: boolean } | null>} null when the list doesn't exist
+ */
+export async function reviewReferenceSuggestion(group, key, rawLabel, decision, updatedBy = null) {
+  await seedReferenceDataIfNeeded();
+  const list = await backfillReferenceList(group, key);
+  if (!list) return null;
+
+  const normalized = normalizeReferenceValue(String(rawLabel ?? ''));
+  const pending = (list.pendingItems ?? []).find((entry) => entry.normalized === normalized);
+  if (!pending) {
+    const error = new Error('That suggestion is no longer waiting for review');
+    error.status = 404;
+    error.code = 'REFERENCE_SUGGESTION_NOT_FOUND';
+    throw error;
   }
 
-  return { action: 'created', item: value, created: true };
+  const alreadyListed = list.normalizedItems.includes(normalized);
+  const update = { $pull: { pendingItems: { normalized } }, $set: { updatedBy } };
+  if (decision === 'approve' && !alreadyListed) {
+    update.$push = { items: pending.label, normalizedItems: normalized };
+  }
+  const updated = await ReferenceDataList.findOneAndUpdate({ group, key }, update, { returnDocument: 'after' });
+  return { list: updated, item: pending.label, added: decision === 'approve' && !alreadyListed };
 }
 
 export async function addReferenceDataAlias(group, key, rawAlias, rawItem) {
@@ -599,7 +655,7 @@ export async function seedReferenceDataIfNeeded() {
 /**
  * Gets all reference data groups with lists from DB, falling back to defaults if not yet seeded.
  */
-export async function getReferenceDataGroups(filterGroup = null) {
+export async function getReferenceDataGroups(filterGroup = null, { includePending = false } = {}) {
   await seedReferenceDataIfNeeded();
 
   const query = filterGroup ? { group: filterGroup } : {};
@@ -617,6 +673,8 @@ export async function getReferenceDataGroups(filterGroup = null) {
         singular: match?.singular || defaultList.singular,
         items: match?.items || defaultList.items,
         updatedAt: match?.updatedAt || null,
+        // GOD-T59: only the admin portal asks for the review queue.
+        ...(includePending ? { pending: toPendingSuggestions(match) } : {}),
       };
     });
 
@@ -712,9 +770,28 @@ export async function updateReferenceDataList(group, key, items, updatedBy = nul
         singular,
         ...(updatedBy ? { updatedBy } : {}),
       },
+      // A suggestion staff added to the list by hand is no longer waiting for review.
+      $pull: { pendingItems: { normalized: { $in: normalizedItems } } },
     },
     { new: true, upsert: true }
   );
 
   return doc;
+}
+
+/**
+ * What the public (app and website) sees of a list: its entries, never the review
+ * queue, aliases or who last edited it.
+ * @param {object} list - a stored or default list
+ * @returns {{ group: string, key: string, label: string, singular: string, items: string[], updatedAt: Date | null }}
+ */
+export function toPublicReferenceList(list) {
+  return {
+    group: list.group,
+    key: list.key,
+    label: list.label,
+    singular: list.singular,
+    items: list.items ?? [],
+    updatedAt: list.updatedAt ?? null,
+  };
 }

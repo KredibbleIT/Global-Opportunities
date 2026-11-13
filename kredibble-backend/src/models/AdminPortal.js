@@ -936,6 +936,18 @@ const referenceDataListSchema = new mongoose.Schema(
       }],
       default: [],
     },
+    // GOD-T59: entries people typed at registration that aren't in the list yet. They wait
+    // here for staff to approve (moved into `items`) or reject; only admins see them.
+    pendingItems: {
+      type: [{
+        label: { type: String, required: true, trim: true, maxlength: 80 },
+        normalized: { type: String, required: true, trim: true, maxlength: 80 },
+        count: { type: Number, default: 1, min: 1 },
+        firstSuggestedAt: { type: Date, default: Date.now },
+        lastSuggestedAt: { type: Date, default: Date.now },
+      }],
+      default: [],
+    },
     updatedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',

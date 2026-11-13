@@ -596,7 +596,13 @@ export default function SignupScreen() {
       // `use_existing` and `aliased` may reference an item not currently visible; appending is idempotent.
       upsertReferenceListItem(key, result.item);
       setReferenceSuggestion(null);
-      setReferenceNotice(result.action === 'created' ? `"${result.item}" added to the list.` : `Using "${result.item}".`);
+      setReferenceNotice(
+        result.action === 'created'
+          ? result.pending
+            ? `"${result.item}" saved to your profile. Our team will review it before adding it to the list.`
+            : `"${result.item}" added to the list.`
+          : `Using "${result.item}".`,
+      );
       applyReferenceItem(key, result.item);
       setSearchQuery('');
     } catch (error) {
