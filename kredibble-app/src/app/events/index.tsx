@@ -132,28 +132,32 @@ export default function EventsScreen() {
 
   const [liveEvents, setLiveEvents] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
+  // Depend on the filter values, not the `params` object: Expo Router returns a new
+  // object on every render, so `[params]` refetched forever and the screen never left
+  // "Loading events..." (GOD-T63).
+  const { searchQuery, date, region, category, ticketType, eventType } = params;
   useEffect(() => {
+    let isCurrent = true;
     const fetchEvents = async () => {
       setIsLoading(true);
+      setLoadError(null);
       try {
-        const data = await getEvents({
-          q: params.searchQuery,
-          date: params.date,
-          region: params.region,
-          category: params.category,
-          ticketType: params.ticketType,
-          eventType: params.eventType
-        });
-        setLiveEvents(data);
+        const data = await getEvents({ q: searchQuery, date, region, category, ticketType, eventType });
+        if (isCurrent) setLiveEvents(data);
       } catch (err) {
         console.error("Failed to fetch events:", err);
+        if (isCurrent) setLoadError("We couldn't load events. Check your connection and try again.");
       } finally {
-        setIsLoading(false);
+        if (isCurrent) setIsLoading(false);
       }
     };
     fetchEvents();
-  }, [params]);
+    return () => {
+      isCurrent = false;
+    };
+  }, [searchQuery, date, region, category, ticketType, eventType]);
 
   const filteredEvents: EventItem[] = liveEvents.map((j): EventItem => ({
     id: j.id,
@@ -172,7 +176,7 @@ export default function EventsScreen() {
     dateLabel: j.eventDateTime || 'Upcoming',
     region: j.eventRegion || 'Ghana',
     ticketType: j.eventTicketType || 'Free',
-    eventType: j.eventStyle || 'In-Person',
+    eventType: j.eventStyle || 'In-person',
     logoColor: Colors.primary,
     description: j.description || '',
   })).filter(event => {
@@ -256,6 +260,12 @@ export default function EventsScreen() {
         {isLoading ? (
           <View style={{ paddingVertical: 40, alignItems: 'center' }}>
             <Text style={{ color: '#8A8D9F', fontSize: 14 }} className="font-sans">Loading events...</Text>
+          </View>
+        ) : loadError ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText} className="font-sans">
+              {loadError}
+            </Text>
           </View>
         ) : filteredEvents.length > 0 ? (
           filteredEvents.map(event => (
