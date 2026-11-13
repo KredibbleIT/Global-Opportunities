@@ -253,7 +253,7 @@ To prevent mass user session invalidation:
 - [ ] Inspect Render access logs: verify inbound requests to `kredibble-api.onrender.com` have dropped below 1 req/hour.
 - [ ] Suspend Render web service for 48 hours. Monitor for user support tickets or Sentry errors.
 - [ ] Permanently delete Render `kredibble-api` web service.
-- [ ] Remove `render.yaml` and Render deploy step from `.github/workflows/cd-backend.yml`.
+- [x] Remove `render.yaml` and Render deploy step from `.github/workflows/cd-backend.yml`. (13 Nov 2026, GOD-T62; the old Vercel backend entry `kredibble-backend/vercel.json` + `api/` removed too)
 - [ ] Remove legacy origins (`*.onrender.com`, `kredibble-admin-jerry-amoahs-projects.vercel.app`) from `CORS_ORIGIN` allowlist in `api.env`.
 - [ ] Rotate MongoDB Atlas production database passwords and update GitHub secret `API_ENV_FILE`.
 
