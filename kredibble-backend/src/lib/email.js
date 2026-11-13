@@ -6,6 +6,9 @@ import logger from './logger.js';
 
 const resend = env.resendApiKey ? new Resend(env.resendApiKey) : null;
 
+/** A deployed API (staging or production) must actually send email; tests and local dev may skip it. */
+const isDeployed = env.appEnv === 'staging' || env.appEnv === 'production';
+
 export const createVerificationCode = () => {
   // SEC-062: Use cryptographically secure RNG for verification codes
   return crypto.randomInt(0, 1000000).toString().padStart(6, '0');
@@ -16,14 +19,28 @@ export const hashVerificationCode = (code) => {
   return crypto.createHmac('sha256', env.jwtSecret).update(String(code)).digest('hex');
 };
 
+/**
+ * Emails a sign-up verification code. On a deployed API a missing Resend key or a
+ * rejected email is an error the caller sees (GOD-T64): the app used to say "we
+ * sent a code" when nothing was sent. Locally and in tests a missing key only logs.
+ * @param {string} email - recipient
+ * @param {string} code - the 6-digit code
+ * @returns {Promise<{ success: true } | undefined>}
+ */
 export const sendVerificationEmail = async (email, code) => {
   if (!resend) {
+    if (isDeployed) {
+      logger.error('Resend is not configured: RESEND_API_KEY is missing, so verification codes cannot be emailed');
+      throw new ApiError(503, 'We could not send the verification email. Please try again later.');
+    }
     logger.warn('Resend not configured, skipping email send');
     return;
   }
 
   try {
-    await resend.emails.send({
+    // Resend v6 reports a rejected email (e.g. an unverified sending domain) in
+    // `error` instead of throwing, so check it.
+    const result = await resend.emails.send({
       from: env.resendFromEmail || 'noreply@kredibble.app',
       to: email,
       subject: 'Your Kredibble verification code',
@@ -39,16 +56,28 @@ export const sendVerificationEmail = async (email, code) => {
         </div>
       `,
     });
+    if (result?.error) throw new Error(result.error.message);
     return { success: true };
   } catch (error) {
     logger.error({ error: error.message, email }, 'Failed to send verification email');
-    // Don't throw - email is best effort
     throw new ApiError(502, 'Failed to send verification email');
   }
 };
 
+/**
+ * Emails a password-reset code. The forgot-password route answers 202 either way
+ * (it must not reveal whether an account exists) and calls this in the background,
+ * so a failure here can only be logged: on a deployed API a missing key is an error
+ * in the logs, not a quiet warning (GOD-T64).
+ * @param {string} email - recipient
+ * @param {string} code - the 6-digit code
+ * @param {number} ttlMinutes - how long the code is valid
+ */
 export const sendPasswordResetEmail = async (email, code, ttlMinutes) => {
   if (!resend) {
+    if (isDeployed) {
+      throw new Error('Resend is not configured: RESEND_API_KEY is missing, so password reset codes cannot be emailed');
+    }
     logger.warn('Resend not configured, skipping password reset email');
     return;
   }
