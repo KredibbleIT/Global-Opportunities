@@ -37,11 +37,31 @@ export default function VerifyEmailScreen() {
   const [digits, setDigits] = useState<string[]>(Array(CODE_LENGTH).fill(''));
   const [isVerifying, setIsVerifying] = useState(false);
   const [isResending, setIsResending] = useState(false);
-  const [resendCountdown, setResendCountdown] = useState(RESEND_COOLDOWN_SECONDS);
+  // Starts at 0: the timer runs only after a code has really been sent.
+  const [resendCountdown, setResendCountdown] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
   const inputRefs = useRef<(TextInput | null)[]>([]);
+  const sentToEmail = useRef<string | null>(null);
+
+  // Send the first code when the screen opens. Nothing else sends it: sign-up does
+  // not, and this screen used to wait for a code that was never sent (GOD-T64).
+  useEffect(() => {
+    if (!email || sentToEmail.current === email) return;
+    // The ref (not a cleanup flag) stops a second send if the effect runs twice.
+    sentToEmail.current = email;
+    setIsResending(true);
+    requestEmailVerification(email)
+      .then(() => {
+        setResendCountdown(RESEND_COOLDOWN_SECONDS);
+        setSuccessMessage('We sent a verification code. Please check your inbox.');
+      })
+      .catch((err) => {
+        setErrorMessage(err instanceof Error ? err.message : 'We could not send the verification code. Tap Resend to try again.');
+      })
+      .finally(() => setIsResending(false));
+  }, [email]);
 
   // Load user email if not in params
   useEffect(() => {
