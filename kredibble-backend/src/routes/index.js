@@ -250,7 +250,7 @@ const collectionRoutes = ({
         else filter.status = status;
       }
 
-      if (type && resourceName === 'Opportunity') filter.type = type;
+      if (type && resourceName === 'Opportunity') filter.type = opportunityTypeFilter(type);
 
       for (const field of filterFields) {
         const value = req.query[field];
@@ -399,6 +399,21 @@ const collectionRoutes = ({
 };
 
 // --- Opportunities --------------------------------------------------------
+
+/**
+ * Filter for `?type=` on opportunities: a type matches its singular and plural
+ * spelling. The admin dashboard saves `job`, `event`, `grant`; the app asks for
+ * `jobs`, `internships`; older and website-synced records use either. An exact
+ * match hid dashboard listings from the app (GOD-T63). Unknown types still match
+ * exactly, so they return nothing rather than everything.
+ * @param {string} type - the requested type
+ * @returns {string | { $in: string[] }} the Mongo filter value for `type`
+ */
+function opportunityTypeFilter(type) {
+  if (!opportunityTypes.includes(type)) return type;
+  const other = type.endsWith('s') ? type.slice(0, -1) : `${type}s`;
+  return opportunityTypes.includes(other) ? { $in: [type, other] } : type;
+}
 
 const publicOpportunityFilter = () => ({ vetted: true, moderationStatus: { $in: ['published', 'approved'] } });
 

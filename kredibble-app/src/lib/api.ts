@@ -601,27 +601,65 @@ export const uploadVerificationDoc = async (companyId: string, data: any) => {
   });
 };
 
-export const getEvents = async (params?: Record<string, any>) => {
-  if (params) {
-    const query = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => {
-      if (value) query.append(key, String(value));
-    });
-    return request<any[]>(`/events?${query.toString()}`);
-  }
-  return request<any[]>('/events');
+/** Builds `?a=1&b=2` from the truthy entries of `params` ('' when there are none). */
+const toQueryString = (params?: Record<string, any>): string => {
+  const query = new URLSearchParams();
+  Object.entries(params ?? {}).forEach(([key, value]) => {
+    if (value) query.append(key, String(value));
+  });
+  const qs = query.toString();
+  return qs ? `?${qs}` : '';
 };
 
-export const getGrants = async (params?: Record<string, any>) => {
-  if (params) {
-    const query = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => {
-      if (value) query.append(key, String(value));
-    });
-    return request<any[]>(`/grants?${query.toString()}`);
+/**
+ * Reads two list endpoints and joins their results. Listings posted from the admin
+ * dashboard live in `/opportunities` (type `event`, `grant`); `/events` and `/grants`
+ * hold the older separate collections. One source failing still shows the other;
+ * both failing rejects with the first error, so the screen can say so (GOD-T63).
+ */
+const mergeListSources = async (paths: string[]): Promise<any[]> => {
+  const results = await Promise.allSettled(paths.map((path) => request<any[]>(path)));
+  const loaded = results.filter((result): result is PromiseFulfilledResult<any[]> => result.status === 'fulfilled');
+  if (loaded.length === 0) {
+    throw (results[0] as PromiseRejectedResult).reason;
   }
-  return request<any[]>('/grants');
+  const seen = new Set<string>();
+  return loaded
+    .flatMap((result) => (Array.isArray(result.value) ? result.value : []))
+    .filter((item) => {
+      const key = String(item?.id ?? item?._id ?? '');
+      if (!key) return false;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 };
+
+/** The event screens' wording for an opportunity's `format`. */
+const EVENT_STYLE_BY_FORMAT: Record<string, string> = { online: 'Online', 'in-person': 'In-person', hybrid: 'In-person' };
+
+/** Gives a dashboard event (an opportunity) the event fields the event screens read. */
+const toEventShape = (item: any) => ({
+  ...item,
+  eventStyle: item.eventStyle ?? EVENT_STYLE_BY_FORMAT[item.format] ?? undefined,
+  organizer: item.organizer ?? item.offeringOrganization ?? item.company,
+});
+
+/** Events: the dashboard's event listings plus the separate events collection. */
+export const getEvents = async (params?: Record<string, any>) => {
+  const items = await mergeListSources([
+    `/opportunities${toQueryString({ type: 'event', q: params?.q })}`,
+    `/events${toQueryString(params)}`,
+  ]);
+  return items.map(toEventShape);
+};
+
+/** Grants: the dashboard's grant listings plus the separate grants collection (signed-in only). */
+export const getGrants = async (params?: Record<string, any>) =>
+  mergeListSources([
+    `/opportunities${toQueryString({ type: 'grant', q: params?.q })}`,
+    `/grants${toQueryString(params)}`,
+  ]);
 
 export const updateSeekerProfile = async (id: string, data: any) => {
   return request<any>(`/seekers/${id}`, {
@@ -670,13 +708,27 @@ export const getOpportunityById = async (id: string) => {
   return request<Opportunity>(`/opportunities/${id}`);
 };
 
-export const getEventById = async (id: string) => {
-  return request<EventItem>(`/events/${id}`);
+/**
+ * Opens a listing from the dashboard (`/opportunities/:id`) and, when no such
+ * listing exists (404), the same id in the older separate collection. Other
+ * errors are passed on unchanged (GOD-T63).
+ */
+const getFromOpportunitiesOrCollection = async <T>(id: string, collectionPath: string): Promise<T> => {
+  const encodedId = encodeURIComponent(id);
+  try {
+    return await request<T>(`/opportunities/${encodedId}`);
+  } catch (error) {
+    if (error instanceof ApiRequestError && error.status === 404) {
+      return request<T>(`${collectionPath}/${encodedId}`);
+    }
+    throw error;
+  }
 };
 
-export const getGrantById = async (id: string) => {
-  return request<Grant>(`/grants/${id}`);
-};
+export const getEventById = async (id: string): Promise<EventItem> =>
+  toEventShape(await getFromOpportunitiesOrCollection<EventItem>(id, '/events')) as EventItem;
+
+export const getGrantById = async (id: string) => getFromOpportunitiesOrCollection<Grant>(id, '/grants');
 
 export const requestForgotPassword = async (email: string) => {
   return request<void>('/auth/password/forgot', {
