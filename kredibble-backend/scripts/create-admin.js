@@ -35,13 +35,24 @@ const parseArgs = (argv) => {
   return args;
 };
 
-const generatePassword = () => {
+/**
+ * A 24-character random password that always passes assertStrongPassword. Drawn
+ * again until it does: with 8 digits in 68 characters, about 1 draw in 20 had no
+ * digit, and the script refused its own password (GOD-T60, 14 Nov 2026).
+ * @returns {string}
+ */
+export const generatePassword = () => {
   // Ambiguous characters removed so the value can be transcribed by hand.
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#%^*-_=+';
-  return Array.from(crypto.randomBytes(24))
-    .map((byte) => alphabet[byte % alphabet.length])
-    .join('');
+  for (;;) {
+    const password = Array.from({ length: 24 }, () => alphabet[crypto.randomInt(alphabet.length)]).join('');
+    if (isStrongPassword(password)) return password;
+  }
 };
+
+/** True when the password meets the admin rules (length, lower, upper, digit). */
+const isStrongPassword = (password) =>
+  password.length >= 12 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /[0-9]/.test(password);
 
 const assertStrongPassword = (password) => {
   if (password.length < 12) throw new Error('Password must be at least 12 characters.');
@@ -99,9 +110,13 @@ const main = async () => {
   }
 };
 
-main()
-  .then(() => process.exit(0))
-  .catch((error) => {
-    console.error(`Failed to create admin: ${error.message}`);
-    process.exit(1);
-  });
+// Run only when executed as a script, so tests can import generatePassword.
+const isDirectRun = Boolean(process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('scripts/create-admin.js'));
+if (isDirectRun) {
+  main()
+    .then(() => process.exit(0))
+    .catch((error) => {
+      console.error(`Failed to create admin: ${error.message}`);
+      process.exit(1);
+    });
+}
