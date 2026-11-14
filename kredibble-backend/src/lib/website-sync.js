@@ -18,7 +18,10 @@ import { auditLog, AUDIT_ACTIONS } from './audit.js';
  *   `moderationStatus`, `vetted`, counters (`views`, `applications`,
  *   `applicantsCount`) and ownership (`createdBy`, `hirerId`) are never
  *   taken from the website. Inbound listings always land as unvetted drafts
- *   awaiting staff moderation (BE-011 invariant).
+ *   awaiting staff moderation (BE-011 invariant). Once staff approve one, a
+ *   later website edit updates its content but keeps the approval (GOD-T54:
+ *   edits used to send approved posts back to pending, so they vanished
+ *   from the app after every website change).
  * - Ambassadors: profile content is overwritten, but referral activity,
  *   `linkedUserId`, status lifecycle and dormancy stay app-owned.
  *
@@ -135,13 +138,9 @@ export async function applyOpportunitySync(externalId, attributes = {}) {
     return { document, created: true };
   }
   // Website owns content; moderation, ownership and counters stay app-owned.
+  // GOD-T54: an edit no longer clears a staff approval. A post that was never
+  // approved stays pending; the website can't approve anything itself.
   Object.assign(document, content);
-  document.status = 'draft';
-  document.moderationStatus = 'pending';
-  document.vetted = false;
-  document.vettedBy = undefined;
-  document.vettedAt = undefined;
-  document.publishedAt = undefined;
   await document.save();
   await recordSyncState(document, { status: 'synced' });
   return { document, created: false };
