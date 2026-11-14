@@ -94,9 +94,16 @@ test('god-backup: plain address keeps logging in against its original database',
   assert.equal(stdout, 'mongodb://user:pw@db.example:27017/kredibble?authSource=god-production');
 });
 
-test('god-backup: plain address with no database keeps the admin login default', async () => {
-  const { stdout } = await targetUri('mongodb://localhost:27017');
-  assert.equal(stdout, 'mongodb://localhost:27017/kredibble?authSource=admin');
+test('god-backup: plain address with credentials but no database keeps the admin login default', async () => {
+  const { stdout } = await targetUri('mongodb://user:pw@db.example:27017');
+  assert.equal(stdout, 'mongodb://user:pw@db.example:27017/kredibble?authSource=admin');
+});
+
+// GOD-T67: the restore drill's local MongoDB has no login; an added authSource made
+// mongodump attempt one and fail ("sasl conversation error").
+test('god-backup: address without credentials gets no authSource', async () => {
+  const { stdout } = await targetUri('mongodb://localhost:27017/kredibble');
+  assert.equal(stdout, 'mongodb://localhost:27017/kredibble');
 });
 
 test('god-backup: an explicit authSource is kept as it is', async () => {
