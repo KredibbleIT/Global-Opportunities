@@ -17,9 +17,20 @@ ARCHIVE_PATH=""
 IDENTITY_FILE=""
 TARGET_URI="${DATABASE_URL:-${MONGODB_URI:-}}"
 TARGET_DB=""
+# The database inside the archive: god-backup dumps BACKUP_DB_NAME (default kredibble).
+SOURCE_DB="${BACKUP_DB_NAME:-kredibble}"
 ALLOW_PRODUCTION_OVERWRITE=0
 DRY_RUN="${DRY_RUN:-0}"
 TEMP_ARCHIVE=""
+
+# Load the bucket credentials and R2 endpoint for manual runs, like god-backup does.
+# Only fills in what isn't already exported.
+if [[ -z "${AWS_ACCESS_KEY_ID:-}" && -r /opt/god/backup/backup.env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source /opt/god/backup/backup.env
+  set +a
+fi
 
 print_usage() {
   cat <<EOF
@@ -32,6 +43,7 @@ Required:
 Options:
   --target-uri <uri>              Destination MongoDB URI (default: from DATABASE_URL)
   --target-db <name>              Restore into alternative/isolated database name (nsInclude/nsFrom)
+  --source-db <name>              Database inside the archive (default: kredibble, what god-backup dumps)
   --i-understand-this-overwrites-production
                                   Explicit authorization required if restoring into production
   --dry-run                       Validate arguments and decrypt headers without restoring
@@ -63,6 +75,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --target-db)
       TARGET_DB="$2"
+      shift 2
+      ;;
+    --source-db)
+      SOURCE_DB="$2"
       shift 2
       ;;
     --i-understand-this-overwrites-production)
@@ -105,7 +121,13 @@ if [[ "$ARCHIVE_PATH" =~ ^s3:// ]]; then
   TEMP_ARCHIVE="$(mktemp /tmp/god-restore-XXXXXX.archive.gz.age)"
   echo "god-restore: Fetching remote archive $ARCHIVE_PATH..."
   if command -v aws >/dev/null 2>&1; then
-    aws s3 cp "$ARCHIVE_PATH" "$TEMP_ARCHIVE"
+    # The backups live in Cloudflare R2: use the same endpoint god-backup uploads to.
+    # Without it the AWS CLI looks for region "auto" on Amazon and fails (GOD-T55).
+    ENDPOINT_ARGS=()
+    if [[ -n "${R2_ENDPOINT_URL:-}" ]]; then
+      ENDPOINT_ARGS+=(--endpoint-url "$R2_ENDPOINT_URL")
+    fi
+    aws s3 cp "$ARCHIVE_PATH" "$TEMP_ARCHIVE" "${ENDPOINT_ARGS[@]}"
   elif command -v rclone >/dev/null 2>&1; then
     rclone copyto "$ARCHIVE_PATH" "$TEMP_ARCHIVE"
   else
@@ -155,7 +177,10 @@ if [[ -n "$TARGET_URI" ]]; then
 fi
 
 if [[ -n "$TARGET_DB" ]]; then
-  RESTORE_ARGS+=(--nsInclude="*.*" --nsFrom="*.*" --nsTo="${TARGET_DB}.*")
+  # mongorestore needs the same number of wildcards on both sides of a rename:
+  # "*.*" -> "db.*" is refused ("Different number of asterisks"), so name the source
+  # database (the one god-backup dumps, GOD-T55).
+  RESTORE_ARGS+=(--nsInclude="${SOURCE_DB}.*" --nsFrom="${SOURCE_DB}.*" --nsTo="${TARGET_DB}.*")
 fi
 
 echo "god-restore: Target verified. Ready to restore into database."

@@ -67,3 +67,50 @@ test('god-backup: dry-run with --no-upload skips remote sync', async () => {
   assert.equal(res.exitCode, 0);
   assert.doesNotMatch(res.stdout, /Upload to s3:/);
 });
+
+// GOD-T55: production's address names "god-production", an empty database, while the API
+// always uses "kredibble"; every nightly dump was 317 bytes. These run the script's own
+// target_database_uri function on sample addresses (no credentials, nothing connects).
+const targetUri = (uri, db = 'kredibble') =>
+  new Promise((resolveResult) => {
+    const script = `source <(sed -n '/^target_database_uri()/,/^}/p' "${BACKUP_SCRIPT}"); target_database_uri "$1" "$2"`;
+    execFile('bash', ['-c', script, 'test', uri, db], (error, stdout, stderr) => {
+      resolveResult({ exitCode: error ? (error.code ?? 1) : 0, stdout: stdout.toString().trim(), stderr: stderr.toString().trim() });
+    });
+  });
+
+test('god-backup: Atlas address is pointed at the API database, login settings untouched', async () => {
+  const { stdout } = await targetUri('mongodb+srv://user:pw@cluster0.example.mongodb.net/god-production?retryWrites=true&w=majority');
+  assert.equal(stdout, 'mongodb+srv://user:pw@cluster0.example.mongodb.net/kredibble?retryWrites=true&w=majority');
+});
+
+test('god-backup: Atlas address without a database or options gets the API database', async () => {
+  const { stdout } = await targetUri('mongodb+srv://user:pw@cluster0.example.mongodb.net/');
+  assert.equal(stdout, 'mongodb+srv://user:pw@cluster0.example.mongodb.net/kredibble');
+});
+
+test('god-backup: plain address keeps logging in against its original database', async () => {
+  const { stdout } = await targetUri('mongodb://user:pw@db.example:27017/god-production');
+  assert.equal(stdout, 'mongodb://user:pw@db.example:27017/kredibble?authSource=god-production');
+});
+
+test('god-backup: plain address with no database keeps the admin login default', async () => {
+  const { stdout } = await targetUri('mongodb://localhost:27017');
+  assert.equal(stdout, 'mongodb://localhost:27017/kredibble?authSource=admin');
+});
+
+test('god-backup: an explicit authSource is kept as it is', async () => {
+  const { stdout } = await targetUri('mongodb://u:p@h:27017/other?authSource=admin&tls=true');
+  assert.equal(stdout, 'mongodb://u:p@h:27017/kredibble?authSource=admin&tls=true');
+});
+
+test('god-backup: a non-MongoDB address is refused', async () => {
+  const { exitCode, stderr } = await targetUri('postgres://h/db');
+  assert.notEqual(exitCode, 0);
+  assert.match(stderr, /not a mongodb/);
+});
+
+test('god-backup: dry run says which database it dumps', async () => {
+  const { stdout } = await runBackup(['--recipient', VALID_AGE_KEY, '--no-upload']);
+  assert.match(stdout, /Dumping database 'kredibble'/);
+});
