@@ -74,7 +74,10 @@ jobs:
           CUSTOM_ARCHIVE: ${{ github.event.inputs.backup_archive }}
         run: |
           set -euo pipefail
-          TEST_MONGO_URI="mongodb://localhost:27017/drill_verified"
+          # GOD-T67: restore into a scratch database and verify that one. god-backup dumps the
+          # "kredibble" database (BACKUP_DB_NAME), and god-restore --target-db renames it.
+          DRILL_DB="drill_verified"
+          TEST_MONGO_URI="mongodb://localhost:27017/${DRILL_DB}"
 
           # Check if remote production backup credentials are configured
           if [[ -n "${BACKUP_AGE_SECRET_KEY:-}" && -n "${R2_ACCESS_KEY_ID:-}" ]]; then
@@ -82,11 +85,14 @@ jobs:
 
             export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
             export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+            # Cloudflare R2 takes region "auto"; the endpoint says where the bucket is.
+            export AWS_DEFAULT_REGION="auto"
 
-            ENDPOINT_FLAG=()
-            if [[ -n "${R2_ENDPOINT_URL:-}" ]]; then
-              ENDPOINT_FLAG=(--endpoint-url "$R2_ENDPOINT_URL")
+            if [[ -z "${R2_ENDPOINT_URL:-}" ]]; then
+              echo "restore-drill: Error: R2_ENDPOINT_URL is not set; the backups are in Cloudflare R2." >&2
+              exit 1
             fi
+            ENDPOINT_FLAG=(--endpoint-url "$R2_ENDPOINT_URL")
 
             # Determine archive to restore
             if [[ -n "$CUSTOM_ARCHIVE" ]]; then
@@ -109,11 +115,12 @@ jobs:
             IDENTITY_FILE="/tmp/age-identity.txt"
             (umask 077 && printf "%s\n" "$BACKUP_AGE_SECRET_KEY" > "$IDENTITY_FILE")
 
-            # Restore into isolated test MongoDB
+            # Restore into the isolated test MongoDB, renaming kredibble.* to drill_verified.*
             ./deploy/bin/god-restore \
               --archive "$LOCAL_ARCHIVE" \
               --identity "$IDENTITY_FILE" \
-              --target-uri "$TEST_MONGO_URI"
+              --target-uri "$TEST_MONGO_URI" \
+              --target-db "$DRILL_DB"
 
             rm -f "$IDENTITY_FILE" "$LOCAL_ARCHIVE"
 
@@ -141,50 +148,37 @@ jobs:
             age-keygen -o "$KEY_FILE"
             PUB_KEY="$(age-keygen -y "$KEY_FILE")"
 
-            # 2. Seed test data in MongoDB
-            node -e '
-              import("mongoose").then(async ({ default: mongoose }) => {
-                await mongoose.connect("mongodb://localhost:27017/synthetic_source");
-                const now = new Date();
-                await mongoose.connection.db.collection("users").insertOne({
-                  email: "synthetic.admin@globalopportunitydesk.com",
-                  role: "admin",
-                  createdAt: now,
-                  updatedAt: now
-                });
-                await mongoose.connection.db.collection("opportunities").insertOne({
-                  title: "Principal Engineer",
-                  status: "approved",
-                  createdAt: now,
-                  updatedAt: now
-                });
-                await mongoose.connection.db.collection("seekers").insertOne({
-                  headline: "Staff Engineer",
-                  createdAt: now
-                });
-                await mongoose.connection.db.collection("hirers").insertOne({
-                  companyName: "Global Opportunity Desk",
-                  createdAt: now
-                });
-                await mongoose.disconnect();
-              });
-            '
+            # 2. Seed test data into "kredibble", the database god-backup dumps, using the
+            #    collection names the app writes. Run from kredibble-backend, where mongoose
+            #    is installed (from the repo root the import failed: the 1 Nov 2026 run).
+            (cd kredibble-backend && node --input-type=module -e '
+              const { default: mongoose } = await import("mongoose");
+              await mongoose.connect("mongodb://localhost:27017/kredibble");
+              const now = new Date();
+              const db = mongoose.connection.db;
+              await db.collection("users").insertOne({ email: "synthetic.admin@globalopportunitydesk.com", role: "admin", createdAt: now, updatedAt: now });
+              await db.collection("opportunities").insertOne({ title: "Principal Engineer", status: "published", createdAt: now, updatedAt: now });
+              await db.collection("seekerprofiles").insertOne({ headline: "Staff Engineer", createdAt: now });
+              await db.collection("hireraccounts").insertOne({ companyName: "Global Opportunity Desk", createdAt: now });
+              await mongoose.disconnect();
+            ')
 
-            # 3. Create backup using god-backup
+            # 3. Create backup using god-backup. The synthetic data is far below the 10 KB
+            #    floor that guards real backups, so lower it for this run only.
             mkdir -p /tmp/synthetic-backups
-            export DATABASE_URL="mongodb://localhost:27017/synthetic_source"
-            ./deploy/bin/god-backup \
+            DATABASE_URL="mongodb://localhost:27017/kredibble" BACKUP_MIN_BYTES=1 ./deploy/bin/god-backup \
               --recipient "$PUB_KEY" \
               --output-dir /tmp/synthetic-backups \
               --no-upload
 
             ARCHIVE="$(find /tmp/synthetic-backups -type f -name 'god-production-*.archive.gz.age' | head -n 1)"
 
-            # 4. Restore using god-restore into target test database
+            # 4. Restore using god-restore into the scratch database
             ./deploy/bin/god-restore \
               --archive "$ARCHIVE" \
               --identity "$KEY_FILE" \
-              --target-uri "$TEST_MONGO_URI"
+              --target-uri "$TEST_MONGO_URI" \
+              --target-db "$DRILL_DB"
 
             # 5. Verify restored database
             node kredibble-backend/scripts/verify-restore.js \
