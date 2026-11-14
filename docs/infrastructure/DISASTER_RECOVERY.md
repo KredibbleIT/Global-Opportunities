@@ -12,6 +12,8 @@
 
 This document establishes the official Disaster Recovery (DR) procedures for the Global Opportunity Desk application platform in accordance with the Company IT Application Infrastructure Plan (Phase 5). 
 
+> **Actual state, checked 14 Nov 2026 (GOD-T55).** Until this date every nightly backup dumped the empty `god-production` database named in production's address, not the `kredibble` database the API uses: each archive was 317 bytes, so no backup before 14 Nov holds data. `god-backup` now dumps `kredibble` (`BACKUP_DB_NAME`) and fails on an archive under 10 KB. The production cluster is on Atlas's free tier, which has **no** Atlas snapshots, so Scenario B below is not available until the cluster moves to a paid tier. Uploads go to the `god-db-backups` S3 bucket through the AWS CLI; `backup.env` sets no `R2_ENDPOINT_URL`.
+
 A disaster is defined as an event causing catastrophic loss or prolonged unavailability of platform services, including:
 - Total loss of the primary host (Hostinger VPS termination or hardware failure)
 - Database corruption or inadvertent bulk deletion across MongoDB Atlas clusters
