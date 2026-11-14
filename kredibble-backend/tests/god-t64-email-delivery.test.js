@@ -51,7 +51,11 @@ describe('GOD-T64: verification and reset emails never fail silently on a deploy
   it('an email Resend rejects (returned as an error, not thrown) is a failure', async () => {
     mockSend.mockResolvedValue({ data: null, error: { message: 'The domain is not verified' } });
     const { sendVerificationEmail } = await loadEmail({ appEnv: 'production', resendApiKey: 're_test' });
-    await expect(sendVerificationEmail('a@example.com', '123456')).rejects.toMatchObject({ status: 502 });
+    // 503 so the message survives Cloudflare, which replaces origin 502 responses.
+    await expect(sendVerificationEmail('a@example.com', '123456')).rejects.toMatchObject({
+      status: 503,
+      message: 'We could not send the verification email. Please try again later.',
+    });
   });
 
   it('an email Resend accepts is a success', async () => {
