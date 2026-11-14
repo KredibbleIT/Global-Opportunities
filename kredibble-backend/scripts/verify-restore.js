@@ -8,7 +8,7 @@
  * automated monthly restore drills.
  *
  * Checks:
- * 1. Required collections exist (users, opportunities, seekers, hirers, etc.)
+ * 1. Required collections exist (users, opportunities, seeker profiles, hirer accounts, etc.)
  * 2. Documents are populated (user count >= min, opportunity count >= min)
  * 3. Freshness: newest record createdAt/updatedAt is within maxAgeHours window
  * 4. Outputs structured JSON summary report
@@ -16,6 +16,13 @@
  */
 
 import mongoose from 'mongoose';
+
+// Where the seeker and hirer profiles live: the SeekerProfile and HirerAccount models'
+// collections. The names used to be "seekers" and "hirers", which no model writes, so a
+// complete restore was reported as failed (GOD-T55). tests/verify-restore.test.js
+// checks these against the models.
+export const SEEKER_COLLECTION = 'seekerprofiles';
+export const HIRER_COLLECTION = 'hireraccounts';
 
 /**
  * Programmatic verification function for unit tests and CI runners.
@@ -30,7 +37,7 @@ import mongoose from 'mongoose';
  */
 export async function verifyRestore({
   db,
-  requiredCollections = ['users', 'opportunities', 'seekers', 'hirers'],
+  requiredCollections = ['users', 'opportunities', SEEKER_COLLECTION, HIRER_COLLECTION],
   minUserCount = 1,
   minOpportunityCount = 1,
   maxAgeHours = null,
@@ -76,18 +83,18 @@ export async function verifyRestore({
     }
   }
 
-  if (existingNames.has('seekers')) {
-    metrics.seekerCount = await db.collection('seekers').countDocuments();
+  if (existingNames.has(SEEKER_COLLECTION)) {
+    metrics.seekerCount = await db.collection(SEEKER_COLLECTION).countDocuments();
   }
 
-  if (existingNames.has('hirers')) {
-    metrics.hirerCount = await db.collection('hirers').countDocuments();
+  if (existingNames.has(HIRER_COLLECTION)) {
+    metrics.hirerCount = await db.collection(HIRER_COLLECTION).countDocuments();
   }
 
   // 3. Freshness check: locate newest createdAt or updatedAt
   let newestTimestamp = 0;
 
-  for (const collectionName of ['users', 'opportunities', 'seekers', 'hirers', 'auditlogs']) {
+  for (const collectionName of ['users', 'opportunities', SEEKER_COLLECTION, HIRER_COLLECTION, 'auditlogs']) {
     if (!existingNames.has(collectionName)) continue;
 
     const [latestCreated] = await db
