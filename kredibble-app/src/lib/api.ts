@@ -120,6 +120,8 @@ const REFRESH_TOKEN_KEY = 'kredibble_app_refresh_token';
 const USER_KEY = 'kredibble_app_user';
 // SEC-138: the Expo push token this phone last registered, so logout can name it.
 const PUSH_TOKEN_KEY = 'kredibble_app_push_token';
+// SEC-160: 'true' when this session should outlive the app being closed ("Remember me", or a new sign-up).
+const REMEMBER_SESSION_KEY = 'kredibble_app_remember_session';
 
 let sessionSavedHandler: (() => unknown) | null = null;
 
@@ -184,6 +186,49 @@ export const getMobileUser = async () => {
   }
 };
 
+/** Replaces the profile saved on this phone (used when it is reopened offline). */
+export const saveMobileUser = async (user: AuthUser): Promise<void> => {
+  try {
+    await SecureStore.setItemAsync(USER_KEY, JSON.stringify(user));
+  } catch (error) {
+    console.warn('Could not save the profile on this phone:', error);
+  }
+};
+
+/**
+ * SEC-160: records whether the session on this phone survives the app being closed.
+ * Without the flag the next launch signs the old session out and shows sign-in.
+ */
+export const setRememberSession = async (remember: boolean): Promise<void> => {
+  try {
+    if (remember) {
+      await SecureStore.setItemAsync(REMEMBER_SESSION_KEY, 'true');
+    } else {
+      await SecureStore.deleteItemAsync(REMEMBER_SESSION_KEY);
+    }
+  } catch (error) {
+    console.warn('Could not save the Remember me choice:', error);
+  }
+};
+
+/** SEC-160: true when the saved session should be restored at launch. */
+export const isSessionRemembered = async (): Promise<boolean> => {
+  try {
+    return (await SecureStore.getItemAsync(REMEMBER_SESSION_KEY)) === 'true';
+  } catch {
+    return false;
+  }
+};
+
+/** Deletes one saved value; a failure on one key must not stop the others. */
+const deleteStoredItem = async (key: string): Promise<void> => {
+  try {
+    await SecureStore.deleteItemAsync(key);
+  } catch {
+    // Unreadable storage holds nothing usable either.
+  }
+};
+
 let isRefreshing = false;
 let refreshSubscribers: ((token: string) => void)[] = [];
 
@@ -203,6 +248,10 @@ export class ApiRequestError extends Error {
     this.code = code;
   }
 }
+
+const SESSION_EXPIRED_MESSAGE = 'Session expired. Please log in again.';
+/** SEC-160: the API refused the saved session (refresh token revoked, expired or unknown). */
+export const SESSION_EXPIRED_CODE = 'SESSION_EXPIRED';
 
 export const isEmailVerificationError = (error: unknown): boolean => {
   if (!error || typeof error !== 'object') return false;
@@ -241,37 +290,49 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
     if (refreshToken) {
       if (!isRefreshing) {
         isRefreshing = true;
+        let refreshResponse: Response;
         try {
-          const refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh`, {
+          refreshResponse = await fetch(`${API_BASE_URL}/auth/refresh`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ refreshToken }),
           });
-          
-          const refreshPayload = await refreshResponse.json().catch(() => null);
-          
-          if (refreshResponse.ok && refreshPayload?.data?.token) {
-            const newToken = refreshPayload.data.token;
-            const newRefreshToken = refreshPayload.data.refreshToken;
-            
+        } catch (networkError) {
+          // SEC-160: no answer (offline, timeout) is not a refusal; keep the session for the next try.
+          isRefreshing = false;
+          onRefreshed('');
+          throw networkError;
+        }
+
+        const refreshPayload = await refreshResponse.json().catch(() => null);
+
+        if (refreshResponse.ok && refreshPayload?.data?.token) {
+          const newToken = refreshPayload.data.token;
+          const newRefreshToken = refreshPayload.data.refreshToken;
+          try {
             await SecureStore.setItemAsync(TOKEN_KEY, newToken);
             if (newRefreshToken) {
               await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, newRefreshToken);
             }
-            
-            isRefreshing = false;
-            onRefreshed(newToken);
-          } else {
-            isRefreshing = false;
-            await clearMobileSession();
-            onRefreshed('');
-            throw new Error('Session expired. Please log in again.');
+          } catch (storeError) {
+            console.warn('Could not save the refreshed session on this phone:', storeError);
           }
-        } catch (e) {
+          isRefreshing = false;
+          onRefreshed(newToken);
+        } else if (refreshResponse.status >= 500 || refreshResponse.status === 429) {
+          // SEC-160: the API is down or busy, not refusing the session; keep it.
+          isRefreshing = false;
+          onRefreshed('');
+          throw new ApiRequestError(
+            refreshPayload?.error?.message || `Request failed with status ${refreshResponse.status}`,
+            refreshResponse.status,
+            refreshPayload?.error?.code,
+          );
+        } else {
           isRefreshing = false;
           await clearMobileSession();
           onRefreshed('');
-          throw e;
+          throw new ApiRequestError(SESSION_EXPIRED_MESSAGE, 401, SESSION_EXPIRED_CODE);
         }
       }
       
@@ -286,7 +347,7 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
       
       const retryToken = newToken || await getMobileToken();
       if (!retryToken) {
-         throw new Error('Session expired. Please log in again.');
+        throw new ApiRequestError(SESSION_EXPIRED_MESSAGE, 401, SESSION_EXPIRED_CODE);
       }
 
       // Retry original request with new token
@@ -383,12 +444,17 @@ export const getMe = async () => {
   return request<AuthUser>('/auth/me');
 };
 
-export const loginMobile = async (email: string, password: string) => {
+/**
+ * Signs in and saves the session on this phone.
+ * @param remember SEC-160: "Remember me" was ticked, so the next launch keeps this session.
+ */
+export const loginMobile = async (email: string, password: string, remember = false) => {
   const session = await request<AuthResponse>('/auth/login', {
     method: 'POST',
     body: JSON.stringify({ email, password }),
   });
   await saveMobileSession(session);
+  await setRememberSession(remember);
   return session;
 };
 
@@ -418,17 +484,28 @@ export const signupMobile = async (values: {
     body: JSON.stringify(values),
   });
   await saveMobileSession(session);
+  // SEC-160: sign-up has no "Remember me" box; someone who just made an account stays signed in.
+  await setRememberSession(true);
   return session;
 };
 
+/**
+ * Signs this phone out: forgets the session here, then asks the API to revoke the
+ * refresh token and stop pushing to this phone. Never throws.
+ */
 export const clearMobileSession = async () => {
-  try {
-    const refreshToken = await getMobileRefreshToken();
-    const token = await getMobileToken();
-    // SEC-138: naming this phone's push token stops the server pushing to it,
-    // without touching another phone signed in to the same account.
-    const pushToken = await getStoredPushToken();
-    if (refreshToken) {
+  const refreshToken = await getMobileRefreshToken();
+  const token = await getMobileToken();
+  // SEC-138: naming this phone's push token stops the server pushing to it,
+  // without touching another phone signed in to the same account.
+  const pushToken = await getStoredPushToken();
+  // SEC-160: forget the session here first, so a slow sign-out request can't
+  // delete a newer session saved while it was still running.
+  await Promise.all(
+    [TOKEN_KEY, REFRESH_TOKEN_KEY, USER_KEY, PUSH_TOKEN_KEY, REMEMBER_SESSION_KEY].map(deleteStoredItem),
+  );
+  if (refreshToken) {
+    try {
       await fetch(`${API_BASE_URL}/auth/logout`, {
         method: 'POST',
         headers: {
@@ -436,14 +513,10 @@ export const clearMobileSession = async () => {
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({ refreshToken, ...(pushToken ? { pushToken } : {}) }),
-      }).catch(() => null);
+      });
+    } catch {
+      // The session is already gone from this phone; the server's copy expires by itself.
     }
-    await SecureStore.deleteItemAsync(TOKEN_KEY);
-    await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
-    await SecureStore.deleteItemAsync(USER_KEY);
-    await SecureStore.deleteItemAsync(PUSH_TOKEN_KEY);
-  } catch {
-    // Ignore errors
   }
 };
 

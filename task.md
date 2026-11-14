@@ -328,6 +328,7 @@ Note: the audit's own text reached the same conclusion on #10 ("Actually this on
 | SEC-157 | Events, Grants and Career resources read hard-coded samples and drop their edits although `/admin/events`, `/admin/grants`, `/admin/grant-applications` and `/admin/articles` exist; Team says "not connected" though it is live; a rejected grant application never releases its reserved amount | P2 | Admin data / Backend | ✅ Merged 2026-11-12 (#172) |
 | SEC-158 | Partners board at 1536px: the Onboarded column's "Closed" marker wraps and starts its cards 24px lower than the rest, the sixth column is cut off, the scroll arrow covers card text, and the grip beside each name truncates it | P3 | Admin UI | ✅ Merged 2026-11-12 (#173); CI e2e confirmed via SEC-159 |
 | SEC-159 | CI: the admin e2e job (real-API run then mock-mode run, one job, 30-minute limit) outgrew its limit: about 8.5 + 20 minutes by 2026-11-12, so it was cancelled with the mock run nearly done, on the #172 and #173 merges and both #173 PR runs; those merges never finished their e2e | P1 | CI/CD | 🟡 PR open 2026-11-12 |
+| SEC-160 | The app never restores the session saved on the phone and "Remember me" does nothing, so every launch asks for the password while the old session stays valid (and its pushes keep coming); any failed token refresh, even a 5xx or no network, signs the person out | P2 | Mobile auth | 🟡 PR open 2026-11-14 |
 
 ---
 
@@ -1989,6 +1990,24 @@ How it works now:
 - [ ] All three legs and the required check green on the PR
 - [ ] Main green after merge (this also confirms SEC-157 and SEC-158 in CI)
 
+### SEC-160 — The app signs everyone out when it closes; "Remember me" does nothing
+**Priority:** P2
+**Finding (2026-11-14, seen on the emulator while checking GOD-T61):** the launch screen (`kredibble-app/src/app/index.tsx`) always opened sign-in (or onboarding). The access token, refresh token and profile stay in SecureStore, but nothing read them back. The login screen's "Remember me" box only changed its own state (`rememberMe` was never used). So every launch asked for the password, while the old session stayed valid on the phone and on the server. The root layout also registered the phone's push token at every launch with that old session, so a phone showing sign-in could keep getting the account's pushes. Separately, any failed token refresh cleared the session, including a 5xx, a 429 or no network, so a short API outage signed people out.
+**Fix (`fix/app-remember-me`, task sheet GOD-T69):**
+- `loginMobile(email, password, remember)` saves the box (`kredibble_app_remember_session`). Sign-up counts as remembered (it has no box). `clearMobileSession` forgets it.
+- `src/lib/session-restore.ts` `restoreStartupSession()` runs on the launch screen while the logo plays. Not remembered: signs the old session out (on the phone, then `POST /auth/logout`, which also stops pushes to this phone) and opens sign-in. Remembered: `GET /auth/me` (refreshing the access token when needed), then opens the app with the fresh profile. If the API refuses (a 4xx: revoked or expired refresh token, suspended or deleted account) the session is cleared. If it can't answer (offline, 8-second timeout, 429, 5xx) the app opens on the profile saved on the phone.
+- Token refresh (`request` in `lib/api.ts`) clears the session only when the API refuses it (4xx). A 5xx, a 429 or no answer keeps it and fails only that request. The refused case throws `ApiRequestError` 401 `SESSION_EXPIRED`, with the same message as before.
+- `clearMobileSession` deletes the phone's copy before the sign-out request, so a slow request can't delete a newer session saved meanwhile.
+- Push: the root layout no longer registers at launch. The launch screen registers after restoring a session; sign-in and sign-up still register through `setSessionSavedHandler`.
+- The box is a real checkbox for screen readers (role, checked state, hint), with a larger touch area.
+- Tests: `__tests__/session-restore.test.ts`, 29 tests (not remembered, remembered, refresh refused 400/401/403, user deleted, offline, 503, refresh 503/429/no answer, timeout, where the choice is saved, sign-out order). App suite 154/154, typecheck and lint clean.
+**Not done:** checked in Jest only, not in the app (the emulator had closed and the machine had about 1 GB of memory free). The box still starts unticked, as designed; ticking it by default is a product decision. The Google and Apple buttons are not wired to sign-in, so they don't use it.
+**Acceptance criteria:**
+- [x] With the box ticked, reopening the app opens Home without a password (Jest)
+- [x] Without it, reopening opens sign-in, the old refresh token is revoked and pushes to this phone stop (Jest)
+- [x] A refused session signs out; being offline or an API error at launch does not (Jest)
+- [ ] Checked in the app (staging build or update) with the box ticked and unticked
+
 # Execution Order
 
 Phases run in sequence per `AGENTS.md`. Within a phase, respect this dependency chain:
@@ -2277,6 +2296,7 @@ The live behaviour probe used for the 2026-10-02 audit runs `src/app.js` + `src/
 | 2026-11-12 | SEC-159 admin e2e split into parallel legs | ci/SEC-159-e2e-parallel | 🟡 PR open | The one e2e job (real API then mock mode) hit its 30-minute limit on every run from 08:10 (main runs for #172 and #173 cancelled with the mock run about 95% done). Now a matrix: real API, mock mode 1/2 and 2/2 (568 and 625 tests by `--list`), 20 minutes each; the required `Admin (Playwright end-to-end)` check waits for all legs and fails unless all pass. YAML parsed and the job graph checked locally (no actionlint or Docker here; CI runs actionlint). |
 | 2026-11-13 | Retire Render and the old Vercel backend (task sheet GOD-T62) | ci/retire-render | 🟡 PR open | Render answers 503 (suspended) and the old Vercel backend 404; the app and admin use the VPS API. Removed the CD Backend Render job, `render.yaml`, and the old Vercel backend entry (`kredibble-backend/vercel.json`, `api/index.js`; PLAN-4 step 7). CI and CD Admin verification builds now point at `api.globalopportunitydesk.com` instead of onrender.com. AGENTS.md deployment baseline and topology describe the VPS; the cutover playbook item is ticked. Owner steps left: delete the Render service and the old Vercel backend project. |
 | 2026-10-26 | CI: Admin typecheck + Playwright mock mode | (this commit) | Done | `kredibble-admin/tests/admin.e2e.spec.ts` used `stat()`/`num()` in the 'Social: phones and the platform table and chart' describe block (line ~9033) but the helpers were only defined in sibling blocks, so `tsc --noEmit` (TS2304 'Cannot find name stat/num') failed; added `num`/`stat` helpers matching the existing pattern at line 8017-8018. The mock-mode run then failed at line 9078 because `platform-row-whatsapp` cell text uses `toLocaleString` commas while `String(beforeWhatsappReach + 321)` has none, and `beforeWhatsappNums[0]` read the posts cell not reach. Fixed by reading reach/engagement from the correct `<td>` cells (nth(1)/nth(2)) via `num(...)`, comparing numerically after the post is logged. Admin `npm run lint` clean; `npm run typecheck` 0 errors. | |
+| 2026-11-14 | App: Remember me keeps people signed in (SEC-160, task sheet GOD-T69) | fix/app-remember-me | 🟡 PR open | Found on the emulator: every launch opened sign-in although the session stayed saved, and the "Remember me" box was never read. The launch screen now restores a remembered session (`GET /auth/me`, refresh when needed, saved profile when the API can't answer) and signs everything else out on the phone and the server. Token refresh now signs out only on a 4xx; a 5xx, 429 or no network keeps the session. Push registration moved from every launch to after a restore. 29 new Jest tests; app suite 154/154, typecheck and lint clean. Not yet checked in the app. |
 
 ---
 
