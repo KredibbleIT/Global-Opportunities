@@ -21,6 +21,15 @@ ALLOW_PRODUCTION_OVERWRITE=0
 DRY_RUN="${DRY_RUN:-0}"
 TEMP_ARCHIVE=""
 
+# Load the bucket credentials and R2 endpoint for manual runs, like god-backup does.
+# Only fills in what isn't already exported.
+if [[ -z "${AWS_ACCESS_KEY_ID:-}" && -r /opt/god/backup/backup.env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source /opt/god/backup/backup.env
+  set +a
+fi
+
 print_usage() {
   cat <<EOF
 Usage: god-restore --archive <path|s3-uri> --identity <key-file> [options]
@@ -105,7 +114,13 @@ if [[ "$ARCHIVE_PATH" =~ ^s3:// ]]; then
   TEMP_ARCHIVE="$(mktemp /tmp/god-restore-XXXXXX.archive.gz.age)"
   echo "god-restore: Fetching remote archive $ARCHIVE_PATH..."
   if command -v aws >/dev/null 2>&1; then
-    aws s3 cp "$ARCHIVE_PATH" "$TEMP_ARCHIVE"
+    # The backups live in Cloudflare R2: use the same endpoint god-backup uploads to.
+    # Without it the AWS CLI looks for region "auto" on Amazon and fails (GOD-T55).
+    ENDPOINT_ARGS=()
+    if [[ -n "${R2_ENDPOINT_URL:-}" ]]; then
+      ENDPOINT_ARGS+=(--endpoint-url "$R2_ENDPOINT_URL")
+    fi
+    aws s3 cp "$ARCHIVE_PATH" "$TEMP_ARCHIVE" "${ENDPOINT_ARGS[@]}"
   elif command -v rclone >/dev/null 2>&1; then
     rclone copyto "$ARCHIVE_PATH" "$TEMP_ARCHIVE"
   else
