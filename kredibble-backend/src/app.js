@@ -148,7 +148,10 @@ app.use((err, req, res, next) => {
     err.name === 'CastError' ||
     err.name === 'StrictModeError';
 
-  const status = isBadRequest ? 400 : err.status || 500;
+  const originalStatus = isBadRequest ? 400 : err.status || 500;
+  // GOD-T66: Cloudflare replaces an origin 502 or 504 with its own plain-text page
+  // ("error code: 502"), so callers never saw our JSON. Send them as 503 instead.
+  const status = originalStatus === 502 || originalStatus === 504 ? 503 : originalStatus;
   const requestId = req.auditContext?.requestId || req.id || req.get?.('x-request-id');
 
   // SEC-090: Report 5xx server errors to Sentry tagged with requestId
@@ -156,8 +159,9 @@ app.use((err, req, res, next) => {
     captureException(err, { req, requestId });
   }
 
-  // SEC-064: Hide internal error messages for 5xx responses in production
-  const message = (status >= 500 && !env.isDevelopment)
+  // SEC-064: Hide internal error messages for 5xx responses in production, unless the
+  // error was written for users (ApiError with expose: true, GOD-T66).
+  const message = (status >= 500 && !env.isDevelopment && err.expose !== true)
     ? 'Internal server error'
     : (err.message || 'Internal server error');
 

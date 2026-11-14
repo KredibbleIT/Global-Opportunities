@@ -1,6 +1,20 @@
 import { env } from '../config/env.js';
 import { ApiError } from '../utils/http.js';
 import { fetchWithTimeout } from './fetch.js';
+import logger from './logger.js';
+
+/**
+ * The AI provider refused or failed. Log its reason for us; tell the user something
+ * readable, never the provider's own text, which can echo parts of an API key (GOD-T66).
+ * @param {string} provider - 'OpenAI' or 'Anthropic'
+ * @param {number} status - the provider's HTTP status
+ * @param {object} payload - the provider's response body
+ * @returns {ApiError} a 503 with a message users can read
+ */
+const assistantUnavailable = (provider, status, payload) => {
+  logger.error({ provider, status, error: payload?.error?.message }, 'AI provider request failed');
+  return new ApiError(503, 'The assistant could not answer right now. Please try again in a moment.', { expose: true });
+};
 
 const isConfigured = (value) => value && !value.includes('placeholder');
 
@@ -37,7 +51,7 @@ export const getAssistantReply = async ({ provider = env.aiProvider, messages })
       body: JSON.stringify({ model: env.openaiModel, input: normalizedMessages, instructions: env.aiSystemPrompt }),
     }, 'OpenAI');
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new ApiError(502, payload.error?.message || 'OpenAI request failed');
+    if (!response.ok) throw assistantUnavailable('OpenAI', response.status, payload);
     return { provider, model: env.openaiModel, message: textFromOpenAi(payload) };
   }
 
@@ -52,7 +66,7 @@ export const getAssistantReply = async ({ provider = env.aiProvider, messages })
     body: JSON.stringify({ model: env.anthropicModel, max_tokens: 1024, messages: normalizedMessages, system: env.aiSystemPrompt }),
   }, 'Anthropic');
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new ApiError(502, payload.error?.message || 'Anthropic request failed');
+  if (!response.ok) throw assistantUnavailable('Anthropic', response.status, payload);
   return {
     provider,
     model: env.anthropicModel,

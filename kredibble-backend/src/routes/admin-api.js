@@ -379,7 +379,7 @@ const addManagedRoutes = ({
     } catch (error) {
       record.wordpressSync = { ...record.wordpressSync?.toObject?.(), status: 'failed', lastError: error.message, lastAttemptAt: new Date() };
       await record.save();
-      throw new ApiError(502, 'WordPress deletion failed. The local record was retained for retry.');
+      throw new ApiError(503, 'WordPress deletion failed. The local record was retained for retry.', { expose: true });
     }
     await record.deleteOne();
     // Programs keep running without the partner; none may point at a partner that no longer exists.
@@ -756,7 +756,7 @@ adminApiRouter.delete('/opportunities/:id', requireAdminOrStaffAuth, requireScre
   } catch (error) {
     record.wordpressSync = { ...record.wordpressSync?.toObject?.(), status: 'failed', lastError: error.message, lastAttemptAt: new Date() };
     await record.save();
-    throw new ApiError(502, 'WordPress deletion failed. The local record was retained for retry.');
+    throw new ApiError(503, 'WordPress deletion failed. The local record was retained for retry.', { expose: true });
   }
   await record.deleteOne();
   await logActivity(req.auth.sub, 'deleted', 'opportunities', record);
@@ -4869,8 +4869,8 @@ adminApiRouter.put('/reference-data/:group/:key', requireAdminOrStaffAuth, requi
 
 // --- BE-021: website category taxonomy + live tally ---------------------------
 // The mapping table curates website category names onto app opportunity
-// types; the tally compares both sides live (502 when the website is
-// unreachable, mirroring the news feed pattern).
+// types; the tally compares both sides live (503 when the website is
+// unreachable; GOD-T66: not 502, which Cloudflare replaces).
 
 adminApiRouter.get('/sync/taxonomy', requireAdminOrStaffAuth, requireScreen('settings_admin', 'view'), asyncHandler(async (req, res) => {
   const rows = await CategoryMap.find({}).sort({ websiteCategory: 1 }).lean();

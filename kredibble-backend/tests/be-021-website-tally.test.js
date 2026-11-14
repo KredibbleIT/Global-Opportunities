@@ -135,13 +135,14 @@ describe('BE-021 taxonomy endpoints', () => {
 });
 
 describe('BE-021 live tally endpoint', () => {
-  it('answers 502 when the website is not configured', async () => {
+  // GOD-T66: 503, not 502 (Cloudflare replaces an origin 502 with its own page).
+  it('answers 503 when the website is not configured', async () => {
     const admin = await createAdmin();
     const saved = env.wordpressSyncBaseUrl;
     env.wordpressSyncBaseUrl = undefined;
     try {
       const res = await request(app).get(api('/admin/sync/tally')).set('Cookie', adminCookie(admin));
-      expect(res.status).toBe(502);
+      expect(res.status).toBe(503);
     } finally {
       env.wordpressSyncBaseUrl = saved;
     }
