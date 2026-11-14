@@ -1,4 +1,4 @@
-import { getEvents, getEventById, getGrants } from '../src/lib/api';
+import { getEvents, getEventById, getGrants, formatEventDate } from '../src/lib/api';
 
 jest.mock('react-native', () => ({
   Platform: { OS: 'android', select: jest.fn(() => 'http://localhost:4000/api') },
@@ -76,5 +76,36 @@ describe('GOD-T63: events and grants posted from the admin dashboard reach the a
     });
 
     await expect(getEventById('evt-1')).resolves.toMatchObject({ id: 'evt-1', title: 'Old Meetup' });
+  });
+
+  test('a dashboard event shows its date: the admin saves eventAt, the screens read eventDateTime and date', async () => {
+    mockApi({
+      '/opportunities?type=event': {
+        status: 200,
+        body: { data: [{ id: 'opp-1', title: 'Career Fair', eventAt: '2026-12-05T18:00' }] },
+      },
+      '/events': { status: 200, body: { data: [] } },
+    });
+
+    const [event] = await getEvents();
+
+    expect(event.eventDateTime).toBe(formatEventDate('2026-12-05T18:00'));
+    expect(event.eventDateTime).toMatch(/5 Dec 2026/);
+    expect(event.date).toBe(event.eventDateTime);
+  });
+});
+
+describe('formatEventDate', () => {
+  test('formats a timestamp readably', () => {
+    expect(formatEventDate('2026-12-05T18:00')).toMatch(/Sat.*5 Dec 2026.*18:00/);
+  });
+
+  test('keeps text that is not a date as written', () => {
+    expect(formatEventDate('Every Saturday morning')).toBe('Every Saturday morning');
+  });
+
+  test('nothing to show for an empty value', () => {
+    expect(formatEventDate('')).toBeUndefined();
+    expect(formatEventDate(undefined)).toBeUndefined();
   });
 });

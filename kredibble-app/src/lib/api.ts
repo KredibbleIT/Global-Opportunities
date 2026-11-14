@@ -639,12 +639,39 @@ const mergeListSources = async (paths: string[]): Promise<any[]> => {
 /** The event screens' wording for an opportunity's `format`. */
 const EVENT_STYLE_BY_FORMAT: Record<string, string> = { online: 'Online', 'in-person': 'In-person', hybrid: 'In-person' };
 
-/** Gives a dashboard event (an opportunity) the event fields the event screens read. */
-const toEventShape = (item: any) => ({
-  ...item,
-  eventStyle: item.eventStyle ?? EVENT_STYLE_BY_FORMAT[item.format] ?? undefined,
-  organizer: item.organizer ?? item.offeringOrganization ?? item.company,
-});
+/**
+ * A readable event date, e.g. "Sat, 5 Dec 2026, 18:00". Text that isn't a date
+ * (e.g. "2 Aug 2026, 6:00 PM GMT", typed on older listings) is shown as written.
+ */
+export const formatEventDate = (value: unknown): string | undefined => {
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+/**
+ * Gives a dashboard event (an opportunity) the fields the event screens read. The
+ * admin form saves the time as `eventAt`; the screens read `eventDateTime` (list) and
+ * `date` (detail and booking), so dashboard events showed no date at all.
+ */
+const toEventShape = (item: any) => {
+  const when = formatEventDate(item.eventDateTime || item.eventAt);
+  return {
+    ...item,
+    eventStyle: item.eventStyle ?? EVENT_STYLE_BY_FORMAT[item.format] ?? undefined,
+    organizer: item.organizer ?? item.offeringOrganization ?? item.company,
+    eventDateTime: when,
+    date: item.date || when,
+  };
+};
 
 /** Events: the dashboard's event listings plus the separate events collection. */
 export const getEvents = async (params?: Record<string, any>) => {
