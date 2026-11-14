@@ -212,22 +212,3 @@ jobs:
           RELEASE_SHA: ${{ needs.image.outputs.release_sha }}
         run: |
           node scripts/smoke.mjs "https://api.globalopportunitydesk.com" "$RELEASE_SHA" "production"
-
-  deploy-render:
-    name: Trigger Render deploy (Transition)
-    needs: image
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Call deploy hook
-        env:
-          RENDER_DEPLOY_HOOK_URL: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
-        run: |
-          # A warning, not a failure: Render is the old host being retired, and
-          # its own GitHub auto-deploy can still deploy main without the hook.
-          if [ -z "$RENDER_DEPLOY_HOOK_URL" ]; then
-            echo "::warning title=Render deploy not triggered::RENDER_DEPLOY_HOOK_URL is not set, so this run did not deploy to Render. Render's own GitHub auto-deploy (if enabled) still deploys main."
-            exit 0
-          fi
-          curl --fail --silent --show-error --max-time 60 -X POST "$RENDER_DEPLOY_HOOK_URL" > /dev/null
-          echo "Render deploy triggered."

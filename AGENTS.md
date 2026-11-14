@@ -76,8 +76,7 @@ Verified authorization state per endpoint enforced by live route manifest testin
 
 | Surface | Location | Status |
 |---------|----------|--------|
-| Docker config | `Dockerfile`, `docker-compose.yml`, `render.yaml` | Present — containerised backend with Redis & MongoDB |
-| Render config | `render.yaml` | Production API deployment with health check and declared secrets |
+| Docker config | `kredibble-backend/Dockerfile`, `deploy/compose.yml` (VPS), `docker-compose.yml` (local) | Present — the API image (GHCR) runs on the VPS with Redis, deployed by `god-deploy` |
 | Env files | `kredibble-backend/.env`, `kredibble-app/.env.example` | Gitignored and untracked — secrets configured via deployment variables |
 | Admin proxy | `kredibble-admin/next.config.ts` | Same-origin rewrite `/api` proxying to `API_PROXY_TARGET` for SameSite=Strict cookies |
 | Token secrets | `JWT_SECRET`, `ADMIN_JWT_SECRET` | Distinct secrets required at boot in production (SEC-006, SEC-040) |
@@ -165,8 +164,8 @@ The workflows in `.github/workflows/` are the source of truth; this is a summary
 | Workflow | Trigger | What it does |
 |----------|---------|--------------|
 | `ci.yml` | PR to `main`, push to `main` | **Backend:** `lint`, `test` (Jest + mongodb-memory-server). **Backend image:** Docker build. **Admin:** `lint`, `typecheck`, `next build`. **Admin E2E:** Playwright against the real API (`npm run e2e:server`, in-memory Mongo with a seeded admin) and the admin dev server. **App:** `lint`, `typecheck`, `test`, Metro bundle export. **Hygiene:** text files are UTF-8, actionlint (with shellcheck on `run:` blocks), shellcheck on `*.sh`, gitleaks on the working tree. |
-| `cd-backend.yml` | push to `main` touching `kredibble-backend/` | Re-verifies, pushes `ghcr.io/kredibbleit/global-opportunities/kredibble-backend:{latest,sha}`, deploys to the VPS over SSH (staging, smoke test, then production behind the Production approval gate). **Fails** if `VPS_HOST`, `VPS_SSH_KEY` or `VPS_KNOWN_HOSTS` is missing; production never runs after a failed staging deploy. Calls `RENDER_DEPLOY_HOOK_URL` if set (a warning, not a failure, when it is not). |
-| `cd-admin.yml` | push to `main` touching `kredibble-admin/` | Re-verifies, then `vercel pull/build/deploy --prebuilt --prod`. **Fails** if `VERCEL_TOKEN`, `VERCEL_ORG_ID` or `VERCEL_PROJECT_ID` is missing. |
+| `cd-backend.yml` | push to `main` touching `kredibble-backend/` | Re-verifies, pushes `ghcr.io/kredibbleit/global-opportunities/kredibble-backend:{latest,sha}`, deploys to the VPS over SSH (staging, smoke test, then production behind the Production approval gate). **Fails** if `VPS_HOST`, `VPS_SSH_KEY` or `VPS_KNOWN_HOSTS` is missing; production never runs after a failed staging deploy. |
+| `cd-admin.yml` | push to `main` touching `kredibble-admin/` | Re-verifies, then `vercel pull/build/deploy --prebuilt --prod` behind the Production approval gate. **Fails** if `VERCEL_TOKEN`, `VERCEL_ORG_ID` or `VERCEL_PROJECT_ID` is missing. This is the only way the admin reaches production: `kredibble-admin/vercel.json` sets `git.deploymentEnabled.main: false`, so Vercel's own Git integration no longer deploys `main` (PR branches still get preview deploys). |
 | `cd-app.yml` | push to `main` touching `kredibble-app/` | Re-verifies, then `eas update --channel production` with `EXPO_PUBLIC_API_URL` from `eas.json`. Skips without `EXPO_TOKEN`. |
 
 Rules for changing CI:
@@ -174,7 +173,7 @@ Rules for changing CI:
 - Every job keeps a `timeout-minutes`; a hung test must fail fast, not burn six hours.
 - Run the same commands locally before pushing: `npm run lint && npm run typecheck && npm test` in the app you touched (`npm run test:e2e` in `kredibble-admin` starts both servers itself).
 
-**Deployment topology:** the API runs on Render (`kredibble-api.onrender.com`, Docker, long-running so Socket.io works). The admin runs on Vercel (`kredibble-admin` project) and reaches the API through a same-origin proxy (`NEXT_PUBLIC_API_URL=/api`, `API_PROXY_TARGET=https://kredibble-api.onrender.com/api`) because the admin session cookie is `SameSite=Strict`; the admin origin must be listed in the API's `CORS_ORIGIN`. The mobile app gets OTA updates through EAS Update (`runtimeVersion` policy `appVersion`).
+**Deployment topology:** the API runs on the Hostinger VPS behind Cloudflare (`api.globalopportunitydesk.com`, staging at `staging-api.globalopportunitydesk.com`; Docker, long-running so Socket.io works), deployed by CD Backend through `god-deploy`. Render (`kredibble-api.onrender.com`) and the old Vercel backend are retired (GOD-T62). The admin runs on Vercel (`global-opportunities` project) and reaches the API through a same-origin proxy (`NEXT_PUBLIC_API_URL=/api`, `API_PROXY_TARGET=https://api.globalopportunitydesk.com/api`) because the admin session cookie is `SameSite=Strict`; the admin origin must be listed in the API's `CORS_ORIGIN`. The mobile app gets OTA updates through EAS Update (`runtimeVersion` policy `appVersion`).
 
 ---
 
