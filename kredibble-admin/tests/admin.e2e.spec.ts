@@ -1424,6 +1424,46 @@ test.describe('Reference data', () => {
     await expect(page.getByText('Ashesi University')).toHaveCount(0); // never the sample lists
   });
 
+  test('GOD-T59: entries suggested at registration wait for review; Approve adds one to the list, Reject drops one', async ({ page }) => {
+    test.skip(MOCK_RUN, 'real API only');
+    // Letters, not digits: a long run of digits is refused as a phone number.
+    const stamp = String(Date.now()).replace(/\d/g, (digit) => 'abcdefghij'[Number(digit)]);
+    const approved = `E2E Suggested University ${stamp}`;
+    const rejected = `E2E Rejected University ${stamp}`;
+    // What the app sends when someone types a university the list doesn't have.
+    for (const label of [approved, rejected]) {
+      const res = await page.request.post(`${API_URL}/v1/reference-data/seeker/universities/items`, { data: { label } });
+      expect(res.ok()).toBe(true);
+      expect((await res.json()).data).toMatchObject({ action: 'created', pending: true });
+    }
+
+    await page.goto(`${BASE_URL}/reference-data`, { timeout: 30_000 });
+    await expect(page.getByRole('tab', { name: /^Universities \(\d+ new\)/ })).toBeVisible();
+    const queue = page.getByRole('list', { name: 'Suggested universities' });
+    await expect(queue.getByText(approved)).toBeVisible();
+    // Waiting entries are not in the list yet.
+    await expect(page.getByRole('button', { name: `Remove ${approved}` })).toHaveCount(0);
+
+    await page.getByRole('button', { name: `Approve ${approved}` }).click();
+    await expect(page.getByTestId('toast').filter({ hasText: `"${approved}" added to the list.` })).toBeVisible();
+    await expect(queue.getByText(approved)).toHaveCount(0);
+    await expect(page.getByRole('button', { name: `Remove ${approved}` })).toBeVisible();
+
+    await page.getByRole('button', { name: `Reject ${rejected}` }).click();
+    await expect(page.getByTestId('toast').filter({ hasText: `"${rejected}" rejected.` })).toBeVisible();
+    await expect(queue.getByText(rejected)).toHaveCount(0);
+    await expect(page.getByRole('button', { name: `Remove ${rejected}` })).toHaveCount(0);
+
+    // Both decisions were saved on the server.
+    await page.reload();
+    await expect(page.getByRole('button', { name: `Remove ${approved}` })).toBeVisible();
+    await expect(page.getByRole('list', { name: 'Suggested universities' }).getByText(rejected)).toHaveCount(0);
+
+    // Leave the list as it was.
+    await page.getByRole('button', { name: `Remove ${approved}` }).click();
+    await expect(page.getByRole('button', { name: `Remove ${approved}` })).toHaveCount(0);
+  });
+
   test('every list uses its own singular in the placeholder; every list has a search (GOD-T42)', async ({ page }) => {
     await page.goto(`${BASE_URL}/reference-data?tab=hirer`, { timeout: 30_000 });
     await expect(page.getByRole('radio', { name: 'Hirers' })).toBeChecked();

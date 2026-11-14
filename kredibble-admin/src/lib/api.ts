@@ -2292,12 +2292,22 @@ export const deleteAdminNotification = async (id: string) => {
 
 // --- BE-017: Reference data Lists -------------------------------------------
 
+/** GOD-T59: an entry someone typed at registration that waits for staff review. */
+export interface ReferenceSuggestionApi {
+  label: string;
+  count: number;
+  firstSuggestedAt: string;
+  lastSuggestedAt: string;
+}
+
 export interface ReferenceListApi {
   key: string;
   label: string;
   singular: string;
   items: string[];
   updatedAt?: string | null;
+  /** Only on GET /admin/reference-data: the list's review queue (GOD-T59). */
+  pending?: ReferenceSuggestionApi[];
 }
 
 export interface ReferenceGroupApi {
@@ -2342,6 +2352,21 @@ export const updateAdminReferenceList = async (
     body: JSON.stringify(data),
   });
 };
+
+/**
+ * GOD-T59: approve (adds it to the list for everyone) or reject a suggestion from registration.
+ * Resolves with the list's items after the decision.
+ */
+export const reviewAdminReferenceSuggestion = async (
+  group: string,
+  key: string,
+  label: string,
+  decision: "approve" | "reject",
+): Promise<{ item: string; decision: "approve" | "reject"; added: boolean; items: string[] }> =>
+  request(`/admin/reference-data/${encodeURIComponent(group)}/${encodeURIComponent(key)}/suggestions`, {
+    method: "POST",
+    body: JSON.stringify({ label, decision }),
+  });
 
 // BE-021: website category taxonomy + live tally.
 export type CategoryMapRecord = {

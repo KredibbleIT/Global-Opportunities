@@ -764,6 +764,14 @@ export const referenceListUpdateSchema = z.object({
   }),
 });
 
+// GOD-T59: staff decision on a suggested reference-list entry
+export const referenceSuggestionReviewSchema = z.object({
+  body: z.object({
+    label: z.string().trim().min(1, 'label is required').max(80, 'label is too long'),
+    decision: z.enum(['approve', 'reject']),
+  }),
+});
+
 // BE-017: Community channels and posts moderation schemas
 export const channelModerateSchema = z.object({
   body: z.object({

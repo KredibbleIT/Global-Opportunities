@@ -58,6 +58,7 @@ import {
   getReferenceDataGroups,
   getReferenceDataList,
   updateReferenceDataList,
+  reviewReferenceSuggestion,
 } from '../lib/reference-data.js';
 import { buildTallyReport, fetchWebsiteSnapshot } from '../lib/website-tally.js';
 import { taxonomyUpsertSchema } from '../schemas/website-tally.js';
@@ -103,6 +104,7 @@ import {
   notificationBroadcastSchema,
   notificationQuerySchema,
   referenceListUpdateSchema,
+  referenceSuggestionReviewSchema,
   channelModerateSchema,
   postModerateSchema,
   userSegmentMoveSchema,
@@ -4788,8 +4790,30 @@ adminApiRouter.delete('/notifications/:id', requireAdminOrStaffAuth, requireScre
 // --- 3. Reference Data Lists Collection -------------------------------------
 
 adminApiRouter.get('/reference-data', requireAdminOrStaffAuth, requireScreen('reference_data', 'view'), asyncHandler(async (req, res) => {
-  const groups = await getReferenceDataGroups(req.query.group || null);
+  // GOD-T59: each list carries `pending`, the entries people suggested at registration.
+  const groups = await getReferenceDataGroups(req.query.group || null, { includePending: true });
   itemResponse(res, groups);
+}));
+
+/**
+ * GOD-T59: approve (add to the list) or reject a suggestion from registration.
+ * Body: { label, decision: 'approve' | 'reject' }.
+ */
+adminApiRouter.post('/reference-data/:group/:key/suggestions', requireAdminOrStaffAuth, requireScreen('reference_data', 'edit'), validate(referenceSuggestionReviewSchema), asyncHandler(async (req, res) => {
+  const { group, key } = req.params;
+  const { label, decision } = req.body;
+  const result = await reviewReferenceSuggestion(group, key, label, decision, req.auth?.sub ?? null);
+  if (!result) throw notFound(`Reference list "${group}/${key}"`);
+
+  await auditReq(req, {
+    action: `reference_data.suggestion_${decision}`,
+    resourceType: 'ReferenceDataList',
+    resourceId: result.list._id,
+    outcome: 'success',
+    metadata: { group, key, item: result.item, added: result.added },
+  });
+
+  itemResponse(res, { item: result.item, decision, added: result.added, items: result.list.items });
 }));
 
 adminApiRouter.get('/reference-data/:group/:key', requireAdminOrStaffAuth, requireScreen('reference_data', 'view'), asyncHandler(async (req, res) => {

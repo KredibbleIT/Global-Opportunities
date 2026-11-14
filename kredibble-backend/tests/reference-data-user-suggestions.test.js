@@ -23,30 +23,35 @@ describe('Reference data user suggestions', () => {
     }));
   });
 
-  it('saves a new program once, makes it visible immediately, and then reuses it instead of duplicating it', async () => {
+  it('queues a new program for staff review instead of showing it to everyone (GOD-T59)', async () => {
     const created = await request(app)
       .post('/api/v1/reference-data/seeker/programs/items')
       .send({ label: 'Aerospace Navigation Science' })
       .expect(200);
 
+    // The person who typed it keeps it; the shared list waits for an admin.
     expect(created.body.data).toEqual({
       action: 'created',
       item: 'Aerospace Navigation Science',
       created: true,
+      pending: true,
     });
 
     const list = await request(app)
       .get('/api/v1/reference-data/seeker/programs')
       .expect(200);
 
-    expect(list.body.data.items).toContain('Aerospace Navigation Science');
+    expect(list.body.data.items).not.toContain('Aerospace Navigation Science');
 
     const repeated = await request(app)
       .post('/api/v1/reference-data/seeker/programs/items')
-      .send({ label: 'Aerospace Navigation Science' })
+      .send({ label: 'aerospace navigation science' })
       .expect(200);
 
-    expect(repeated.body.data.action).toBe('use_existing');
+    expect(repeated.body.data).toEqual(expect.objectContaining({ action: 'created', pending: true }));
+    const stored = await ReferenceDataList.findOne({ group: 'seeker', key: 'programs' }).lean();
+    expect(stored.pendingItems).toHaveLength(1);
+    expect(stored.pendingItems[0]).toEqual(expect.objectContaining({ label: 'Aerospace Navigation Science', count: 2 }));
     expect(await ReferenceDataList.countDocuments({ group: 'seeker', key: 'programs' })).toBe(1);
   });
 
@@ -123,7 +128,7 @@ describe('Reference data user suggestions', () => {
     }
   });
 
-  it('extends the same duplicate handling to all four seeker registration lists', async () => {
+  it('extends the same review queue and duplicate handling to all four seeker registration lists', async () => {
     for (const [key, item] of [
       ['universities', 'Academic City University College'],
       ['skills', 'Kubernetes Orchestration'],
@@ -134,14 +139,18 @@ describe('Reference data user suggestions', () => {
         .send({ label: item })
         .expect(200);
 
-      expect(created.body.data).toEqual(expect.objectContaining({ action: 'created', item }));
+      expect(created.body.data).toEqual(expect.objectContaining({ action: 'created', item, pending: true }));
 
       const repeated = await request(app)
         .post(`/api/v1/reference-data/seeker/${key}/items`)
         .send({ label: item.toLowerCase() })
         .expect(200);
 
-      expect(repeated.body.data.action).toBe('use_existing');
+      // Same suggestion again: counted on the one queued entry, not added twice.
+      expect(repeated.body.data).toEqual(expect.objectContaining({ action: 'created', pending: true }));
+      const stored = await ReferenceDataList.findOne({ group: 'seeker', key }).lean();
+      expect(stored.pendingItems.map((entry) => [entry.label, entry.count])).toEqual([[item, 2]]);
+      expect(stored.items).not.toContain(item);
     }
   });
 });

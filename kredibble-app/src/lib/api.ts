@@ -327,7 +327,8 @@ export type ReferenceDataList = {
   items: string[];
 };
 export type AddReferenceDataResult =
-  | { action: 'created'; item: string; created: true }
+  // `pending`: the entry is saved for this person and waits for staff review before others see it (GOD-T59).
+  | { action: 'created'; item: string; created: true; pending?: boolean }
   | { action: 'use_existing'; item: string; created: false; aliased?: boolean }
   | { action: 'aliased'; item: string; alias: string; created: boolean }
   | { action: 'similar'; matches: string[]; created: false };
