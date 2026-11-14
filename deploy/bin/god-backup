@@ -40,7 +40,9 @@ target_database_uri() {
     exit 1
   fi
   local base="${BASH_REMATCH[1]}" srv="${BASH_REMATCH[2]}" old_db="${BASH_REMATCH[4]}" query="${BASH_REMATCH[6]}"
-  if [[ -z "$srv" && ! "$query" =~ (^|&)authSource= ]]; then
+  # Only when the address logs in (has user@): without credentials an authSource makes
+  # the MongoDB tools attempt a login and fail (GOD-T67, the restore drill).
+  if [[ -z "$srv" && "$base" == *@* && ! "$query" =~ (^|&)authSource= ]]; then
     query="${query:+$query&}authSource=${old_db:-admin}"
   fi
   echo "${base}/${db}${query:+?$query}"
