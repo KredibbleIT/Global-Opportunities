@@ -226,6 +226,11 @@ jobs:
         run: node --test scripts/check-encoding.test.mjs
       - name: Deploy gate tests
         run: node --test deploy/bin/god-deploy-gate.test.mjs
+      # GOD-T55: the backup script dumped the wrong (empty) database for weeks; its tests now run in CI.
+      - name: Backup script tests
+        run: node --test deploy/bin/god-backup.test.mjs
+      - name: Restore script tests
+        run: node --test deploy/bin/god-restore.test.mjs
       - name: Smoke test suite
         run: node --test scripts/smoke.test.mjs
       # SEC-110: UTF-16 workflow files are rejected by GitHub; Windows-1252 destroys task.md.

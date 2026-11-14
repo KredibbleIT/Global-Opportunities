@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
-import { verifyRestore } from '../scripts/verify-restore.js';
+import { verifyRestore, SEEKER_COLLECTION, HIRER_COLLECTION } from '../scripts/verify-restore.js';
+import { SeekerProfile, HirerAccount } from '../src/models/Profiles.js';
 
 describe('SEC-089: Restore Verification Suite (verify-restore.js)', () => {
   let db;
@@ -18,7 +19,7 @@ describe('SEC-089: Restore Verification Suite (verify-restore.js)', () => {
   test('fails if required collections are missing', async () => {
     const result = await verifyRestore({
       db,
-      requiredCollections: ['users', 'opportunities', 'seekers', 'hirers'],
+      requiredCollections: ['users', 'opportunities', 'seekerprofiles', 'hireraccounts'],
       minUserCount: 1,
       minOpportunityCount: 1,
     });
@@ -31,8 +32,8 @@ describe('SEC-089: Restore Verification Suite (verify-restore.js)', () => {
     // Create collections
     await db.createCollection('users');
     await db.createCollection('opportunities');
-    await db.createCollection('seekers');
-    await db.createCollection('hirers');
+    await db.createCollection('seekerprofiles');
+    await db.createCollection('hireraccounts');
 
     await db.collection('opportunities').insertOne({
       title: 'DevOps Lead',
@@ -41,7 +42,7 @@ describe('SEC-089: Restore Verification Suite (verify-restore.js)', () => {
 
     const result = await verifyRestore({
       db,
-      requiredCollections: ['users', 'opportunities', 'seekers', 'hirers'],
+      requiredCollections: ['users', 'opportunities', 'seekerprofiles', 'hireraccounts'],
       minUserCount: 1,
       minOpportunityCount: 1,
     });
@@ -65,19 +66,19 @@ describe('SEC-089: Restore Verification Suite (verify-restore.js)', () => {
       updatedAt: staleDate,
     });
 
-    await db.collection('seekers').insertOne({
+    await db.collection('seekerprofiles').insertOne({
       headline: 'Bioinformatics Engineer',
       createdAt: staleDate,
     });
 
-    await db.collection('hirers').insertOne({
+    await db.collection('hireraccounts').insertOne({
       companyName: 'Global Org',
       createdAt: staleDate,
     });
 
     const result = await verifyRestore({
       db,
-      requiredCollections: ['users', 'opportunities', 'seekers', 'hirers'],
+      requiredCollections: ['users', 'opportunities', 'seekerprofiles', 'hireraccounts'],
       minUserCount: 1,
       minOpportunityCount: 1,
       maxAgeHours: 26,
@@ -102,19 +103,19 @@ describe('SEC-089: Restore Verification Suite (verify-restore.js)', () => {
       updatedAt: freshDate,
     });
 
-    await db.collection('seekers').insertOne({
+    await db.collection('seekerprofiles').insertOne({
       headline: 'SRE Specialist',
       createdAt: freshDate,
     });
 
-    await db.collection('hirers').insertOne({
+    await db.collection('hireraccounts').insertOne({
       companyName: 'Desk Corporation',
       createdAt: freshDate,
     });
 
     const result = await verifyRestore({
       db,
-      requiredCollections: ['users', 'opportunities', 'seekers', 'hirers'],
+      requiredCollections: ['users', 'opportunities', 'seekerprofiles', 'hireraccounts'],
       minUserCount: 1,
       minOpportunityCount: 1,
       maxAgeHours: 26,
@@ -125,5 +126,10 @@ describe('SEC-089: Restore Verification Suite (verify-restore.js)', () => {
     expect(result.metrics.userCount).toBe(1);
     expect(result.metrics.opportunityCount).toBe(1);
     expect(result.metrics.freshnessHours).toBeLessThanOrEqual(3);
+  });
+
+  it('checks the collections the app really writes (GOD-T55)', () => {
+    expect(SEEKER_COLLECTION).toBe(SeekerProfile.collection.name);
+    expect(HIRER_COLLECTION).toBe(HirerAccount.collection.name);
   });
 });

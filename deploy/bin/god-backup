@@ -24,6 +24,27 @@ R2_ENDPOINT_URL="${R2_ENDPOINT_URL:-}"
 HEARTBEAT_URL="${BACKUP_HEARTBEAT_URL:-}"
 DRY_RUN="${DRY_RUN:-0}"
 NO_UPLOAD="${NO_UPLOAD:-0}"
+# The database to dump: the one the API uses (dbName in kredibble-backend/src/lib/mongodb.js).
+BACKUP_DB_NAME="${BACKUP_DB_NAME:-kredibble}"
+
+# Prints the MongoDB address with its database set to $2, keeping how it logs in.
+# The database in an address is also the default login database, so when the address
+# names no authSource we keep the old default explicitly: the original database, or
+# 'admin' if it had none. mongodb+srv:// (Atlas) is left alone there, because Atlas
+# supplies authSource through DNS and an explicit one would override it.
+target_database_uri() {
+  local uri="$1" db="$2"
+  local re='^(mongodb(\+srv)?://[^/?]+)(/([^?]*))?(\?(.*))?$'
+  if [[ ! "$uri" =~ $re ]]; then
+    echo "god-backup: Error: DATABASE_URL is not a mongodb:// or mongodb+srv:// address" >&2
+    exit 1
+  fi
+  local base="${BASH_REMATCH[1]}" srv="${BASH_REMATCH[2]}" old_db="${BASH_REMATCH[4]}" query="${BASH_REMATCH[6]}"
+  if [[ -z "$srv" && ! "$query" =~ (^|&)authSource= ]]; then
+    query="${query:+$query&}authSource=${old_db:-admin}"
+  fi
+  echo "${base}/${db}${query:+?$query}"
+}
 TEMP_CONFIG=""
 
 # Load R2/AWS credentials for manual runs (the systemd timer provides these
@@ -156,6 +177,12 @@ else
   fi
 
   if [[ -n "$DB_URI" ]]; then
+    # GOD-T55: back up the database the API actually uses. The API always connects
+    # with dbName 'kredibble' (kredibble-backend/src/lib/mongodb.js), whatever name the
+    # address carries; production's address says "god-production", an empty database,
+    # so every nightly dump until 14 Nov 2026 was empty (317 bytes).
+    DB_URI="$(target_database_uri "$DB_URI" "$BACKUP_DB_NAME")" || exit 1
+    echo "god-backup: Dumping database '$BACKUP_DB_NAME'."
     TEMP_CONFIG="$(mktemp /tmp/god-backup-cfg-XXXXXX.yaml)"
     chmod 0600 "$TEMP_CONFIG"
     cat <<EOF > "$TEMP_CONFIG"
@@ -214,6 +241,15 @@ if [[ $DUMP_EXIT -ne 0 || ! -s "$ARCHIVE_PATH" ]]; then
 fi
 
 ARCHIVE_SIZE="$(du -h "$ARCHIVE_PATH" | cut -f1)"
+# GOD-T55: an empty database still dumps "successfully" (317 bytes). Treat a tiny
+# archive as a failure so a wrong database name can't pass unnoticed again.
+ARCHIVE_BYTES="$(wc -c < "$ARCHIVE_PATH" | tr -d ' ')"
+BACKUP_MIN_BYTES="${BACKUP_MIN_BYTES:-10240}"
+if (( ARCHIVE_BYTES < BACKUP_MIN_BYTES )); then
+  echo "god-backup: Error: archive is only ${ARCHIVE_BYTES} bytes (minimum ${BACKUP_MIN_BYTES}): database '$BACKUP_DB_NAME' looks empty or wrong. Nothing was uploaded." >&2
+  rm -f "$ARCHIVE_PATH"
+  exit 1
+fi
 END_TIME="$(date +%s)"
 DURATION=$((END_TIME - START_TIME))
 echo "god-backup: Backup archive created successfully: $ARCHIVE_PATH ($ARCHIVE_SIZE) in ${DURATION}s."
