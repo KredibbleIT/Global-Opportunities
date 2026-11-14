@@ -7,6 +7,7 @@ import { useRouter } from 'expo-router';
 import Svg, { Circle, Ellipse, Polygon } from 'react-native-svg';
 import { authStore } from '../../constants/authStore';
 import { sendAssistantMessage, AssistantChatMessage } from '../../lib/api';
+import { toAssistantHistory } from '../../lib/assistant-history';
 
 // ─── Wave Penguin Logo SVG ───────────────────────────────────────────────────
 const WaveLogoSVG = () => (
@@ -51,6 +52,8 @@ interface Message {
   id: string;
   sender: 'ai' | 'user';
   text: string;
+  /** Shown on screen but never sent to the API: the greeting and error notes (GOD-T68). */
+  local?: boolean;
   jobs?: Job[];
   candidates?: Candidate[];
 }
@@ -73,6 +76,7 @@ export default function AssistantScreen() {
     {
       id: '1',
       sender: 'ai',
+      local: true,
       text: isHirer
         ? "Hi, I'm your AI recruiting assistant. Need help finding candidates, writing a job post, or reviewing applicants?"
         : "Hi, I'm your AI assistant. Got any career-related questions?",
@@ -113,14 +117,9 @@ export default function AssistantScreen() {
     setIsTyping(true);
 
     try {
-      // 3. Format chat payload for backend /api/v1/assistant/chat (keep last 10 messages)
-      const historyPayload: AssistantChatMessage[] = newMessages
-        .filter((msg) => Boolean(msg.text))
-        .slice(-10)
-        .map((msg) => ({
-          role: msg.sender === 'user' ? 'user' : 'assistant',
-          content: msg.text,
-        }));
+      // 3. The conversation for /api/v1/assistant/chat: real turns only, starting with the
+      //    user (the greeting and error notes made every request fail, GOD-T68).
+      const historyPayload: AssistantChatMessage[] = toAssistantHistory(newMessages);
 
       const res = await sendAssistantMessage(historyPayload);
       const replyText = res?.message || 'No response received from assistant.';
@@ -149,6 +148,7 @@ export default function AssistantScreen() {
         id: (Date.now() + 1).toString(),
         sender: 'ai',
         text: fallbackText,
+        local: true,
       };
       setMessages((prev) => [...prev, reply]);
     } finally {
