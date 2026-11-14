@@ -157,6 +157,37 @@ describe('BE-026 opportunity inbound', () => {
     expect(after.applications.app).toBe(7);
   });
 
+  // GOD-T54: a website edit used to send an approved post back to pending, so it
+  // vanished from the app after every change on the website.
+  it('a website edit to an approved post updates its content and keeps the approval', async () => {
+    await deliver({ eventId: 'evt-opp-approved-1', resource: 'opportunity', externalId: 'wp-1010', attributes: opportunityAttrs() });
+    const doc = await Opportunity.findOne({ 'wordpressSync.wordpressId': 'wp-1010' });
+    const approvedAt = new Date('2026-11-10T09:00:00Z');
+    await Opportunity.findByIdAndUpdate(doc._id, {
+      $set: { status: 'published', moderationStatus: 'published', vetted: true, vettedBy: doc._id, vettedAt: approvedAt, publishedAt: approvedAt },
+    });
+
+    const edit = await deliver({
+      eventId: 'evt-opp-approved-2', resource: 'opportunity', externalId: 'wp-1010',
+      attributes: opportunityAttrs({ title: 'Ghana Tech Fellowship (deadline extended)' }),
+    });
+    expect(edit.body.data).toMatchObject({ status: 'applied', created: false });
+
+    const after = await Opportunity.findById(doc._id).lean();
+    expect(after).toMatchObject({
+      title: 'Ghana Tech Fellowship (deadline extended)',
+      status: 'published',
+      moderationStatus: 'published',
+      vetted: true,
+    });
+    expect(after.publishedAt.toISOString()).toBe(approvedAt.toISOString());
+    expect(String(after.vettedBy)).toBe(String(doc._id));
+
+    // Still public in the app.
+    const publicList = await request(app).get('/api/v1/opportunities');
+    expect(publicList.body.data.map((item) => item.title)).toContain('Ghana Tech Fellowship (deadline extended)');
+  });
+
   it('fails events with missing fields or unknown types for admin retry', async () => {
     const missing = await deliver({
       eventId: 'evt-opp-bad', resource: 'opportunity', externalId: 'wp-1003',
