@@ -79,4 +79,21 @@ test('god-restore: permits restore into isolated database without production fla
   assert.equal(res.exitCode, 0);
   assert.match(res.stdout, /Target verified/);
   assert.match(res.stdout, /restore_drill_isolated/);
+  // GOD-T55: mongorestore refuses "*.*" -> "db.*" (different number of asterisks).
+  assert.match(res.stdout, /--nsFrom=kredibble\.\* --nsTo=restore_drill_isolated\.\*/);
+  assert.doesNotMatch(res.stdout, /--nsFrom=\*\.\*/);
+});
+
+test('god-restore: --source-db names the database inside the archive', async () => {
+  const res = await runRestore([
+    '--dry-run',
+    '--archive', '/tmp/dump.age',
+    '--identity', '/tmp/id.txt',
+    '--target-uri', 'mongodb://localhost:27017/local_dev',
+    '--target-db', 'restore_drill_isolated',
+    '--source-db', 'old_name',
+  ]);
+
+  assert.equal(res.exitCode, 0);
+  assert.match(res.stdout, /--nsInclude=old_name\.\* --nsFrom=old_name\.\* --nsTo=restore_drill_isolated\.\*/);
 });

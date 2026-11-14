@@ -17,6 +17,8 @@ ARCHIVE_PATH=""
 IDENTITY_FILE=""
 TARGET_URI="${DATABASE_URL:-${MONGODB_URI:-}}"
 TARGET_DB=""
+# The database inside the archive: god-backup dumps BACKUP_DB_NAME (default kredibble).
+SOURCE_DB="${BACKUP_DB_NAME:-kredibble}"
 ALLOW_PRODUCTION_OVERWRITE=0
 DRY_RUN="${DRY_RUN:-0}"
 TEMP_ARCHIVE=""
@@ -41,6 +43,7 @@ Required:
 Options:
   --target-uri <uri>              Destination MongoDB URI (default: from DATABASE_URL)
   --target-db <name>              Restore into alternative/isolated database name (nsInclude/nsFrom)
+  --source-db <name>              Database inside the archive (default: kredibble, what god-backup dumps)
   --i-understand-this-overwrites-production
                                   Explicit authorization required if restoring into production
   --dry-run                       Validate arguments and decrypt headers without restoring
@@ -72,6 +75,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --target-db)
       TARGET_DB="$2"
+      shift 2
+      ;;
+    --source-db)
+      SOURCE_DB="$2"
       shift 2
       ;;
     --i-understand-this-overwrites-production)
@@ -170,7 +177,10 @@ if [[ -n "$TARGET_URI" ]]; then
 fi
 
 if [[ -n "$TARGET_DB" ]]; then
-  RESTORE_ARGS+=(--nsInclude="*.*" --nsFrom="*.*" --nsTo="${TARGET_DB}.*")
+  # mongorestore needs the same number of wildcards on both sides of a rename:
+  # "*.*" -> "db.*" is refused ("Different number of asterisks"), so name the source
+  # database (the one god-backup dumps, GOD-T55).
+  RESTORE_ARGS+=(--nsInclude="${SOURCE_DB}.*" --nsFrom="${SOURCE_DB}.*" --nsTo="${TARGET_DB}.*")
 fi
 
 echo "god-restore: Target verified. Ready to restore into database."
