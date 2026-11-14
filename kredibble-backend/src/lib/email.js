@@ -31,7 +31,7 @@ export const sendVerificationEmail = async (email, code) => {
   if (!resend) {
     if (isDeployed) {
       logger.error('Resend is not configured: RESEND_API_KEY is missing, so verification codes cannot be emailed');
-      throw new ApiError(503, 'We could not send the verification email. Please try again later.');
+      throw new ApiError(503, 'We could not send the verification email. Please try again later.', { expose: true });
     }
     logger.warn('Resend not configured, skipping email send');
     return;
@@ -62,7 +62,7 @@ export const sendVerificationEmail = async (email, code) => {
     logger.error({ error: error.message, email }, 'Failed to send verification email');
     // 503, not 502: Cloudflare replaces an origin 502 with its own "error code: 502" page,
     // so the app showed "Request failed with status 502" instead of this message.
-    throw new ApiError(503, 'We could not send the verification email. Please try again later.');
+    throw new ApiError(503, 'We could not send the verification email. Please try again later.', { expose: true });
   }
 };
 
