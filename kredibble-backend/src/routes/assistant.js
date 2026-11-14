@@ -24,7 +24,7 @@ assistantRouter.post(
   validate(assistantChatSchema),
   asyncHandler(async (req, res) => {
     if (!env.aiEnabled) {
-      throw new ApiError(503, 'AI assistant service is currently unavailable or not enabled');
+      throw new ApiError(503, 'AI assistant service is currently unavailable or not enabled', { expose: true });
     }
     const messages = req.body.messages || [{ role: 'user', content: req.body.message }];
     const totalChars = messages.reduce((sum, m) => sum + m.content.length, 0);

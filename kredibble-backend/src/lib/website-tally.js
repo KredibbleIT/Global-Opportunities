@@ -134,12 +134,12 @@ export function buildTallyReport({ websiteOpportunities = [], websiteCategories 
  * Fetch the website snapshot for the tally (opportunities + taxonomy).
  * Best-effort on `/categories` (older sites lack it — categories are then
  * derived from the listings themselves).
- * @throws {ApiError} 502 when the website cannot be reached or configured.
+ * @throws {ApiError} 503 when the website cannot be reached or configured (GOD-T66: not 502, which Cloudflare replaces).
  */
 export async function fetchWebsiteSnapshot() {
   const baseUrl = env.wordpressSyncBaseUrl;
   if (!baseUrl || String(baseUrl).includes('placeholder')) {
-    throw new ApiError(502, 'Website snapshot is unavailable: WordPress sync is not configured');
+    throw new ApiError(503, 'Website snapshot is unavailable: WordPress sync is not configured', { expose: true });
   }
   const headers = { Accept: 'application/json' };
   if (env.wordpressApiKey && !String(env.wordpressApiKey).includes('placeholder')) {

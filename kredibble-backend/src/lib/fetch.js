@@ -8,7 +8,8 @@ export const fetchWithTimeout = async (url, options = {}, service = 'Upstream se
   try {
     return await fetch(url, { ...options, signal: controller.signal });
   } catch (error) {
-    if (error.name === 'AbortError') throw new ApiError(504, `${service} timed out`);
+    // 503 (not 504, which Cloudflare replaces with its own page) and a message users can read (GOD-T66).
+    if (error.name === 'AbortError') throw new ApiError(503, `${service} did not answer in time. Please try again.`, { expose: true });
     throw error;
   } finally {
     clearTimeout(timeout);

@@ -1,7 +1,19 @@
+/**
+ * An error with an HTTP status. 4xx messages always reach the caller. A 5xx message
+ * is replaced by "Internal server error" in production (SEC-064) unless `expose` is
+ * true: set it only when the message was written for users and carries no internal
+ * detail (GOD-T66).
+ */
 export class ApiError extends Error {
-  constructor(status, message) {
+  /**
+   * @param {number} status - HTTP status
+   * @param {string} message - what went wrong
+   * @param {{ expose?: boolean }} [options] - expose: show a 5xx message in production
+   */
+  constructor(status, message, { expose = false } = {}) {
     super(message);
     this.status = status;
+    this.expose = expose;
   }
 }
 
