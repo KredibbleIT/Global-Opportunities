@@ -92,7 +92,7 @@ jobs:
           NEXT_TELEMETRY_DISABLED: 1
           # Same shape as the deployed config: same-origin proxy to the API.
           NEXT_PUBLIC_API_URL: /api
-          API_PROXY_TARGET: https://kredibble-api.onrender.com/api
+          API_PROXY_TARGET: https://api.globalopportunitydesk.com/api
 
   # SEC-159: the real-API run and the mock-mode run used to share one job with a 30-minute limit. By 2026-11-12 they took
   # about 8.5 and 20 minutes, so the job was cancelled at the limit with the mock run nearly done (the merges of #172 and #173
@@ -211,7 +211,7 @@ jobs:
         run: npx expo export --platform android --output-dir "$RUNNER_TEMP/expo-export"
         env:
           EXPO_NO_TELEMETRY: 1
-          EXPO_PUBLIC_API_URL: https://kredibble-api.onrender.com/api
+          EXPO_PUBLIC_API_URL: https://api.globalopportunitydesk.com/api/v1
 
   hygiene:
     name: Repo hygiene (encoding, workflows, shell, secrets)
