@@ -15,7 +15,7 @@
  *
  * The queue loader returns ALL rows once; the page filters and counts on the client.
  */
-import { getOpportunityById, getOpportunityPage, moderateOpportunity, type OpportunityRecord } from "@/lib/api";
+import { getOpportunityById, getOpportunityPage, moderateOpportunity, type OpportunityRecord, type PostingRejection } from "@/lib/api";
 import { getMockCollection, overlayRows } from "@/lib/mock-store";
 import type { Listing, ListingType } from "@/lib/mock-entities";
 import { cacheListings, isCuratedRecord, toListing } from "./listings";
@@ -94,6 +94,12 @@ function toOpportunity(record: OpportunityRecord): Opportunity {
     eventCategory: record.eventCategory,
     grantBudgetRange: record.grantBudgetRange,
     grantSector: record.grantSector,
+    deadline: record.deadline || record.closesAt,
+    applyUrl: record.applyUrl || record.applicationUrl || record.applicationLink,
+    hirer: record.hirer ?? null,
+    rejectionReason: record.rejectionReason,
+    rejectionNote: record.rejectionNote,
+    rejectedAt: record.rejectedAt,
   };
 }
 
@@ -150,8 +156,23 @@ export async function loadOpportunity(id: string): Promise<Opportunity | undefin
   return getOpportunityById(id).then(toOpportunity, orMissing<Opportunity>);
 }
 
-/** Approves (vets and publishes) or rejects a posting and resolves with it as saved. */
-export async function decideOpportunity(opportunity: Opportunity, decision: ModerationDecision): Promise<Opportunity> {
-  if (isMockMode()) return { ...opportunity, moderationStatus: decision === "approve" ? "approved" : "rejected" };
-  return toOpportunity(await moderateOpportunity(opportunity.id, decision));
+/**
+ * Approves (vets and publishes) or rejects a posting and resolves with it as saved. A rejection carries the reason the
+ * hirer is shown (SEC-151); approving forgets an earlier one, as the API does.
+ */
+export async function decideOpportunity(opportunity: Opportunity, decision: ModerationDecision, rejection?: PostingRejection): Promise<Opportunity> {
+  if (isMockMode()) {
+    if (decision === "approve") {
+      return { ...opportunity, moderationStatus: "approved", rejectionReason: undefined, rejectionNote: undefined, rejectedAt: undefined };
+    }
+    return {
+      ...opportunity,
+      moderationStatus: "rejected",
+      rejectionReason: rejection?.reason,
+      rejectionNote: rejection?.note || undefined,
+      rejectedAt: new Date().toISOString(),
+    };
+  }
+  const saved = toOpportunity(await moderateOpportunity(opportunity.id, decision, rejection));
+  return { ...saved, hirer: saved.hirer ?? opportunity.hirer };
 }

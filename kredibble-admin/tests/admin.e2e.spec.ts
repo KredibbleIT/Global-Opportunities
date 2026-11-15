@@ -4573,8 +4573,77 @@ test.describe('Opportunities: curated detail, reach and unpublish', () => {
   test('a hirer posting keeps its approve / reject page', async ({ page }) => {
     await page.goto(`${BASE_URL}/opportunities/opp-3`, { timeout: 30_000 });
     await expect(page.getByRole('button', { name: 'Approve' })).toBeEnabled();
-    await expect(page.getByRole('button', { name: 'Reject opportunity' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Reject', exact: true })).toBeEnabled();
     await expect(page.getByTestId('source-pill')).toHaveCount(0);
+  });
+});
+
+test.describe('Opportunities: rejecting a hirer posting asks why (SEC-151)', () => {
+  test.skip(!MOCK_RUN, 'sample postings; the real-API flow is in "Opportunity detail (real API)"');
+  test.use({ viewport: { width: 1440, height: 900 } });
+
+  test('the review page shows the deadline, apply link and who posted it, with Approve and Reject together', async ({ page }) => {
+    await page.goto(`${BASE_URL}/opportunities/opp-3`, { timeout: 30_000 });
+    const details = page.getByRole('region', { name: 'Details' });
+    await expect(details).toContainText('15 Dec 2026');
+    await expect(details.getByTestId('apply-link')).toHaveAttribute('href', 'https://wave-mobile.example/careers/backend-engineer-payments');
+    await expect(details.getByTestId('apply-link')).toHaveAttribute('target', '_blank');
+    const postedBy = page.getByRole('region', { name: 'Posted by' });
+    await expect(postedBy).toContainText('Wave Mobile Money');
+    await expect(postedBy).toContainText('Aminata Diop');
+    await expect(postedBy.getByRole('link', { name: 'talent@wave-mobile.example' })).toHaveAttribute('href', 'mailto:talent@wave-mobile.example');
+    await expect(postedBy.getByTestId('hirer-verification')).toHaveText('Verified');
+    const actions = page.getByTestId('moderation-actions');
+    await expect(actions.getByRole('button', { name: 'Approve', exact: true })).toBeEnabled();
+    await expect(actions.getByRole('button', { name: 'Reject', exact: true })).toBeEnabled();
+    await expect(page.getByRole('region', { name: 'Danger zone' })).toHaveCount(0);
+  });
+
+  test('a rejection needs a reason, "Another reason" needs a note, and the page then shows why', async ({ page }) => {
+    await page.goto(`${BASE_URL}/opportunities/opp-4`, { timeout: 30_000 });
+    await page.getByRole('button', { name: 'Reject', exact: true }).click();
+    const dialog = page.getByTestId('reject-posting-dialog');
+    await expect(dialog).toContainText('Reject this posting?');
+    await expect(dialog).toContainText('The hirer is told in the app');
+
+    await dialog.getByTestId('reject-posting-confirm').click();
+    await expect(dialog).toContainText('Choose why this posting is rejected.');
+
+    await dialog.getByRole('combobox', { name: 'Reason' }).click();
+    await page.getByRole('option', { name: 'Another reason, explained in the note' }).click();
+    await dialog.getByTestId('reject-posting-confirm').click();
+    await expect(dialog).toContainText('Explain the reason: the hirer reads this note.');
+
+    await dialog.getByTestId('reject-posting-note').fill('We only list events with a confirmed venue.');
+    await dialog.getByTestId('reject-posting-confirm').click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByText('Founders & Funders Demo Night from Ashesi Ventures was rejected. The hirer was told why.')).toBeVisible();
+    await expect(page.getByRole('region', { name: 'Summary' }).getByTestId('status-badge')).toHaveText('Rejected');
+    const why = page.getByRole('region', { name: 'Why it was rejected' });
+    await expect(why).toContainText('Another reason, explained in the note');
+    await expect(why).toContainText('We only list events with a confirmed venue.');
+    await expect(page.getByRole('button', { name: 'Reject', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Approve', exact: true })).toBeEnabled();
+  });
+
+  test('Cancel leaves the posting as it was', async ({ page }) => {
+    await page.goto(`${BASE_URL}/opportunities/opp-5`, { timeout: 30_000 });
+    await page.getByRole('button', { name: 'Reject', exact: true }).click();
+    await page.getByTestId('reject-posting-dialog').getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByTestId('reject-posting-dialog')).toHaveCount(0);
+    await expect(page.getByRole('region', { name: 'Summary' }).getByTestId('status-badge')).toHaveText('Pending');
+  });
+
+  test('a rejected posting shows why first, and a missing deadline or apply link says so', async ({ page }) => {
+    await page.goto(`${BASE_URL}/opportunities/opp-6`, { timeout: 30_000 });
+    const why = page.getByRole('region', { name: 'Why it was rejected' });
+    await expect(why).toContainText('Some details are missing or unclear');
+    await expect(why).toContainText('Add how to apply and what the 90-day budget covers.');
+    await expect(why).toContainText('16 Jul 2026');
+    const details = page.getByRole('region', { name: 'Details' });
+    await expect(details.getByText('Deadline', { exact: true }).locator('xpath=following-sibling::dd[1]')).toHaveText('Not recorded');
+    await expect(details.getByText('Apply link', { exact: true }).locator('xpath=following-sibling::dd[1]')).toHaveText('—');
+    await expect(page.getByRole('region', { name: 'Posted by' }).getByTestId('hirer-verification')).toHaveText('Not submitted');
   });
 });
 
@@ -4602,7 +4671,7 @@ test.describe('Opportunities: roles', () => {
     await expect(page.getByRole('link', { name: 'New listing' })).toHaveCount(0);
     await page.goto(`${BASE_URL}/opportunities/opp-3`);
     await expect(page.getByRole('button', { name: 'Approve' })).toBeEnabled();
-    await expect(page.getByRole('button', { name: 'Reject opportunity' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Reject', exact: true })).toBeEnabled();
     for (const path of ['/opportunities/new', '/opportunities/lst-01/edit']) {
       await page.goto(`${BASE_URL}${path}`);
       await expect(page.getByTestId('no-access')).toBeVisible();
@@ -5175,7 +5244,7 @@ test.describe('Opportunity detail (real API)', () => {
     await expect(page.getByTestId('page-title')).toHaveText('E2E Pending Role');
   };
 
-  test('approving a pending posting publishes it, after a reload and in the queue', async ({ page }) => {
+  test('rejecting needs a reason that is saved; approving then publishes it, after a reload and in the queue (SEC-151)', async ({ page }) => {
     await openPosting(page);
     const summary = page.getByRole('region', { name: 'Summary' });
     await expect(summary).toContainText('Job');
@@ -5183,6 +5252,31 @@ test.describe('Opportunity detail (real API)', () => {
     await expect(summary.getByTestId('status-badge')).toHaveText('Pending');
     await expect(page.getByText('E2E posting description')).toBeVisible();
     await expect(page.getByText('GHS 5,000')).toBeVisible();
+
+    // What a decision needs, from the API: deadline, apply link and who posted it.
+    const details = page.getByRole('region', { name: 'Details' });
+    await expect(details).toContainText('31 Mar 2027');
+    await expect(details.getByTestId('apply-link')).toHaveAttribute('href', 'https://e2e-holdings.example/careers/pending-role');
+    const postedBy = page.getByRole('region', { name: 'Posted by' });
+    await expect(postedBy).toContainText('E2E Holdings');
+    await expect(postedBy).toContainText('recruiting@e2e-holdings.example');
+    await expect(postedBy.getByTestId('hirer-verification')).toHaveText('Pending');
+
+    await page.getByRole('button', { name: 'Reject', exact: true }).click();
+    const dialog = page.getByTestId('reject-posting-dialog');
+    await dialog.getByRole('combobox', { name: 'Reason' }).click();
+    await page.getByRole('option', { name: "The application link doesn't work" }).click();
+    await dialog.getByTestId('reject-posting-note').fill('E2E: the link returns a 404 page.');
+    await dialog.getByTestId('reject-posting-confirm').click();
+    await expect(page.getByText('E2E Pending Role from E2E Holdings was rejected. The hirer was told why.')).toBeVisible();
+    await expect(summary.getByTestId('status-badge')).toHaveText('Rejected');
+
+    await page.reload();
+    await expect(page.getByRole('region', { name: 'Summary' }).getByTestId('status-badge')).toHaveText('Rejected');
+    const why = page.getByRole('region', { name: 'Why it was rejected' });
+    await expect(why).toContainText("The application link doesn't work");
+    await expect(why).toContainText('E2E: the link returns a 404 page.');
+    await expect(page.getByRole('button', { name: 'Reject', exact: true })).toBeDisabled();
 
     await page.getByRole('button', { name: 'Approve', exact: true }).click();
     await expect(page.getByText('E2E Pending Role from E2E Holdings was approved.')).toBeVisible();
@@ -5192,6 +5286,8 @@ test.describe('Opportunity detail (real API)', () => {
     await page.reload();
     await expect(page.getByRole('region', { name: 'Summary' }).getByTestId('status-badge')).toHaveText('Published');
     await expect(page.getByRole('button', { name: 'Approve', exact: true })).toBeDisabled();
+    // Approving forgets the old reason.
+    await expect(page.getByRole('region', { name: 'Why it was rejected' })).toHaveCount(0);
 
     await page.goto(`${BASE_URL}/opportunities`, { timeout: 30_000 });
     await page.getByRole('radio', { name: /^Jobs/ }).click(); // the API's "job" is listed under Jobs
@@ -5211,11 +5307,16 @@ test.describe('Opportunity detail (real API)', () => {
     const badge = page.getByRole('region', { name: 'Summary' }).getByTestId('status-badge');
     const before = await badge.innerText();
 
-    await page.getByRole('button', { name: 'Reject opportunity' }).click();
-    await page.getByRole('alertdialog').getByRole('button', { name: 'Reject opportunity' }).click();
-    await expect(page.getByTestId('toast')).toContainText('E2E: the posting could not be saved.');
+    await page.getByRole('button', { name: 'Reject', exact: true }).click();
+    const dialog = page.getByTestId('reject-posting-dialog');
+    await dialog.getByRole('combobox', { name: 'Reason' }).click();
+    await page.getByRole('option', { name: 'It is already listed' }).click();
+    await dialog.getByTestId('reject-posting-confirm').click();
+    // The dialog stays open with the server's message, so the reason isn't lost.
+    await expect(dialog.getByTestId('reject-posting-problem')).toContainText('E2E: the posting could not be saved.');
+    await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(badge).toHaveText(before);
-    await expect(page.getByRole('button', { name: 'Reject opportunity' })).toBeEnabled();
+    await expect(page.getByRole('button', { name: 'Reject', exact: true })).toBeEnabled();
   });
 });
 

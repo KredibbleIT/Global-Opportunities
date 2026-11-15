@@ -32,7 +32,7 @@ const SCREEN_ROUTES = [
   { screens: ['team_scorecard'], level: 'view', method: 'get', path: '/admin/scorecards/team' },
   { screens: ['opportunities_queue'], level: 'view', method: 'get', path: '/admin/opportunities' },
   // SEC-137: approving or rejecting is the queue's; creating, rewriting and deleting a listing are listings_curate's.
-  { screens: ['opportunities_queue'], level: 'edit', method: 'patch', path: () => `/admin/opportunities/${randomId()}`, body: { moderationStatus: 'rejected' } },
+  { screens: ['opportunities_queue'], level: 'edit', method: 'patch', path: () => `/admin/opportunities/${randomId()}`, body: { moderationStatus: 'rejected', rejectionReason: 'duplicate' } },
   { screens: ['opportunities_queue'], level: 'edit', method: 'post', path: () => `/admin/opportunities/${randomId()}/unpublish` },
   { screens: ['listings_curate'], level: 'edit', method: 'post', path: '/admin/opportunities' },
   { screens: ['listings_curate'], level: 'edit', method: 'patch', path: () => `/admin/opportunities/${randomId()}`, body: { title: 'Probe listing title' } },

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { OPPORTUNITY_REJECTION_REASON_CODES, REJECTION_NOTE_MAX } from '../lib/opportunity-rejection.js';
 
 export const opportunityTypes = [
   'job',
@@ -34,6 +35,12 @@ const opportunitySchema = new mongoose.Schema({
   date: String,
   status: { type: String, enum: ['draft', 'published', 'pending', 'approved', 'rejected', 'archived'], default: 'draft', index: true },
   moderationStatus: { type: String, default: 'pending', index: true },
+  // SEC-151: why the Desk turned the posting down (a code from lib/opportunity-rejection.js), the reviewer's
+  // note for the hirer, and when and by whom. Kept only while moderationStatus is 'rejected'.
+  rejectionReason: { type: String, enum: OPPORTUNITY_REJECTION_REASON_CODES },
+  rejectionNote: { type: String, trim: true, maxlength: REJECTION_NOTE_MAX },
+  rejectedAt: Date,
+  rejectedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   workType: String,
   salary: String,
   experienceLevels: { type: String, default: '[]' },
@@ -155,7 +162,9 @@ opportunitySchema.pre('validate', function () {
   } else if (this.status === 'published' || this.moderationStatus === 'published' || this.moderationStatus === 'approved') {
     this.status = 'published';
     this.moderationStatus = 'published';
-  } else if (this.status === 'draft') {
+  } else if (this.status === 'draft' && this.moderationStatus !== 'rejected') {
+    // SEC-151: a later save that changes neither status (the WordPress bookkeeping right after a rejection,
+    // a website edit) must not turn a rejection back into "pending"; only a decision or the hirer's edit does.
     this.moderationStatus = 'pending';
   }
 
@@ -224,6 +233,19 @@ opportunitySchema.pre('validate', function () {
   }
   if (!this.applications) {
     this.applications = { website: 0, app: 0 };
+  }
+
+  // SEC-151: turning a posting down needs a reason the hirer can act on; leaving 'rejected'
+  // (approved, unpublished, or back in review after the hirer's edit) forgets it.
+  if (this.moderationStatus === 'rejected') {
+    if (!this.isNew && this.isModified('moderationStatus') && !this.rejectionReason) {
+      this.invalidate('rejectionReason', 'A rejected posting needs a reason');
+    }
+  } else if (this.rejectionReason || this.rejectionNote || this.rejectedAt || this.rejectedBy) {
+    this.rejectionReason = undefined;
+    this.rejectionNote = undefined;
+    this.rejectedAt = undefined;
+    this.rejectedBy = undefined;
   }
 });
 

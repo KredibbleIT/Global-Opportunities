@@ -58,6 +58,11 @@ export interface PostedOpportunity {
   eventTicketType?: string;
   eventStyle?: string;
   eventBannerUri?: string;
+  /** SEC-151: the Desk's review: pending, published (or approved), rejected. */
+  moderationStatus?: string;
+  /** SEC-151: set while rejected; the sentence and note the reviewer chose. */
+  rejectionReasonLabel?: string;
+  rejectionNote?: string;
 }
 
 export interface RecruiterCompany {

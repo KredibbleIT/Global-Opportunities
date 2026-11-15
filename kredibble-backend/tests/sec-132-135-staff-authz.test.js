@@ -177,7 +177,7 @@ describe('SEC-133: the matrix alone decides', () => {
     const moderator = await createStaffUser({ roles: ['moderator'] });
     expect((await as(moderator).get('/admin/opportunities')).status).toBe(200);
     // Moderating is a PATCH of moderationStatus/vetted: past the guard, stopped by the unknown id.
-    const moderated = await as(moderator).patch(`/admin/opportunities/${new mongoose.Types.ObjectId()}`, { moderationStatus: 'rejected' });
+    const moderated = await as(moderator).patch(`/admin/opportunities/${new mongoose.Types.ObjectId()}`, { moderationStatus: 'rejected', rejectionReason: 'duplicate' });
     expect(moderated.status).toBe(404);
     // SEC-137: creating a listing is listings_curate's, which a Moderator does not hold.
     expect((await as(moderator).post('/admin/opportunities', {})).status).toBe(403);

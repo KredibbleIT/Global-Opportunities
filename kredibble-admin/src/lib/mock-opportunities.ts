@@ -5,6 +5,8 @@
  * state only needs to exist on the admin side.
  */
 
+import type { PostingHirerRecord } from './api';
+
 export type OpportunityType = 'jobs' | 'internships' | 'events' | 'grants';
 export type ModerationStatus = 'pending' | 'approved' | 'rejected';
 
@@ -24,7 +26,48 @@ export interface PostedOpportunity {
   eventCategory?: string;
   grantBudgetRange?: string;
   grantSector?: string;
+  /** SEC-151: what the review page needs to decide: when it closes, where people apply, who posted it. */
+  deadline?: string;
+  applyUrl?: string;
+  hirer?: PostingHirerRecord | null;
+  /** SEC-151: set while rejected (a code from REJECTION_REASONS, the note for the hirer, when). */
+  rejectionReason?: string;
+  rejectionNote?: string;
+  rejectedAt?: string;
 }
+
+const WAVE: PostingHirerRecord = {
+  accountId: 'hirer-wave',
+  userId: 'user-wave',
+  companyName: 'Wave Mobile Money',
+  recruiterName: 'Aminata Diop',
+  email: 'talent@wave-mobile.example',
+  phone: '+221 77 000 0000',
+  verificationStatus: 'verified',
+};
+const GOOGLE: PostingHirerRecord = {
+  accountId: 'hirer-google',
+  userId: 'user-google',
+  companyName: 'Google LLC',
+  recruiterName: 'Kofi Boateng',
+  email: 'ghana-hiring@google.example',
+  verificationStatus: 'verified',
+};
+const ASHESI: PostingHirerRecord = {
+  accountId: 'hirer-ashesi',
+  userId: 'user-ashesi',
+  companyName: 'Ashesi Ventures',
+  recruiterName: 'Efua Mensah',
+  email: 'ventures@ashesi.example',
+  verificationStatus: 'pending',
+};
+const KANZU: PostingHirerRecord = {
+  accountId: 'hirer-kanzu',
+  userId: 'user-kanzu',
+  companyName: 'Kanzu Code',
+  email: 'jobs@kanzucode.example',
+  verificationStatus: 'not_submitted',
+};
 
 export const postedOpportunities: PostedOpportunity[] = [
   {
@@ -40,6 +83,9 @@ export const postedOpportunities: PostedOpportunity[] = [
     moderationStatus: 'approved',
     workType: 'Hybrid',
     salary: '$85,000 – $110,000/yr',
+    deadline: '2026-08-31',
+    applyUrl: 'https://careers.google.example/jobs/senior-product-designer',
+    hirer: GOOGLE,
   },
   {
     id: 'opp-2',
@@ -53,6 +99,9 @@ export const postedOpportunities: PostedOpportunity[] = [
     date: '29 Jun 2026',
     moderationStatus: 'approved',
     workType: 'On-site',
+    deadline: '2026-09-15',
+    applyUrl: 'https://careers.google.example/jobs/ux-research-intern',
+    hirer: GOOGLE,
   },
   {
     id: 'opp-3',
@@ -67,6 +116,9 @@ export const postedOpportunities: PostedOpportunity[] = [
     moderationStatus: 'pending',
     workType: 'Remote',
     salary: '$60,000 – $90,000/yr',
+    deadline: '2026-12-15',
+    applyUrl: 'https://wave-mobile.example/careers/backend-engineer-payments',
+    hirer: WAVE,
   },
   {
     id: 'opp-4',
@@ -81,6 +133,7 @@ export const postedOpportunities: PostedOpportunity[] = [
     moderationStatus: 'pending',
     eventDateTime: '2 Aug 2026, 6:00 PM GMT',
     eventCategory: 'Networking',
+    hirer: ASHESI,
   },
   {
     id: 'opp-5',
@@ -95,6 +148,9 @@ export const postedOpportunities: PostedOpportunity[] = [
     moderationStatus: 'pending',
     grantBudgetRange: 'Up to $25,000',
     grantSector: 'Education',
+    deadline: '2026-10-01',
+    applyUrl: 'https://ventures.ashesi.example/edtech-grant',
+    hirer: ASHESI,
   },
   {
     id: 'opp-6',
@@ -109,5 +165,9 @@ export const postedOpportunities: PostedOpportunity[] = [
     moderationStatus: 'rejected',
     workType: 'Contract',
     salary: '$3,000/mo',
+    hirer: KANZU,
+    rejectionReason: 'incomplete',
+    rejectionNote: 'Add how to apply and what the 90-day budget covers.',
+    rejectedAt: '2026-07-16T10:00:00.000Z',
   },
 ];
