@@ -61,10 +61,9 @@ function RootLayout() {
     setEmailVerificationHandler(() => {
       router.push('/(auth)/verify-email' as any);
     });
-    // SEC-138: register on launch (a returning user) and after every sign-in or sign-up.
-    registerForPushNotificationsAsync().catch(() => {
-      // Non-blocking in dev/simulators
-    });
+    // SEC-138: register after every sign-in or sign-up. A returning person registers once
+    // the launch screen has restored their session (SEC-160): registering here, before that,
+    // could re-attach the push token of a session that launch is about to sign out.
     setSessionSavedHandler(() => registerForPushNotificationsAsync());
     // Tapping a push opens the list; a push that arrives while the app is open refreshes it.
     const stopTaps = subscribeToNotificationTaps(() => {

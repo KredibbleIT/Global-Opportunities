@@ -199,7 +199,7 @@ export default function LoginScreen() {
     setAuthError('');
     setIsSubmitting(true);
     try {
-      const session = await loginMobile(email.trim(), password);
+      const session = await loginMobile(email.trim(), password, rememberMe);
       const backendRole = session.user.role === 'hirer' ? 'hirer' : 'seeker';
       authStore.setSession(session.token, session.user);
       authStore.setRole(backendRole);
@@ -337,6 +337,10 @@ export default function LoginScreen() {
             <TouchableOpacity
               activeOpacity={0.7}
               onPress={() => setRememberMe(!rememberMe)}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: rememberMe }}
+              accessibilityHint="Keeps you signed in when you close the app"
+              hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
               style={{ flexDirection: 'row', alignItems: 'center' }}
             >
               <View style={{
