@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs';
 
 const DUMMY_HASH = '$2a$12$bRWsa/PC32qEk5cFCdQ/n.DrtmNZZeIr7Fc15SfH6SoezqktcAbCO';
 import { Router } from 'express';
-import { requireAuth, requireAdminOrStaffAuth, signToken, signAdminToken, setAdminCookie, clearAdminCookie, setAdminRefreshCookie, clearAdminRefreshCookie, generateRefreshToken, hashRefreshToken } from '../middleware/auth.js';
+import { requireAuth, requireAdminOrStaffAuth, signToken, signAdminToken, setAdminCookie, clearAdminCookie, setAdminRefreshCookie, clearAdminRefreshCookie, generateRefreshToken, hashRefreshToken, isStaffAccount, STAFF_APP_SIGN_IN_MESSAGE } from '../middleware/auth.js';
 import { resolveStaffRoles } from '../middleware/portal-auth.js';
 import { validate } from '../middleware/validate.js';
 import { loginSchema, registerSchema, refreshSchema, forgotPasswordSchema,
@@ -283,6 +283,21 @@ authRouter.post(
         });
         throw new ApiError(401, 'Invalid email or password');
       }
+      // SEC-161: an active staffer signs in to the admin dashboard, where their staff roles decide what they may do.
+      // An app token would carry role admin, which the general routes read as full admin. Only someone who knew the
+      // password gets here, so saying why tells a guesser nothing (as SEC-147 does for suspended accounts).
+      if (staff) {
+        await auditReq(req, {
+          action: AUDIT_ACTIONS.LOGIN_FAILURE,
+          resourceType: AUDIT_RESOURCE_TYPES.USER,
+          resourceId: user._id,
+          outcome: 'failure',
+          metadata: { reason: 'staff_account_app_sign_in' },
+        });
+        const error = new ApiError(403, STAFF_APP_SIGN_IN_MESSAGE);
+        error.code = 'STAFF_ACCOUNT';
+        throw error;
+      }
     }
 
     // SEC-025: Reset failed login attempts on successful login
@@ -391,6 +406,20 @@ authRouter.post(
           metadata: { reason: 'account_suspended' },
         });
         throw new ApiError(403, SUSPENDED_MESSAGE);
+      }
+
+      // SEC-161: a staff account never gets an app token here either: not from an app session that began before the
+      // sign-in refused staff, nor from the admin session's own refresh token (same collection) posted to this route.
+      // The token is left as it is, so posting the admin refresh token here does not sign the dashboard out.
+      if (await isStaffAccount(user._id, user.role)) {
+        await auditReq(req, {
+          action: AUDIT_ACTIONS.REFRESH_TOKEN,
+          resourceType: AUDIT_RESOURCE_TYPES.USER,
+          resourceId: user._id,
+          outcome: 'failure',
+          metadata: { reason: 'staff_account_app_refresh' },
+        });
+        throw new ApiError(401, 'Invalid refresh token');
       }
 
       // Rotate: generate new refresh token

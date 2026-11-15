@@ -4,6 +4,7 @@ import { env } from './config/env.js';
 import { socketCorsOptions } from './lib/cors.js';
 import { Channel, CommunityMembership } from './models/Community.js';
 import { User } from './models/User.js';
+import { isStaffAccount } from './middleware/auth.js';
 import logger from './lib/logger.js';
 
 let io;
@@ -55,6 +56,10 @@ export const initSocket = (server) => {
       }
       if (payload.tv !== undefined && payload.tv !== user.tokenVersion) {
         return next(new Error('UNAUTHORIZED: Token revoked due to security event'));
+      }
+      // SEC-161: a staff account's app token would join every private group's room as an admin.
+      if (await isStaffAccount(payload.sub, user.role, payload.role)) {
+        return next(new Error('UNAUTHORIZED: Team accounts sign in to the admin dashboard'));
       }
 
       socket.data.auth = { sub: String(payload.sub), role: payload.role };
