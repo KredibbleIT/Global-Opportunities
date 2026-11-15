@@ -6,6 +6,7 @@ import { useRouter } from 'expo-router';
 import { ChevronLeft, ChevronRight, Users, Briefcase, GraduationCap, Calendar, Award, Trash2, Plus } from 'lucide-react-native';
 import { authStore, PostedOpportunity } from '../../constants/authStore';
 import { getOpportunities, deleteOpportunity } from '../../lib/api';
+import { postingReview, type PostingReviewTone } from '../../lib/posting-review';
 import { useToast } from '../../components/ui/ToastProvider';
 
 const TYPE_META: Record<PostedOpportunity['type'], { label: string; Icon: any; color: string }> = {
@@ -13,6 +14,13 @@ const TYPE_META: Record<PostedOpportunity['type'], { label: string; Icon: any; c
   internships: { label: 'Internship', Icon: GraduationCap, color: '#F59E0B' },
   events: { label: 'Event', Icon: Calendar, color: '#10B981' },
   grants: { label: 'Grant', Icon: Award, color: '#EF4444' },
+};
+
+// SEC-151: the review state as a word on a tinted pill (never colour alone).
+const STATUS_STYLES: Record<PostingReviewTone, { pill: { backgroundColor: string }; text: { color: string } }> = {
+  live: { pill: { backgroundColor: '#ECFDF3' }, text: { color: '#067647' } },
+  review: { pill: { backgroundColor: '#FFFAEB' }, text: { color: '#B54708' } },
+  rejected: { pill: { backgroundColor: '#FEF3F2' }, text: { color: '#B42318' } },
 };
 
 export default function MyPostingsScreen() {
@@ -55,6 +63,9 @@ export default function MyPostingsScreen() {
           applicantsCount: opp.applicantsCount || 0,
           applicants: [],
           date: opp.createdAt ? new Date(opp.createdAt).toLocaleDateString() : 'Recent',
+          moderationStatus: opp.moderationStatus,
+          rejectionReasonLabel: opp.rejectionReasonLabel,
+          rejectionNote: opp.rejectionNote,
         }));
 
         if (isMounted) {
@@ -142,7 +153,7 @@ export default function MyPostingsScreen() {
           <>
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionHeader} className="font-sans">
-                {opportunities.length} active posting{opportunities.length === 1 ? '' : 's'}
+                {opportunities.length} posting{opportunities.length === 1 ? '' : 's'}
               </Text>
             </View>
 
@@ -165,46 +176,73 @@ export default function MyPostingsScreen() {
               opportunities.map((opp) => {
                 const meta = TYPE_META[opp.type] || TYPE_META.jobs;
                 const isDeleting = deletingId === opp.id;
+                const review = postingReview(opp);
                 return (
                   <View key={opp.id} style={styles.card}>
-                    <TouchableOpacity
-                      onPress={() => goToOpportunity(opp)}
-                      activeOpacity={0.8}
-                      style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
-                    >
-                      <View style={[styles.typeIconWrap, { backgroundColor: meta.color }]}>
-                        <meta.Icon size={18} color="#FFFFFF" />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.cardTitle} numberOfLines={1} className="font-sans">
-                          {opp.title}
-                        </Text>
-                        <Text style={styles.cardSubtitle} className="font-sans">
-                          {meta.label} • {opp.location}
-                        </Text>
-                        <View style={styles.applicantsRow}>
-                          <Users size={12} color="#8A8D9F" style={{ marginRight: 4 }} />
-                          <Text style={styles.applicantsText} className="font-sans">
-                            {opp.applicantsCount} applicant{opp.applicantsCount === 1 ? '' : 's'} • Posted {opp.date}
-                          </Text>
+                    <View style={styles.cardRow}>
+                      <TouchableOpacity
+                        onPress={() => goToOpportunity(opp)}
+                        activeOpacity={0.8}
+                        style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
+                      >
+                        <View style={[styles.typeIconWrap, { backgroundColor: meta.color }]}>
+                          <meta.Icon size={18} color="#FFFFFF" />
                         </View>
-                      </View>
-                    </TouchableOpacity>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.cardTitle} numberOfLines={1} className="font-sans">
+                            {opp.title}
+                          </Text>
+                          <Text style={styles.cardSubtitle} className="font-sans">
+                            {meta.label} • {opp.location}
+                          </Text>
+                          <View style={styles.applicantsRow}>
+                            <Users size={12} color="#8A8D9F" style={{ marginRight: 4 }} />
+                            <Text style={styles.applicantsText} className="font-sans">
+                              {opp.applicantsCount} applicant{opp.applicantsCount === 1 ? '' : 's'} • Posted {opp.date}
+                            </Text>
+                          </View>
+                          <View style={[styles.statusPill, STATUS_STYLES[review.tone].pill]} testID={`posting-status-${opp.id}`}>
+                            <Text style={[styles.statusText, STATUS_STYLES[review.tone].text]} className="font-sans">
+                              {review.label}
+                            </Text>
+                          </View>
+                        </View>
+                      </TouchableOpacity>
 
-                    <View style={styles.cardActions}>
-                      {isDeleting ? (
-                        <ActivityIndicator size="small" color="#EF4444" style={{ marginHorizontal: 8 }} />
-                      ) : (
-                        <TouchableOpacity
-                          onPress={() => handleDelete(opp)}
-                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                          style={styles.deleteButton}
-                        >
-                          <Trash2 size={16} color="#EF4444" />
-                        </TouchableOpacity>
-                      )}
-                      <ChevronRight size={18} color="#A1A1AA" />
+                      <View style={styles.cardActions}>
+                        {isDeleting ? (
+                          <ActivityIndicator size="small" color="#EF4444" style={{ marginHorizontal: 8 }} />
+                        ) : (
+                          <TouchableOpacity
+                            onPress={() => handleDelete(opp)}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                            style={styles.deleteButton}
+                          >
+                            <Trash2 size={16} color="#EF4444" />
+                          </TouchableOpacity>
+                        )}
+                        <ChevronRight size={18} color="#A1A1AA" />
+                      </View>
                     </View>
+                    {review.tone === 'rejected' && (
+                      // SEC-151: the reviewer's reason and note, and the way back into review.
+                      <View style={styles.rejectionBox} testID={`posting-rejection-${opp.id}`}>
+                        <Text style={styles.rejectionTitle} className="font-sans">Why it wasn&apos;t approved</Text>
+                        <Text style={styles.rejectionReason} className="font-sans">{review.reason}</Text>
+                        {review.note ? (
+                          <Text style={styles.rejectionNote} className="font-sans">&ldquo;{review.note}&rdquo;</Text>
+                        ) : null}
+                        <TouchableOpacity
+                          onPress={() => router.push({ pathname: '/opportunities/create', params: { editId: opp.id } })}
+                          style={styles.resubmitButton}
+                          activeOpacity={0.8}
+                          accessibilityRole="button"
+                          accessibilityHint="Your changes go back to the Desk for review"
+                        >
+                          <Text style={styles.resubmitText} className="font-sans">Edit and resubmit</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
                   </View>
                 );
               })
@@ -243,10 +281,24 @@ const styles = StyleSheet.create({
   },
   createButtonText: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
   card: {
-    flexDirection: 'row', alignItems: 'center',
     backgroundColor: '#FFFFFF', borderRadius: 16, padding: 14,
     borderWidth: 1, borderColor: '#E5E6F2', marginBottom: 12,
   },
+  cardRow: { flexDirection: 'row', alignItems: 'center' },
+  statusPill: { alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999 },
+  statusText: { fontSize: 11, fontWeight: '600' },
+  rejectionBox: {
+    marginTop: 12, padding: 12, borderRadius: 12,
+    backgroundColor: '#FEF3F2', borderWidth: 1, borderColor: '#FECDCA',
+  },
+  rejectionTitle: { fontSize: 12, fontWeight: '600', color: '#B42318' },
+  rejectionReason: { fontSize: 13, color: '#1A1A1A', marginTop: 4 },
+  rejectionNote: { fontSize: 13, color: '#4B4B5C', marginTop: 4 },
+  resubmitButton: {
+    alignSelf: 'flex-start', marginTop: 10, minHeight: 44, justifyContent: 'center',
+    paddingHorizontal: 14, borderRadius: 10, backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#FECDCA',
+  },
+  resubmitText: { fontSize: 13, fontWeight: '600', color: '#B42318' },
   cardActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   deleteButton: { padding: 4 },
   typeIconWrap: {

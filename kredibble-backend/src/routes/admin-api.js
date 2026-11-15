@@ -138,6 +138,8 @@ import { validate } from '../middleware/validate.js';
 import { postChannelMessage, listChannelMessages, getThread, findPost, setAllowReplies } from '../lib/chat.js';
 import { notifyUser } from '../lib/user-notify.js';
 import { pushInBackground, pushNotification } from '../lib/push.js';
+import { rejectionNotice, rejectionReasonLabel } from '../lib/opportunity-rejection.js';
+import logger from '../lib/logger.js';
 import { evictFromChannelRoom } from '../socket.js';
 import { toRequestResponse } from './ambassador.js';
 import { moveUserSegment, normalizeSegments, GENERAL_SEGMENT } from '../lib/segments.js';
@@ -471,10 +473,59 @@ export const toOpportunityAdminObject = (record) => {
     coverImage: raw.imageUrl || raw.coverImage,
     referralOnApply: Boolean(raw.referralOnApply || raw.referralCodeOnApply),
     referralCodeOnApply: Boolean(raw.referralOnApply || raw.referralCodeOnApply),
+    rejectionReasonLabel: rejectionReasonLabel(raw.rejectionReason) ?? undefined,
+    rejectedAt: raw.rejectedAt ? new Date(raw.rejectedAt).toISOString() : undefined,
     views,
     applications,
   };
 };
+
+/**
+ * SEC-151: the hirer behind a posting, for the review page and the rejection notice. A posting points at its
+ * hirer by HirerAccount id or by the owner's User id (SEC-047), in hirerId or createdBy. A staff-curated
+ * listing has no HirerAccount, so it gets null.
+ * Verification follows the hirers directory: a verification case decides; without one, the account's own flag.
+ * @returns {Promise<null | { accountId: string, userId: string | null, companyName: string, recruiterName?: string,
+ *   email?: string, phone?: string, verificationStatus: 'verified' | 'pending' | 'rejected' | 'not_submitted' }>}
+ */
+const findPostingHirer = async (record) => {
+  const ids = [record.hirerId, record.createdBy]
+    .map((value) => (value && typeof value === 'object' && value._id ? value._id : value))
+    .filter((value) => value && mongoose.isValidObjectId(value))
+    .map((value) => new mongoose.Types.ObjectId(String(value)));
+  if (ids.length === 0) return null;
+
+  const account = await HirerAccount.findOne({ $or: [{ _id: { $in: ids } }, { userId: { $in: ids } }] })
+    .populate('userId', 'name email role')
+    .lean();
+  if (!account) return null;
+  const owner = account.userId && typeof account.userId === 'object' ? account.userId : null;
+  const ownerId = owner?._id ?? account.userId ?? null;
+
+  const verificationCase = await CompanyVerification.findOne({ hirerId: { $in: [account._id, ownerId].filter(Boolean) } })
+    .select('overallStatus')
+    .lean();
+  const caseStatus = verificationCase?.overallStatus === 'approved' ? 'verified' : verificationCase?.overallStatus;
+  const verificationStatus = ['verified', 'pending', 'rejected'].includes(caseStatus)
+    ? caseStatus
+    : account.verified ? 'verified' : verificationCase ? 'pending' : 'not_submitted';
+
+  return {
+    accountId: String(account._id),
+    userId: ownerId ? String(ownerId) : null,
+    companyName: account.companyName,
+    recruiterName: account.recruiterName || owner?.name || undefined,
+    email: account.recruiterEmail || account.companyEmail || owner?.email || undefined,
+    phone: account.recruiterPhone || undefined,
+    verificationStatus,
+  };
+};
+
+/** A hirer's posting as the review page reads it: the admin object plus who posted it (SEC-151). */
+const toPostingReviewObject = async (record) => ({
+  ...toOpportunityAdminObject(record),
+  hirer: await findPostingHirer(record),
+});
 
 const prepareOpportunity = (data, actorId, existing = {}) => {
   const allowed = {};
@@ -546,11 +597,11 @@ const prepareOpportunity = (data, actorId, existing = {}) => {
 
 // SEC-137: moderating a listing (approve, reject) is the queue's job; writing one is listings_curate's. A Moderator holds
 // the first through the "moderate" toggle, and Opportunities Officers, Desk Leads and Super Admins hold both.
-const MODERATION_FIELDS = new Set(['moderationStatus', 'vetted']);
+const MODERATION_FIELDS = new Set(['moderationStatus', 'vetted', 'rejectionReason', 'rejectionNote']);
 
 /**
- * Guards PATCH /opportunities/:id: `opportunities_queue` edit when the body only moderates (moderationStatus, vetted),
- * `listings_curate` edit for anything else, an empty body included.
+ * Guards PATCH /opportunities/:id: `opportunities_queue` edit when the body only moderates (moderationStatus, vetted,
+ * and a rejection's reason and note), `listings_curate` edit for anything else, an empty body included.
  */
 const requireOpportunityPatchScreen = (req, res, next) => {
   const fields = Object.keys(req.body || {});
@@ -607,7 +658,7 @@ adminApiRouter.get('/opportunities/:id', requireAdminOrStaffAuth, requireScreen(
     .populate('writerId', 'name fullName email')
     .populate('assignedWriterId', 'name fullName email');
   if (!record) throw notFound('Opportunity');
-  itemResponse(res, toOpportunityAdminObject(record));
+  itemResponse(res, await toPostingReviewObject(record));
 }));
 
 adminApiRouter.post('/opportunities', requireAdminOrStaffAuth, requireScreen('listings_curate', 'edit'), validate(opportunityCreateSchema), asyncHandler(async (req, res) => {
@@ -638,12 +689,33 @@ adminApiRouter.patch('/opportunities/:id', requireAdminOrStaffAuth, requireOppor
   if (!record) throw notFound('Opportunity');
   const wasVetted = record.vetted;
   const wasPublished = record.status === 'published';
+  // SEC-151: opportunityUpdateSchema has already required a reason (and a note for "other") with a rejection.
+  const rejecting = typeof req.body.moderationStatus === 'string' && req.body.moderationStatus.toLowerCase() === 'rejected';
 
   const prepared = prepareOpportunity(req.body, req.auth.sub, record);
   Object.assign(record, prepared);
+  if (rejecting) {
+    record.moderationStatus = 'rejected';
+    record.rejectionReason = req.body.rejectionReason;
+    record.rejectionNote = req.body.rejectionNote || undefined;
+    record.rejectedAt = new Date();
+    record.rejectedBy = req.auth.sub;
+  }
   await record.save();
   const sync = await syncManagedRecord('opportunities', record);
   await logActivity(req.auth.sub, 'updated', 'opportunities', record);
+
+  // SEC-151: the hirer hears why, in the app's list and as a push. A failed notice never undoes the decision.
+  const hirer = await findPostingHirer(record);
+  let hirerNotified = false;
+  if (rejecting && hirer?.userId) {
+    try {
+      await notifyUser(hirer.userId, { ...rejectionNotice(record), type: 'opportunity', priority: 'high' });
+      hirerNotified = true;
+    } catch (error) {
+      logger.warn({ err: error, opportunityId: String(record._id) }, 'Posting rejected, but the notice to the hirer failed');
+    }
+  }
 
   await auditReq(req, {
     action: AUDIT_ACTIONS.OPPORTUNITY_UPDATE,
@@ -654,6 +726,7 @@ adminApiRouter.patch('/opportunities/:id', requireAdminOrStaffAuth, requireOppor
       title: record.title,
       status: record.status,
       vetted: record.vetted,
+      ...(rejecting ? { moderationStatus: 'rejected', rejectionReason: record.rejectionReason, hirerNotified } : {}),
     },
   });
 
@@ -677,7 +750,7 @@ adminApiRouter.patch('/opportunities/:id', requireAdminOrStaffAuth, requireOppor
     });
   }
 
-  itemResponse(res, { ...toOpportunityAdminObject(record), sync });
+  itemResponse(res, { ...toOpportunityAdminObject(record), hirer, sync });
 }));
 
 adminApiRouter.post('/opportunities/:id/unpublish', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'edit'), asyncHandler(async (req, res) => {
