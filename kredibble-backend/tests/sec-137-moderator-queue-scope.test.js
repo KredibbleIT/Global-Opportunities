@@ -36,7 +36,7 @@ describe('SEC-137: the opportunities queue moderates; curating listings is listi
     expect(created.status).toBe(201);
     const id = created.body.data.id;
 
-    expect((await send('patch', `/admin/opportunities/${id}`, moderator, { moderationStatus: 'rejected' })).status).toBe(200);
+    expect((await send('patch', `/admin/opportunities/${id}`, moderator, { moderationStatus: 'rejected', rejectionReason: 'duplicate' })).status).toBe(200);
     const approved = await send('patch', `/admin/opportunities/${id}`, moderator, { vetted: true, moderationStatus: 'published' });
     expect(approved.status).toBe(200);
     expect(approved.body.data.vetted).toBe(true);
@@ -60,7 +60,7 @@ describe('SEC-137: the opportunities queue moderates; curating listings is listi
     const id = created.body.data.id;
 
     expect((await send('patch', `/admin/opportunities/${id}`, officer, { title: 'Senior data analyst' })).status).toBe(200);
-    expect((await send('patch', `/admin/opportunities/${id}`, officer, { moderationStatus: 'rejected' })).status).toBe(200);
+    expect((await send('patch', `/admin/opportunities/${id}`, officer, { moderationStatus: 'rejected', rejectionReason: 'duplicate' })).status).toBe(200);
     expect((await send('delete', `/admin/opportunities/${id}`, officer)).status).toBe(200);
   });
 

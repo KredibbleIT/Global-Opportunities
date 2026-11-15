@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ROLE_IDS } from '../lib/permissions.js';
 import { KPI_KEYS } from '../lib/targets.js';
+import { OPPORTUNITY_REJECTION_REASON_CODES, REJECTION_NOTE_MAX } from '../lib/opportunity-rejection.js';
 
 // YYYY-MM with a real calendar month (rejects '2026-13', which /^\d{4}-\d{2}$/ allows).
 const YEAR_MONTH_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -576,6 +577,20 @@ export const opportunityUpdateSchema = z.object({
     referralCodeOnApply: z.boolean().optional(),
     workType: z.string().trim().optional(),
     salary: z.string().trim().optional(),
+    // SEC-151: sent with moderationStatus 'rejected', and only then.
+    rejectionReason: z.enum(OPPORTUNITY_REJECTION_REASON_CODES).optional(),
+    rejectionNote: z.string().trim().max(REJECTION_NOTE_MAX, `Keep the note under ${REJECTION_NOTE_MAX} characters`).optional(),
+  }).superRefine((body, ctx) => {
+    const rejecting = typeof body.moderationStatus === 'string' && body.moderationStatus.toLowerCase() === 'rejected';
+    if (rejecting && !body.rejectionReason) {
+      ctx.addIssue({ code: 'custom', path: ['rejectionReason'], message: 'Choose why the posting is rejected' });
+    }
+    if (rejecting && body.rejectionReason === 'other' && !body.rejectionNote) {
+      ctx.addIssue({ code: 'custom', path: ['rejectionNote'], message: 'Add a note explaining the reason' });
+    }
+    if (!rejecting && (body.rejectionReason !== undefined || body.rejectionNote !== undefined)) {
+      ctx.addIssue({ code: 'custom', path: ['rejectionReason'], message: 'A reason is sent only with a rejection' });
+    }
   }),
 });
 

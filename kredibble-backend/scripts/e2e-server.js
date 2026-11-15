@@ -57,7 +57,16 @@ const { CompanyVerification } = await import('../src/models/Platform.js');
 const seeker = await User.create({ name: 'E2E Seeker', email: 'e2e-seeker@kredibble.com', role: 'seeker', passwordHash: 'x' });
 await SeekerProfile.create({ userId: seeker._id, profession: 'Data Analyst', country: 'Ghana' });
 const hirer = await User.create({ name: 'E2E Recruiter', email: 'e2e-hirer@kredibble.com', role: 'hirer', passwordHash: 'x' });
-const account = await HirerAccount.create({ userId: hirer._id, companyName: 'E2E Holdings', industry: 'Finance', location: 'Accra' });
+const account = await HirerAccount.create({
+  userId: hirer._id,
+  companyName: 'E2E Holdings',
+  industry: 'Finance',
+  location: 'Accra',
+  // SEC-151: the posting review page shows who to contact.
+  recruiterName: 'E2E Recruiter',
+  recruiterEmail: 'recruiting@e2e-holdings.example',
+  recruiterPhone: '+233 20 000 1515',
+});
 await CompanyVerification.create({ hirerId: account._id, name: 'E2E Holdings', overallStatus: 'pending' });
 
 // Team directory (List pages smoke): one staff row so the members table has
@@ -167,7 +176,7 @@ const reviewCase = await CompanyVerification.create({
 });
 const { Opportunity } = await import('../src/models/Platform.js');
 
-// Opportunity moderation (SEC-077 Task 11).
+// Opportunity moderation (SEC-077 Task 11). Posted by E2E Holdings' hirer, as the app records it (SEC-151).
 await Opportunity.create({
   title: 'E2E Pending Role',
   type: 'job',
@@ -178,6 +187,10 @@ await Opportunity.create({
   salary: 'GHS 5,000',
   moderationStatus: 'pending',
   vetted: false,
+  createdBy: hirer._id,
+  hirerId: hirer._id,
+  deadline: new Date('2027-03-31T00:00:00Z'),
+  applyUrl: 'https://e2e-holdings.example/careers/pending-role',
 });
 
 await VerificationDoc.create([

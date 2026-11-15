@@ -34,6 +34,7 @@ import { Channel, ChannelPost, CommunityMembership, Report } from '../models/Com
 import { Article, Notification } from '../models/Content.js';
 import { Ambassador, OpportunityEngagement, Testimonial } from '../models/AdminPortal.js';
 import { auditReq, AUDIT_ACTIONS, AUDIT_RESOURCE_TYPES } from '../lib/audit.js';
+import { CLEARED_REJECTION, rejectionReasonLabel } from '../lib/opportunity-rejection.js';
 import { searchLimiter, chatLimiter, testimonialLimiter, referenceDataLimiter } from '../lib/rate-limiters.js';
 import { normalizeLegacyRole } from '../lib/permissions.js';
 import { postChannelMessage, listChannelMessages, getThread, findPost } from '../lib/chat.js';
@@ -72,6 +73,8 @@ const withParsedOpportunity = (opportunity) =>
   opportunity && {
     ...toClientObject(opportunity),
     experienceLevels: parseJson(opportunity.experienceLevels),
+    // SEC-151: what the hirer reads for a turned-down posting (only its owner and staff can read one).
+    rejectionReasonLabel: rejectionReasonLabel(opportunity.rejectionReason) ?? undefined,
   };
 
 const withParsedCandidate = (candidate) =>
@@ -350,6 +353,11 @@ const collectionRoutes = ({
       // SEC-007: unknown keys are dropped, admin-only keys only for admins.
       const allowed = buildUpdatePayload(policy, req.body, req.auth?.role);
       const data = normalizeIn ? normalizeIn(allowed) : allowed;
+      // SEC-151: a hirer editing a posting the Desk turned down sends it back for review, and the old reason goes.
+      // (findByIdAndUpdate skips the model's save hooks, so this is spelled out here.)
+      if (resourceName === 'Opportunity' && req.auth?.role !== ADMIN && existing.moderationStatus === 'rejected') {
+        Object.assign(data, { moderationStatus: 'pending', status: 'draft', ...CLEARED_REJECTION });
+      }
       const item = await Model.findByIdAndUpdate(
         req.params.id,
         data,
@@ -433,12 +441,18 @@ const opportunityReadScope = (req) => {
 /** Moderation and integration bookkeeping stays with administrators. */
 const redactOpportunity = (opportunity, req) => {
   if (req.auth?.role === ADMIN) return opportunity;
-  const { wordpressSync, assignedWriterId, vettedBy, vettedAt, ...visible } = opportunity;
+  // SEC-151: the hirer sees why a posting was turned down, not which staff member decided.
+  const { wordpressSync, assignedWriterId, vettedBy, vettedAt, rejectedBy, ...visible } = opportunity;
   return visible;
 };
 
 /** Vetting and publishing go through the admin opportunity API, never the standard one. */
 const assertOpportunityWritable = async (body, req) => {
+  // SEC-151: rejecting needs a reason the hirer can act on, so it happens only in the admin's Opportunities queue,
+  // even for an admin token here.
+  if (typeof body?.moderationStatus === 'string' && body.moderationStatus.toLowerCase() === 'rejected') {
+    throw new ApiError(400, 'Reject a posting from the admin Opportunities queue, which asks for a reason');
+  }
   if (req.auth?.role === ADMIN) return;
   if (body?.vetted === true || ['published', 'approved'].includes(body?.moderationStatus)) {
     throw new ApiError(403, 'Only the admin opportunity API can vet or publish an opportunity');

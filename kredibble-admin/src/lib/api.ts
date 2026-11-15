@@ -275,8 +275,26 @@ export type OpportunityRecord = {
   referralCodeOnApply?: boolean;
   views?: { website: number; app: number };
   applications?: { website: number; app: number };
+  /** SEC-151: set only while the posting is rejected. The code is one of REJECTION_REASONS; the label is what the hirer reads. */
+  rejectionReason?: string;
+  rejectionReasonLabel?: string;
+  rejectionNote?: string;
+  rejectedAt?: string;
+  /** SEC-151: who posted it (GET /admin/opportunities/:id and the PATCH answer); null for a staff-curated listing. */
+  hirer?: PostingHirerRecord | null;
   createdAt: string;
   updatedAt: string;
+};
+
+/** The hirer behind a posting, as the review page shows it (SEC-151). */
+export type PostingHirerRecord = {
+  accountId: string;
+  userId: string | null;
+  companyName: string;
+  recruiterName?: string;
+  email?: string;
+  phone?: string;
+  verificationStatus: "verified" | "pending" | "rejected" | "not_submitted";
 };
 
 export type AnalyticsSummary = {
@@ -872,9 +890,18 @@ export const getOpportunityById = async (id: string) => {
   return request<OpportunityRecord>(`/admin/opportunities/${id}`);
 };
 
-/** Approving vets and publishes a posting; rejecting only sets the status (2026-10-04 decision). */
-export const moderateOpportunity = async (id: string, decision: "approve" | "reject") => {
-  const body = decision === "approve" ? { vetted: true, moderationStatus: "published" } : { moderationStatus: "rejected" };
+/** Why a posting is turned down (SEC-151): a reason code, and a note for the hirer ("other" needs one). */
+export type PostingRejection = { reason: string; note?: string };
+
+/**
+ * Approving vets and publishes a posting. Rejecting sets the status with the reason the hirer is shown (SEC-151:
+ * the API refuses a rejection without one, and tells the hirer in the app).
+ */
+export const moderateOpportunity = async (id: string, decision: "approve" | "reject", rejection?: PostingRejection) => {
+  const body =
+    decision === "approve"
+      ? { vetted: true, moderationStatus: "published" }
+      : { moderationStatus: "rejected", rejectionReason: rejection?.reason, ...(rejection?.note ? { rejectionNote: rejection.note } : {}) };
   return request<OpportunityRecord>(`/admin/opportunities/${id}`, { method: "PATCH", body: JSON.stringify(body) });
 };
 
