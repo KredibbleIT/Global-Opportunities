@@ -90,7 +90,7 @@ export function ReportPage({ view }: { view: ReportView }) {
   return (
     <div className="space-y-4">
       <div data-print-hide className="space-y-4">
-        <h1 className="sr-only">Monthly report</h1>
+        <h1 data-testid="page-title" className="sr-only">Monthly report</h1>
         {/* The controls row of the design: the month, the sample-data pill, and Download PDF at the far end. */}
         <div className="flex flex-wrap items-center gap-3">
           <Select className="w-fit" ariaLabel="Month" sheetTitle="Select month" icon={CalendarRange} options={monthOptions} value={month} onChange={setMonth} />
