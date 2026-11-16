@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { fileTypeFromBuffer } from 'file-type';
-import { uploadBufferToCloudinary } from '../lib/cloudinary.js';
+import { uploadBuffer } from '../lib/storage.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireAdminScreen } from '../middleware/portal-auth.js';
 import { uploadLimiter as uploadRateLimiter } from '../lib/rate-limiters.js';
@@ -90,7 +90,7 @@ function validateMagicBytes(buffer, declaredMimeType) {
  * @param {object} options
  * @param {Function} options.authenticate - auth middleware for the mount
  * @param {string[]} options.purposes - allowed purposes; the first is the default
- * @param {(req, purpose: string) => string} options.folderFor - Cloudinary folder for an upload
+ * @param {(req, purpose: string) => string} options.folderFor - storage folder for an upload
  * @param {Set<string>} [options.allowedMimeTypes] - defaults to the SEC-013 allowlist
  */
 export const createUploadRouter = ({ authenticate, purposes, folderFor, allowedMimeTypes = ALLOWED_MIME_TYPES }) => {
@@ -145,8 +145,8 @@ export const createUploadRouter = ({ authenticate, purposes, folderFor, allowedM
       const purposeParam = req.query.purpose;
       const purpose = purposes.includes(purposeParam) ? purposeParam : purposes[0];
 
-      // SEC-013: Upload to Cloudinary with random filename
-      const result = await uploadBufferToCloudinary(req.file.buffer, folderFor(req, purpose));
+      // SEC-013: Save to our own storage under a random filename
+      const result = await uploadBuffer(req.file.buffer, folderFor(req, purpose));
 
       res.json({
         data: {

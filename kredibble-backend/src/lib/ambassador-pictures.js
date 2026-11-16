@@ -1,7 +1,7 @@
 /**
  * BE-029: the picture job. An imported ambassador's picture arrives as a
  * Google Drive share link (`pictureSourceUrl`). This job downloads the file
- * and stores OUR copy (Cloudinary, folder `ambassadors`) in `profilePhoto`,
+ * and stores OUR copy (this server's storage, folder `ambassadors`) in `profilePhoto`,
  * so the app never hot-links someone's Drive.
  *
  * Why a job and not part of the import: one Drive download takes seconds, and
@@ -18,7 +18,7 @@
  */
 import { fileTypeFromBuffer } from 'file-type';
 import { Ambassador } from '../models/AdminPortal.js';
-import { uploadBufferToCloudinary } from './cloudinary.js';
+import { uploadBuffer } from './storage.js';
 import { env } from '../config/env.js';
 import logger from './logger.js';
 
@@ -127,7 +127,7 @@ export async function processAmbassadorPictures({
   ids,
   limit = 100,
   fetchImpl = globalThis.fetch,
-  upload = uploadBufferToCloudinary,
+  upload = uploadBuffer,
 } = {}) {
   const now = new Date();
   const scope = ids ? { _id: { $in: ids } } : {};
@@ -153,7 +153,7 @@ export async function processAmbassadorPictures({
     try {
       const buffer = await downloadDrivePicture(claimed.pictureSourceUrl, fetchImpl);
       const stored = await upload(buffer, STORAGE_FOLDER);
-      if (!/^https:\/\//.test(stored?.secure_url || '')) throw new PictureError('Storage did not return an https address');
+      if (!/^https?:\/\//.test(stored?.secure_url || '')) throw new PictureError('Storage did not return a file address');
       await Ambassador.updateOne(stillOurs, {
         $set: { profilePhoto: stored.secure_url, 'pictureImport.status': 'done' },
         $unset: { 'pictureImport.lastError': '' },
@@ -177,7 +177,7 @@ export async function processAmbassadorPictures({
  * Starts copying the given ambassadors' pictures after the current response,
  * without making the caller wait. Errors are logged, never thrown; anything
  * left pending is picked up by the scheduled run. Does nothing under Jest or
- * on the admin e2e server, so neither ever reaches Google or Cloudinary.
+ * on the admin e2e server, so neither ever reaches Google.
  *
  * @param {string[]} ids
  * @returns {void}

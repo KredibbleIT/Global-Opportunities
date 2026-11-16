@@ -164,16 +164,15 @@ export const toAdminEntryObject = (entry) => ({
 
 /**
  * An entry as the app receives it. An allowlist, so a field added to the
- * model later (or `providedBy`) never reaches the app by accident. The picture
- * comes shaped for its category's kind (BE-031).
+ * model later (or `providedBy`) never reaches the app by accident.
  */
-export const toAppEntryObject = (entry, kind = 'person') => ({
+export const toAppEntryObject = (entry) => ({
   id: String(entry._id),
   categoryId: String(entry.categoryId),
   name: entry.name,
   title: entry.title,
   bio: entry.bio ?? '',
-  photoUrl: deliveryUrl(entry.photoUrl, kind),
+  photoUrl: deliveryUrl(entry.photoUrl),
   country: entry.country || undefined,
   visible: true,
   order: entry.order,
@@ -193,10 +192,9 @@ export async function loadAppShowcase() {
   const filled = new Set(entries.map((entry) => String(entry.categoryId)));
   // Entries grouped in the categories' order, each group in its own order.
   const position = new Map(categories.map((category, index) => [String(category._id), index]));
-  const kindOf = new Map(categories.map((category) => [String(category._id), category.kind]));
   const grouped = [...entries].sort((a, b) => position.get(String(a.categoryId)) - position.get(String(b.categoryId)));
   return {
     categories: categories.filter((category) => filled.has(String(category._id))).map(toCategoryObject),
-    entries: grouped.map((entry) => toAppEntryObject(entry, kindOf.get(String(entry.categoryId)))),
+    entries: grouped.map((entry) => toAppEntryObject(entry)),
   };
 }

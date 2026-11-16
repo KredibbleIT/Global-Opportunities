@@ -1,11 +1,11 @@
 # Kredibble Backend
 
-Express API built with MongoDB, Cloudinary, AI assistant providers, WordPress content feeds, and Resend email verification.
+Express API built with MongoDB, local file storage, AI assistant providers, WordPress content feeds, and Resend email verification.
 
 ## Setup
 
 1. Copy `.env.example` to `.env` if not present.
-2. Ensure you have a MongoDB Atlas cluster and Cloudinary account.
+2. Ensure you have a MongoDB Atlas cluster. Uploaded files are stored on the server's own disk (no third-party storage).
 3. Install dependencies: `npm install`
 4. Run locally: `npm run dev`
 
@@ -24,9 +24,8 @@ Default API URL: `http://localhost:4000/api`
    - `DATABASE_URL`: *(Your MongoDB Atlas URL)*
    - `JWT_SECRET`: *(A long random string)*
    - `ADMIN_JWT_SECRET`: *(Another long random string)*
-   - `CLOUDINARY_CLOUD_NAME`: *(From Cloudinary dashboard)*
-   - `CLOUDINARY_API_KEY`: *(From Cloudinary dashboard)*
-   - `CLOUDINARY_API_SECRET`: *(From Cloudinary dashboard)*
+   - `UPLOAD_DIR`: folder for uploaded files (Docker: `/data/uploads`, a volume)
+   - `UPLOAD_BASE_URL`: public address of `/uploads`, e.g. `https://api.globalopportunitydesk.com/uploads` (required in production)
    - `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`: *(For the selected `AI_PROVIDER`)*
    - `INSIGHT_GHANA_WORDPRESS_URL` and `AFRICAN_JOURNAL_WORDPRESS_URL`: *(Publication site roots)*
    - `WORDPRESS_AUTH_URL` and `WORDPRESS_SYNC_SECRET`: *(WordPress account bridge)*
@@ -38,7 +37,7 @@ Default API URL: `http://localhost:4000/api`
 - `GET /api/health` - Health check (Use this for Render)
 - `POST /api/auth/register` - User signup
 - `POST /api/auth/login` - User login
-- `POST /api/upload` - File upload to Cloudinary (Requires Auth)
+- `POST /api/upload` - File upload, saved to the server's disk and served from `/uploads` (Requires Auth)
 - `POST /api/community/channels` - Create a public or private community group (Requires Auth)
 - `POST /api/community/channels/:channelId/join-requests` - Apply to join a community with form responses
 - `GET /api/community/channels/:channelId/join-requests` - Review pending applications (Community admin only)

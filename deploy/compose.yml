@@ -9,6 +9,9 @@ services:
     environment:
       - APP_ENV=${APP_ENV}
       - RELEASE_SHA=${RELEASE_SHA:-unknown}
+      - UPLOAD_DIR=/data/uploads
+    volumes:
+      - uploads_data:/data/uploads
     depends_on:
       redis:
         condition: service_healthy
@@ -64,6 +67,7 @@ services:
 
 volumes:
   redis_data:
+  uploads_data:
 
 networks:
   default:

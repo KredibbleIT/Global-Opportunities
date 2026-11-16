@@ -550,7 +550,7 @@ describe('BE-029: picture job', () => {
     Object.defineProperty(response, 'url', { value: url });
     return response;
   });
-  const upload = jest.fn(async () => ({ secure_url: 'https://res.cloudinary.com/test/image/upload/ambassadors/copy.png' }));
+  const upload = jest.fn(async () => ({ secure_url: 'https://api.test/uploads/ambassadors/copy.png' }));
   const pending = (overrides = {}) => seedAmbassador({
     email: `pic-${Math.random()}@example.com`,
     pictureSourceUrl: 'https://drive.google.com/open?id=FAKEID0001',
@@ -575,7 +575,7 @@ describe('BE-029: picture job', () => {
     expect(fetchImpl).toHaveBeenCalledWith('https://drive.google.com/uc?export=download&id=FAKEID0001', expect.any(Object));
     expect(upload).toHaveBeenCalledWith(expect.any(Buffer), 'ambassadors');
     const current = await Ambassador.findById(ambassador._id).lean();
-    expect(current.profilePhoto).toBe('https://res.cloudinary.com/test/image/upload/ambassadors/copy.png');
+    expect(current.profilePhoto).toBe('https://api.test/uploads/ambassadors/copy.png');
     expect(current.pictureImport).toMatchObject({ status: 'done', attempts: 1 });
   });
 

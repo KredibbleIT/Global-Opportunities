@@ -6,6 +6,7 @@ import fs from 'fs';
 import swaggerUi from 'swagger-ui-express';
 import { env } from './config/env.js';
 import { connectToDatabase } from './lib/mongodb.js';
+import { uploadRoot } from './lib/storage.js';
 import { createApiRouter } from './routes/index.js';
 import { isAllowedOrigin } from './lib/cors.js';
 import { globalApiLimiter } from './lib/rate-limiters.js';
@@ -24,6 +25,22 @@ const isTest = env.isTest;
 
 // 1. Basic security and CORS (Must be at the top)
 app.use(helmet());
+
+// Uploaded files (lib/storage.js) are served straight from disk, before the CORS, rate-limit and database steps below:
+// pictures are loaded by <img> tags and the mobile app with no Origin header, and a read needs no database.
+// Names are random, so a file never changes at its address and can be cached for a long time. Helmet's default
+// same-origin resource policy is relaxed here so the admin dashboard (another origin) can show the pictures.
+app.use('/uploads', express.static(uploadRoot(), {
+  index: false,
+  dotfiles: 'deny',
+  redirect: false,
+  maxAge: '30d',
+  immutable: true,
+  setHeaders(res) {
+    res.set('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.set('Content-Security-Policy', "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
+  },
+}));
 app.use(
   cors({
     origin(origin, callback) {
