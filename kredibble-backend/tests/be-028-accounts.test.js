@@ -287,11 +287,15 @@ describe('BE-028: invite acceptance', () => {
       .send({ token, password: 'Password123' });
     expect(replay.statusCode).toBe(400);
 
-    // The new password signs in through the normal login.
+    // The new password signs in to the admin dashboard. The app's sign-in refuses a staff account (SEC-161).
     const login = await request(app)
-      .post(api('/auth/login'))
+      .post(api('/auth/admin/login'))
       .send({ email: 'accept28@example.com', password: 'Password123' });
     expect(login.statusCode).toBe(200);
+    const appLogin = await request(app)
+      .post(api('/auth/login'))
+      .send({ email: 'accept28@example.com', password: 'Password123' });
+    expect(appLogin.statusCode).toBe(403);
   });
 
   it('rejects unknown, expired, and weak-password attempts identically', async () => {
@@ -370,10 +374,13 @@ describe('BE-028: deactivate and reactivate', () => {
     const caller = await makeRootCaller('deroot28@example.com');
     const { staff } = await seedActiveStaff({ email: 'leaver28@example.com' });
 
+    // Staff sign in to the admin dashboard (the app's sign-in refuses them, SEC-161).
     const login = await request(app)
-      .post(api('/auth/login'))
+      .post(api('/auth/admin/login'))
       .send({ email: 'leaver28@example.com', password: 'Password123' });
     expect(login.statusCode).toBe(200);
+    const [sessionCookie, refreshCookie] = ['kredibble_admin_token=', 'kredibble_admin_refresh=']
+      .map((name) => login.headers['set-cookie'].find((value) => value.startsWith(name)).split(';')[0]);
 
     const off = await request(app)
       .post(api(`/admin/accounts/${staff._id}/deactivate`))
@@ -381,11 +388,11 @@ describe('BE-028: deactivate and reactivate', () => {
     expect(off.statusCode).toBe(200);
     expect(off.body.data.status).toBe('deactivated');
 
-    const stale = await request(app).get(api('/auth/me')).set(...bearerHeader(login.body.data.token));
+    const stale = await request(app).get(api('/auth/admin/me')).set('Cookie', sessionCookie);
     expect(stale.statusCode).toBe(401);
     const refresh = await request(app)
-      .post(api('/auth/refresh'))
-      .send({ refreshToken: login.body.data.refreshToken });
+      .post(api('/auth/admin/refresh'))
+      .set('Cookie', refreshCookie);
     expect(refresh.statusCode).toBe(401);
 
     const relogin = await request(app)

@@ -22,6 +22,30 @@ export const signAdminToken = (user) => {
   );
 };
 
+/** SEC-161: what a team account hears when it tries to sign in to the app. */
+export const STAFF_APP_SIGN_IN_MESSAGE = 'This is a team account. Sign in to the admin dashboard instead.';
+
+/**
+ * SEC-161: whether an account is a team (staff) account: role `admin` with a StaffMember record, whatever the
+ * record's status. Staff act through the admin session, where their BE-001 roles decide what they may do
+ * (resolveStaffRoles). The general `/api/v1` routes read role `admin` as full admin, so an app (user-realm) token is
+ * never issued to or honored for a staff account. The root admin (role `admin`, no staff record) is not one.
+ *
+ * @param {string | import('mongoose').Types.ObjectId} userId - the account's id
+ * @param {...(string | undefined)} roles - the account's stored role and the role its token claims; either being
+ *   `admin` is enough
+ * @returns {Promise<boolean>} true for a staff account
+ */
+export const isStaffAccount = async (userId, ...roles) =>
+  roles.includes('admin') && Boolean(await StaffMember.exists({ userId }));
+
+/** The 401 for an app token that names a staff account (SEC-161). */
+const staffAppTokenError = () => {
+  const error = new ApiError(401, STAFF_APP_SIGN_IN_MESSAGE);
+  error.code = 'STAFF_ACCOUNT';
+  return error;
+};
+
 // SEC-009: generate opaque refresh token (64 hex chars) and its hash
 export const generateRefreshToken = () => crypto.randomBytes(32).toString('hex');
 export const hashRefreshToken = (token) => crypto.createHash('sha256').update(token).digest('hex');
@@ -83,7 +107,11 @@ export const requireAuth = async (req, res, next) => {
     if (payload.tv !== undefined && payload.tv !== user.tokenVersion) {
       return next(new ApiError(401, 'Token revoked due to security event'));
     }
-    
+    // SEC-161: no app token works on these routes for a staff account, even one issued before the sign-in refused them.
+    if (await isStaffAccount(payload.sub, user.role, payload.role)) {
+      return next(staffAppTokenError());
+    }
+
     req.auth = payload;
     next();
   } catch (err) {
@@ -171,6 +199,10 @@ export const optionalAuth = async (req, res, next) => {
     const user = await User.findById(payload.sub).select('tokenVersion role').lean();
     if (!user || user.role === 'deleted' || (payload.tv !== undefined && payload.tv !== user.tokenVersion)) {
       return next(); // Ignore invalid tokens on optional routes
+    }
+    // SEC-161: a staff account's app token reads public content as an anonymous visitor, never as an admin.
+    if (await isStaffAccount(payload.sub, user.role, payload.role)) {
+      return next();
     }
 
     req.auth = payload;
