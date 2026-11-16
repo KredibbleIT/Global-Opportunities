@@ -61,12 +61,12 @@ export default function LoginPage() {
         <div className="relative z-20 self-start px-10 pt-10">
           <BrandLogo className="max-w-62" />
         </div>
-        {/* Decorative cutout: about 60% of the panel height (head top near 45% down, as in the reference), bottom-anchored, face at about 67% of the panel width (bottom right), cropped by the panel edge. */}
+        {/* Decorative cutout: about 68% of the panel height, bottom-anchored, face at about 67% of the panel width (bottom right), cropped by the panel edge. */}
         <SignInFigure
-          className="absolute bottom-0 h-[60%]"
-          // Her face (0.535 of the figure's width; the figure is 60% of the panel height x 1.32 wide, and the panel is one screen tall)
+          className="absolute bottom-0 h-[68%]"
+          // Her face (0.535 of the figure's width; the figure is 68% of the panel height x 1.32 wide, and the panel is one screen tall)
           // sits at 67% of the panel width: bottom RIGHT, her right shoulder cropped by the panel edge. Data-driven, so inline.
-          style={{ left: "calc(67% - 42.4vh)" }}
+          style={{ left: "calc(67% - 48.1vh)" }}
         />
         {/* The text sits at the bottom left, over the lower part of the figure, on a soft dark scrim (not over her face). */}
         <div className="signin-scrim relative z-10 px-10 pb-10 pt-16">

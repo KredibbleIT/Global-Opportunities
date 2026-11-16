@@ -6,7 +6,7 @@ import { SeekerProfile, HirerAccount } from '../models/Profiles.js';
 import { Applicant, Event, EventAttendee, CompanyVerification, VerificationDoc, Opportunity, GrantApplication } from '../models/Platform.js';
 import { Channel, ChannelPost, CommunityMembership } from '../models/Community.js';
 import { Testimonial, Beneficiary } from '../models/AdminPortal.js';
-import { deleteUserMedia } from './cloudinary.js';
+import { deleteUserMedia } from './storage.js';
 import { env } from '../config/env.js';
 import logger from './logger.js';
 

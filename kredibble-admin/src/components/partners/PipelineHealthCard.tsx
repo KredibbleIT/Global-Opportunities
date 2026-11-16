@@ -54,7 +54,7 @@ export function PipelineHealthCard({ health, standalone, target, demo }: { healt
   const phone = useMediaQuery("(max-width: 639px)");
   if (!health) {
     return (
-      <Card as="section" ariaLabel="Pipeline health" padding="sm" className="space-y-1.5 py-2.5 xl:h-full">
+      <Card as="section" ariaLabel="Pipeline health" className="space-y-2">
         <Skeleton className="h-5 w-32" />
         <Skeleton className="h-6 w-56" />
         <Skeleton className="h-3 w-full" />
@@ -91,7 +91,7 @@ export function PipelineHealthCard({ health, standalone, target, demo }: { healt
       : `${deals(health.openDeals)}, ${health.needed} needed, ${multiple ? `${multiple} times the target, ` : ""}${STATUS_WORD[health.status]}`;
 
   return (
-    <Card as="section" ariaLabel="Pipeline health" padding="sm" className="space-y-1.5 py-2.5 xl:h-full">
+    <Card as="section" ariaLabel="Pipeline health" className="space-y-2">
       <div className="flex items-center justify-between gap-2">
         {/* SEC-150: "Healthy" here is about NEXT month (enough open deals for its target); the Scorecard's "Partners onboarded … Off
             track" is about partners signed THIS month. The heading says which, so the two no longer read as a contradiction. */}

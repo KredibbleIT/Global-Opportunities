@@ -35,6 +35,7 @@ import { Article, Notification } from '../models/Content.js';
 import { Ambassador, OpportunityEngagement, Testimonial } from '../models/AdminPortal.js';
 import { auditReq, AUDIT_ACTIONS, AUDIT_RESOURCE_TYPES } from '../lib/audit.js';
 import { CLEARED_REJECTION, rejectionReasonLabel } from '../lib/opportunity-rejection.js';
+import { OPPORTUNITY_CATEGORIES, categoryOfType } from '../lib/opportunity-categories.js';
 import { searchLimiter, chatLimiter, testimonialLimiter, referenceDataLimiter } from '../lib/rate-limiters.js';
 import { normalizeLegacyRole } from '../lib/permissions.js';
 import { postChannelMessage, listChannelMessages, getThread, findPost } from '../lib/chat.js';
@@ -1531,6 +1532,28 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
     enablePopulate,
   }));
   router.use('/hirers', collectionRoutes({ Model: HirerAccount, resourceName: 'Hirer', policyKey: 'hirers', searchFields: ['companyName', 'industry'], ownerField: 'userId', populate: { path: 'userId', select: 'name avatarUrl' }, enablePopulate }));
+  // How many listings each of the eight categories holds, for the app's Opportunities screen. The same listings the app's lists show: approved,
+  // vetted opportunities, plus the separate Events and Grants collections that the Events and Grants lists also merge in. Declared before the
+  // collection mount so "category-counts" is never read as an id.
+  router.get('/opportunities/category-counts', requireAuth, asyncHandler(async (req, res) => {
+    const byType = await Opportunity.aggregate([
+      { $match: publicOpportunityFilter() },
+      { $group: { _id: '$type', count: { $sum: 1 } } },
+    ]);
+    const counts = Object.fromEntries(OPPORTUNITY_CATEGORIES.map((category) => [category.key, 0]));
+    for (const { _id, count } of byType) {
+      const key = categoryOfType(_id);
+      if (key) counts[key] += count;
+    }
+    const [events, grants] = await Promise.all([
+      Event.countDocuments(eventReadScope(req)),
+      Grant.countDocuments({}),
+    ]);
+    counts.events += events;
+    counts.funding += grants;
+    itemResponse(res, counts);
+  }));
+
   router.use('/opportunities', collectionRoutes({
     Model: Opportunity,
     resourceName: 'Opportunity',

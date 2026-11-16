@@ -19,7 +19,14 @@ export const opportunityTypes = [
   'grants',
   'event',
   'events',
+  'volunteer',
+  'volunteers',
+  'mentorship',
+  'mentorships',
 ];
+
+/** How a listing is paid for: free or paid to join, or funded for the person (a scholarship, a fellowship, a stipend). */
+export const opportunityFundingTypes = ['free', 'paid', 'fully-funded', 'partially-funded', 'stipend', 'unfunded'];
 
 const opportunitySchema = new mongoose.Schema({
   hirerId: { type: mongoose.Schema.Types.ObjectId, ref: 'HirerAccount', index: true },
@@ -55,6 +62,10 @@ const opportunitySchema = new mongoose.Schema({
   closesAt: Date,
   eligibility: String,
   benefits: String,
+  // Category details (volunteering, scholarships, fellowships, training, mentorship): what the app's cards and filters use.
+  fundingType: { type: String, enum: opportunityFundingTypes },
+  level: String,
+  focusArea: String,
   organizer: String,
   coverImage: String,
   logoUrl: String,

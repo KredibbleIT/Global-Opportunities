@@ -17,6 +17,10 @@ ARG RELEASE_SHA=""
 ENV RELEASE_SHA=${RELEASE_SHA}
 
 
+# Uploaded files (pictures, CVs) live on a volume mounted here, so they survive redeploys (see deploy/compose.yml).
+ENV UPLOAD_DIR=/data/uploads
+RUN mkdir -p /data/uploads && chown -R node:node /data
+
 USER node
 EXPOSE 4000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \

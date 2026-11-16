@@ -61,6 +61,9 @@ const LISTING_TYPE_KEYS: Record<ListingType, string> = {
   fellowship: "fellowships",
   grant: "grants",
   event: "events",
+  volunteer: "volunteers",
+  training: "trainings",
+  mentorship: "mentorships",
 };
 
 export type ModerationDecision = "approve" | "reject";

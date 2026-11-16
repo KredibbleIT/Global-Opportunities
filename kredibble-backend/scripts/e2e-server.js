@@ -11,6 +11,8 @@
  */
 import bcrypt from 'bcryptjs';
 import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 
 if (process.env.NODE_ENV === 'production') {
@@ -27,10 +29,11 @@ process.env.CORS_ORIGIN ||= 'http://localhost:3000,http://localhost:3100';
 // One Playwright suite from one IP would otherwise trip the API rate limits (see env.isE2E).
 process.env.E2E_SERVER = '1';
 // Never reach real third-party services from the e2e API, whatever .env holds:
-// empty values make uploads answer "Cloudinary is not configured", email a no-op, approving a posting leave its
-// WordPress sync "pending" (not configured), and the assistant unable to call an AI provider.
+// empty values make email a no-op, approving a posting leave its WordPress sync "pending" (not configured),
+// and the assistant unable to call an AI provider. Uploads are saved to a throwaway temp folder.
+process.env.UPLOAD_DIR = path.join(os.tmpdir(), `kredibble-e2e-uploads-${process.pid}`);
 for (const key of [
-  'CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET', 'RESEND_API_KEY',
+  'RESEND_API_KEY',
   'WORDPRESS_SYNC_BASE_URL', 'WORDPRESS_API_KEY', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY',
 ]) {
   process.env[key] = '';

@@ -25,7 +25,8 @@
  */
 import { useMemo, useRef, useState, type FormEvent } from "react";
 import { LISTING_COUNTRIES } from "@/config/countries";
-import { LISTING_FORMATS, LISTING_TYPES, type Listing, type ListingFormat, type ListingType } from "@/lib/mock-entities";
+import { LISTING_FORMATS, type Listing, type ListingFormat, type ListingType } from "@/lib/mock-entities";
+import { CATEGORY_DETAILS, FUNDING_LABELS, OPPORTUNITY_CATEGORIES } from "@/lib/opportunity-types";
 import { createListing, currentStaffMember, listingStaff, todayIsoDate, updateListing, type ListingFields } from "@/lib/services/listings";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -54,10 +55,33 @@ export const TYPE_LABELS: Record<ListingType, string> = {
   fellowship: "Fellowship",
   grant: "Grant",
   event: "Event",
+  volunteer: "Volunteering",
+  training: "Training",
+  mentorship: "Mentorship",
 };
 const FORMAT_LABELS: Record<ListingFormat, string> = { online: "Online", "in-person": "In person", hybrid: "Hybrid" };
 
-const TYPE_OPTIONS: SelectOption<ListingType>[] = LISTING_TYPES.map((type) => ({ value: type, label: TYPE_LABELS[type] }));
+// The opportunity type is one of the eight categories (the same list as the app and the queue tabs). A listing saved earlier with a type that has no
+// category of its own (an internship) keeps that type in its own form, so editing it never blanks the field.
+const CATEGORY_OPTIONS: SelectOption<ListingType>[] = OPPORTUNITY_CATEGORIES.map((category) => ({ value: category.listingType, label: category.label }));
+const typeOptionsFor = (current: ListingType | ""): SelectOption<ListingType>[] =>
+  current && !CATEGORY_OPTIONS.some((option) => option.value === current) ? [...CATEGORY_OPTIONS, { value: current, label: TYPE_LABELS[current] }] : CATEGORY_OPTIONS;
+/** An optional choice: "Not set" first, then the values. */
+const optionalOptions = (values: string[], labels: Record<string, string> = {}): SelectOption<string>[] => [
+  { value: NONE, label: "Not set" },
+  ...values.map((value) => ({ value, label: labels[value] ?? value })),
+];
+
+/** Keeps what was chosen for the details only while the new type still offers it (a training level means nothing on a scholarship). */
+const clearStaleDetails = (form: FormState, type: ListingType): Partial<FormState> => {
+  const details = CATEGORY_DETAILS[type];
+  const cleared: Partial<FormState> = {};
+  if (!details?.focusOptions.includes(form.focusArea)) cleared.focusArea = "";
+  if (!details?.levelOptions?.includes(form.level)) cleared.level = "";
+  if (!details?.fundingOptions?.includes(form.fundingType)) cleared.fundingType = "";
+  if (!details?.certificateLabel) cleared.certificateOffered = false;
+  return cleared;
+};
 const FORMAT_OPTIONS: SelectOption<ListingFormat>[] = LISTING_FORMATS.map((format) => ({ value: format, label: FORMAT_LABELS[format] }));
 const COUNTRY_OPTIONS: SelectOption<string>[] = LISTING_COUNTRIES.map((country) => ({ value: country, label: country }));
 
@@ -75,6 +99,12 @@ interface FormState {
   country: string;
   eventAt: string;
   durationLabel: string;
+  eligibility: string;
+  benefits: string;
+  fundingType: string;
+  level: string;
+  focusArea: string;
+  certificateOffered: boolean;
   imageUrl: string | undefined;
   writerId: string;
   referralOnApply: boolean;
@@ -97,6 +127,12 @@ const EMPTY: FormState = {
   country: "",
   eventAt: "",
   durationLabel: "",
+  eligibility: "",
+  benefits: "",
+  fundingType: "",
+  level: "",
+  focusArea: "",
+  certificateOffered: false,
   imageUrl: undefined,
   writerId: NONE,
   referralOnApply: false,
@@ -119,6 +155,12 @@ const fromListing = (listing: Listing): FormState => ({
   country: listing.country,
   eventAt: listing.eventAt ?? "",
   durationLabel: listing.durationLabel ?? "",
+  eligibility: listing.eligibility ?? "",
+  benefits: listing.benefits ?? "",
+  fundingType: listing.fundingType ?? "",
+  level: listing.level ?? "",
+  focusArea: listing.focusArea ?? "",
+  certificateOffered: Boolean(listing.certificateOffered),
   imageUrl: listing.imageUrl,
   writerId: listing.writerId ?? NONE,
   referralOnApply: listing.referralOnApply,
@@ -207,6 +249,12 @@ export function ListingForm({ listing }: { listing?: Listing }) {
       country: form.country,
       eventAt: form.eventAt || undefined,
       durationLabel: form.durationLabel.trim() || undefined,
+      eligibility: form.eligibility.trim() || undefined,
+      benefits: form.benefits.trim() || undefined,
+      fundingType: form.fundingType || undefined,
+      level: form.level || undefined,
+      focusArea: form.focusArea || undefined,
+      certificateOffered: form.certificateOffered,
       imageUrl: form.imageUrl,
       writerId: form.writerId === NONE ? undefined : form.writerId,
       referralOnApply: form.referralOnApply,
@@ -239,6 +287,7 @@ export function ListingForm({ listing }: { listing?: Listing }) {
     void save("publish"); // the form's submit button is "Publish" (or "Save changes" for a published listing)
   };
 
+  const details = form.type ? CATEGORY_DETAILS[form.type] : undefined;
   const canPublish = form.vetted;
   const publishLabel = isPublished ? "Save changes" : "Publish";
 
@@ -270,7 +319,7 @@ export function ListingForm({ listing }: { listing?: Listing }) {
                 </div>
               </Field>
               <Field label="Opportunity type" error={show("type") ? errors.type : undefined}>
-                <Select options={TYPE_OPTIONS} value={form.type} onChange={(value) => set("type", value)} onBlur={() => touch("type")} placeholder="Choose a type" sheetTitle="Opportunity type" />
+                <Select options={typeOptionsFor(form.type)} value={form.type} onChange={(value) => setForm((current) => ({ ...current, type: value, ...clearStaleDetails(current, value) }))} onBlur={() => touch("type")} placeholder="Choose a type" sheetTitle="Opportunity type" />
               </Field>
             </FormSection>
           </Card>
@@ -302,6 +351,42 @@ export function ListingForm({ listing }: { listing?: Listing }) {
               <Field label="Duration" optional helper={'For example "3 months" or "2 days".'}>
                 <Input value={form.durationLabel} onChange={(e) => set("durationLabel", e.target.value)} placeholder="3 months" autoComplete="off" />
               </Field>
+            </FormSection>
+          </Card>
+
+          <Card>
+            <FormSection title="Details" description="What seekers read before they apply, and the facts the app uses to filter this listing.">
+              <Field label="Who can apply" optional helper="One point on each line.">
+                <Textarea value={form.eligibility} onChange={(e) => set("eligibility", e.target.value)} rows={4} placeholder={"Citizens of Ghana\nUnder 30 years old"} />
+              </Field>
+              <Field label="What it offers" optional helper="One point on each line.">
+                <Textarea value={form.benefits} onChange={(e) => set("benefits", e.target.value)} rows={4} placeholder={"Tuition\nA monthly allowance"} />
+              </Field>
+              {details && (
+                <>
+                  <Field label={details.focusLabel} optional>
+                    <Select options={optionalOptions(details.focusOptions)} value={form.focusArea || NONE} onChange={(value) => set("focusArea", value === NONE ? "" : value)} sheetTitle={details.focusLabel} />
+                  </Field>
+                  {details.levelOptions && details.levelLabel && (
+                    <Field label={details.levelLabel} optional>
+                      <Select options={optionalOptions(details.levelOptions)} value={form.level || NONE} onChange={(value) => set("level", value === NONE ? "" : value)} sheetTitle={details.levelLabel} />
+                    </Field>
+                  )}
+                  {details.fundingOptions && details.fundingLabel && (
+                    <Field label={details.fundingLabel} optional>
+                      <Select options={optionalOptions(details.fundingOptions, FUNDING_LABELS)} value={form.fundingType || NONE} onChange={(value) => set("fundingType", value === NONE ? "" : value)} sheetTitle={details.fundingLabel} />
+                    </Field>
+                  )}
+                  {details.certificateLabel && (
+                    <Switch
+                      checked={form.certificateOffered}
+                      onChange={(checked) => set("certificateOffered", checked)}
+                      label={details.certificateLabel}
+                      statusText={form.certificateOffered ? "Yes" : "No"}
+                    />
+                  )}
+                </>
+              )}
             </FormSection>
           </Card>
 

@@ -6,7 +6,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { profileStore } from '../../constants/mockProfile';
 import { useToast } from '../../components/ui/ToastProvider';
-import { getOpportunities } from '../../lib/api';
+import { getOpportunitiesOfTypes } from '../../lib/api';
 
 // ─── Shared job data ──────────────────────────────────────────────────────────
 
@@ -155,10 +155,8 @@ export default function JobsScreen() {
     const fetchJobs = async () => {
       setIsLoading(true);
       try {
-        const data = await getOpportunities({
-          type: 'jobs',
-          q: params.query
-        });
+        // "Jobs & Internships" is one category: both types in one list.
+        const data = await getOpportunitiesOfTypes(['jobs', 'internships'], params.query as string | undefined);
         setLiveJobs(data);
       } catch (err) {
         console.error("Failed to fetch jobs:", err);

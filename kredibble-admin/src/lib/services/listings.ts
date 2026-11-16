@@ -64,6 +64,12 @@ export function toListing(record: OpportunityRecord): Listing {
     imageUrl: record.imageUrl || record.coverImage,
     writerId: record.writerId || record.assignedWriterId,
     referralOnApply: Boolean(record.referralOnApply || record.referralCodeOnApply),
+    eligibility: record.eligibility,
+    benefits: record.benefits,
+    fundingType: record.fundingType ?? undefined,
+    level: record.level,
+    focusArea: record.focusArea,
+    certificateOffered: record.certificateOffered,
     vettedById: record.vettedById || (record.vettedBy ? String(record.vettedBy) : undefined),
     vettedOn: record.vettedOn || (record.vettedAt ? record.vettedAt.slice(0, 10) : undefined),
   };
@@ -168,6 +174,12 @@ const apiBody = (fields: ListingFields, status: Listing["status"], publish: bool
   imageUrl: fields.imageUrl,
   writerId: isObjectId(fields.writerId) ? fields.writerId : undefined,
   referralOnApply: fields.referralOnApply,
+  eligibility: fields.eligibility ?? "",
+  benefits: fields.benefits ?? "",
+  fundingType: fields.fundingType,
+  level: fields.level ?? "",
+  focusArea: fields.focusArea ?? "",
+  certificateOffered: Boolean(fields.certificateOffered),
 });
 
 /**
@@ -204,7 +216,7 @@ export async function updateListing(id: string, fields: ListingFields, publish =
   if (!current) return undefined;
   const publishing = publish && current.status !== "published";
   if (!isMockMode()) {
-    const saved = toListing(await updateOpportunityApi(id, apiBody(fields, publish ? "published" : current.status, publish)));
+    const saved = toListing(await updateOpportunityApi(id, { ...apiBody(fields, publish ? "published" : current.status, publish), fundingType: fields.fundingType ?? null }));
     cacheListing(saved);
     if (publishing) startMetrics(id);
     return saved;

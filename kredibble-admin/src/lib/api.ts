@@ -250,6 +250,10 @@ export type OpportunityRecord = {
   closesAt?: string;
   eligibility?: string;
   benefits?: string;
+  fundingType?: string | null;
+  level?: string;
+  focusArea?: string;
+  certificateOffered?: boolean;
   applicationUrl?: string;
   applicationLink?: string;
   applyUrl?: string;

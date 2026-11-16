@@ -68,7 +68,8 @@ export default function Onboarding1Screen() {
           </View>
           <Image
             source={require('../../../assets/images/onboarding_1.png')}
-            style={{ width: '100%', height: '100%', zIndex: 1 }}
+            // A little smaller than the hero area and bottom-anchored (the parent aligns to the bottom), so her head sits lower on the screen.
+            style={{ width: '86%', height: '84%', zIndex: 1 }}
             resizeMode="contain"
           />
 

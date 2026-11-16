@@ -408,6 +408,7 @@ const OPPORTUNITY_ALLOWED_FIELDS = [
   'url', 'applyUrl', 'applicationUrl', 'applicationLink', 'costLabel', 'durationLabel',
   'format', 'country', 'logoUrl', 'organizationLogo', 'imageUrl', 'coverImage', 'images',
   'writerId', 'assignedWriterId', 'referralOnApply', 'referralCodeOnApply', 'category', 'publish',
+  'eligibility', 'benefits', 'fundingType', 'level', 'focusArea', 'certificateOffered',
 ];
 
 export const toOpportunityAdminObject = (record) => {

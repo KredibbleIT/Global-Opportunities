@@ -3,7 +3,7 @@
 /**
  * ReportPage: one Monthly report template (view "partner" or "team") with its controls.
  *
- * Everything the reader operates sits OUTSIDE the paper and is hidden in print: the title block, the sample-data notice, the two tabs (plain links to
+ * Everything the reader operates sits OUTSIDE the paper and is hidden in print: the controls row (month selector, "Sample data" pill, "Download PDF"), the two tabs (plain links to
  * /monthly-report/partner and /monthly-report/team; the Team tab is not rendered for a role that cannot view it), the month selector and "Download PDF".
  * Only the paper prints.
  *
@@ -17,11 +17,10 @@
  * Props: view
  */
 import { useCallback, useEffect } from "react";
-import { CalendarRange, Printer } from "lucide-react";
+import { CalendarRange, Info, Printer } from "lucide-react";
 import { useRoles } from "@/components/access/RoleProvider";
 import { Button } from "@/components/ui/Button";
 import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
-import { PageHeader } from "@/components/ui/PageHeader";
 import { Select, type SelectOption } from "@/components/ui/form/Select";
 import { StatusBanner } from "@/components/overview/StatusBanner";
 import { Tabs } from "@/components/ui/Tabs";
@@ -91,27 +90,27 @@ export function ReportPage({ view }: { view: ReportView }) {
   return (
     <div className="space-y-4">
       <div data-print-hide className="space-y-4">
-        <PageHeader
-          title="Monthly report"
-          subtitle="The desk's month in numbers, ready to print or save as a PDF."
-          icon={CalendarRange}
-          tone="neutral"
-          actions={
-            <div className="flex flex-col items-start gap-1 min-[640px]:items-end">
-            <div className="flex flex-wrap items-center gap-3">
-              <Select className="w-fit" ariaLabel="Month" sheetTitle="Select month" icon={CalendarRange} options={monthOptions} value={month} onChange={setMonth} />
-              <Tooltip label="Choose Save as PDF in the print dialog">
-                <Button type="button" variant="primary" icon={Printer} onClick={download} disabled={loading || !!issue} data-testid="download-pdf">
-                  Download PDF
-                </Button>
-              </Tooltip>
-            </div>
-            <p data-testid="download-hint" className="caption">
-              In the print dialog choose A4 and untick Headers and footers.
-            </p>
-            </div>
-          }
-        />
+        <h1 data-testid="page-title" className="sr-only">Monthly report</h1>
+        {/* The controls row of the design: the month, the sample-data pill, and Download PDF at the far end. */}
+        <div className="flex flex-wrap items-center gap-3">
+          <Select className="w-fit" ariaLabel="Month" sheetTitle="Select month" icon={CalendarRange} options={monthOptions} value={month} onChange={setMonth} />
+          {sample && (
+            <span data-testid="sample-data-pill" className="badge-text inline-flex items-center gap-2 rounded-pill bg-warning-soft px-3 py-1.5 text-warning">
+              <Info size={14} strokeWidth={1.75} aria-hidden="true" />
+              Sample data
+            </span>
+          )}
+          <div className="min-[640px]:ml-auto">
+            <Tooltip label="Choose Save as PDF in the print dialog">
+              <Button type="button" variant="primary" icon={Printer} onClick={download} disabled={loading || !!issue} data-testid="download-pdf">
+                Download PDF
+              </Button>
+            </Tooltip>
+          </div>
+        </div>
+        <p data-testid="download-hint" className="caption min-[640px]:text-right">
+          In the print dialog choose A4 and untick Headers and footers.
+        </p>
         <NotConnectedNotice />
         <Tabs ariaLabel="Report templates" idPrefix="report" value={view} onChange={() => undefined} tabs={tabs} links={links} />
         {toDate && (

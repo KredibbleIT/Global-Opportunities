@@ -33,12 +33,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { ChevronsLeft, ChevronsRight, Search, X } from "lucide-react";
-import { BRAND } from "@/config/brand";
 import { cn } from "@/lib/cn";
 import { useRoles } from "@/components/access/RoleProvider";
 import { isGroupActive, splitNav, visibleNavGroups } from "@/lib/nav";
 import type { NavCounts } from "@/lib/services/nav-counts";
 import { useMediaQuery, useModifierLabel } from "@/lib/use-media-query";
+import { BrandLogo } from "@/components/BrandLogo";
 import { BrandMark } from "@/components/BrandMark";
 import { Kbd } from "@/components/ui/Kbd";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -195,13 +195,12 @@ export function Sidebar({ collapsed, onToggleCollapsed, drawerOpen, onCloseDrawe
           </div>
         ) : (
           <div className="relative flex h-16 shrink-0 items-center gap-2 pl-4 pr-2">
-            <BrandMark size={36} />
-            <div className="min-w-0 flex-1">
-              <p className="brand-name">{BRAND.name}</p>
-              {/* One line in the expanded desktop sidebar (it fits at 11px); it wraps only in the narrower phone drawer. */}
-              <p className={cn("brand-sub leading-tight", isDesktop ? "whitespace-nowrap" : "break-words")} data-testid="brand-tagline">
-                {BRAND.sub}
-              </p>
+            {/* The full "Global Opportunity Desk" logo (the sign-in page's file), directly on the sidebar, at its own 435:151 shape: a 120px-wide
+                box, height auto. The collapsed rail keeps the ring mark. */}
+            <div data-testid="brand-logo-tile" className="min-w-0 flex-1">
+              <div className="w-30 max-w-full">
+                <BrandLogo />
+              </div>
             </div>
             {isDesktop ? (
               <Tooltip label={`${toggleLabel} (${modifier} B)`} placement="bottom">

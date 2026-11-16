@@ -20,15 +20,18 @@ import Svg, { G, Rect, Defs, ClipPath, Path } from 'react-native-svg';
 import { authStore } from '../../constants/authStore';
 import { loginMobile, requestForgotPassword, resetPassword } from '../../lib/api';
 
+// The full "Global Opportunity Desk" logo (the same file as the admin sign-in page, 435x151). Fixed sizes in the file's own
+// 435:151 shape, so it is never stretched: 168 x 58.
 const LogoSVG = () => (
-  <Image 
-    source={require('../../../assets/images/logo.png')} 
-    style={{ width: 64, height: 64, borderRadius: 32 }} 
-    resizeMode="contain" 
+  <Image
+    source={require('../../../assets/images/god-logo.png')}
+    style={{ width: 168, height: 58 }} // 168 x 58 is the file's 435:151 shape (explicit sizes: a width plus aspectRatio is ignored here)
+    resizeMode="contain"
+    accessibilityLabel="Global Opportunity Desk"
   />
 );
 
-// paddingTop(16) + logo(64) + 10px gap
+// paddingTop(16) + logo(about 58) + 10px gap, rounded up
 const LOGO_CLEARANCE = 90;
 
 const SuccessBadge = () => (

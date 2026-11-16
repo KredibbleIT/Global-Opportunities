@@ -6,3 +6,4 @@ prisma/dev.db
 prisma/dev.db-journal
 server-smoke.*.log
 npm-debug.log*
+uploads/

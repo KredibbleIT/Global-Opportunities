@@ -71,12 +71,8 @@ export default function Onboarding3Screen() {
           </View>
           <Image
             source={require('../../../assets/images/onboarding_3.png')}
-            style={{ 
-              width: '100%', 
-              height: '100%', 
-              zIndex: 1,
-              transform: [{ scale: 1.1 }]
-            }}
+            // The same box as the first two onboarding screens (a little smaller than the hero area, bottom-anchored by the parent).
+            style={{ width: '86%', height: '84%', zIndex: 1 }}
             resizeMode="contain"
           />
 

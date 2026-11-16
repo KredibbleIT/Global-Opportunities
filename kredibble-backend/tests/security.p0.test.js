@@ -970,7 +970,7 @@ describe('SEC-013: upload validation', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.body.data.folder).toContain(`kredibble/${user.id}/avatars`);
-    expect(res.body.data.url).toMatch(/cloudinary/);
+    expect(res.body.data.url).toMatch(/^https:\/\/api\.test\/uploads\/kredibble\/.+\/avatars\/[a-f0-9]{32}\.png$/);
   });
 });
 
