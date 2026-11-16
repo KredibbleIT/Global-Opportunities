@@ -8,7 +8,8 @@
  * Built on the shared list template; this file holds the column config, the filters and the data loader.
  *
  * Filters (all combine; counts on the type tabs follow the other filters):
- *   - Type tabs: All, Jobs, Internships, Events, Grants, Other (scholarships, fellowships)
+ *   - Type tabs: All and the eight opportunity categories (Events & Competitions, Volunteerism & Community Service, Awards, Grants & Funding,
+ *     Jobs & Internships, Scholarships, Fellowships & Exchange Programmes, Training & Workshops, Mentorship & Career Development)
  *   - Source: All, Hirer-submitted, Staff-curated (SegmentedControl)
  *   - Country and Status (the custom Select; Status lists the moderation and the listing statuses)
  * Columns: Title, Company, Type, Source (pill), Vetting (curated rows only, "—" for hirer postings), Posted, Status.
@@ -25,7 +26,7 @@ import { useMemo, useState } from "react";
 import { Briefcase, Plus } from "lucide-react";
 import { useRoles } from "@/components/access/RoleProvider";
 import { formatDate } from "@/lib/format";
-import { opportunityTypeMeta } from "@/lib/opportunity-types";
+import { OPPORTUNITY_CATEGORIES, categoryOfTypeKey, opportunityTypeMeta } from "@/lib/opportunity-types";
 import { loadOpportunityRows, type OpportunityRow, type OpportunitySource } from "@/lib/services/opportunities";
 import { subscribeMockStore } from "@/lib/mock-store";
 import { useListData } from "@/lib/use-list-data";
@@ -37,18 +38,10 @@ import type { Column } from "@/components/list/types";
 import { type SelectOption } from "@/components/ui/form/Select";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 
-/** The tabs. "Other" holds every type that has no tab of its own (scholarships, fellowships, competitions, trainings...). */
-type TypeTab = "all" | "jobs" | "internships" | "events" | "grants" | "other";
-const OWN_TABS = ["jobs", "internships", "events", "grants"];
-const TABS: { value: TypeTab; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "jobs", label: "Jobs" },
-  { value: "internships", label: "Internships" },
-  { value: "events", label: "Events" },
-  { value: "grants", label: "Grants" },
-  { value: "other", label: "Other" },
-];
-const inTab = (row: OpportunityRow, tab: TypeTab) => (tab === "all" ? true : tab === "other" ? !OWN_TABS.includes(row.type) : row.type === tab);
+/** The tabs: All, then the eight opportunity categories (lib/opportunity-types.ts). A row is in the category its type belongs to. */
+type TypeTab = "all" | string;
+const TABS: { value: TypeTab; label: string }[] = [{ value: "all", label: "All" }, ...OPPORTUNITY_CATEGORIES.map((category) => ({ value: category.key, label: category.label }))];
+const inTab = (row: OpportunityRow, tab: TypeTab) => (tab === "all" ? true : categoryOfTypeKey(row.type)?.key === tab);
 
 type SourceFilter = "all" | OpportunitySource;
 const SOURCES: { value: SourceFilter; label: string }[] = [

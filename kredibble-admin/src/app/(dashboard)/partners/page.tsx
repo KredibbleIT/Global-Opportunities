@@ -123,12 +123,10 @@ export default function PartnersPage() {
       action={canEdit ? { label: "Add partner", href: "/partners/new", icon: Plus } : undefined}
       toolbar={
         <div className="space-y-4">
-          {/* From 1280px: the three aligned cards (Open deals, Closed this month, Next month's target) on the left and the health card
-              taking the rest, in ONE row (so the board starts higher). Below 1280px they stack. */}
-          <div className="space-y-4 xl:grid xl:grid-cols-[2fr_3fr] xl:items-stretch xl:gap-4 xl:space-y-0">
-            <PartnerSummary partners={rows} target={isLoading ? null : shownTarget} />
-            <PipelineHealthCard health={health} demo={override ?? undefined} />
-          </div>
+          {/* The three equal cards (Open deals, Closed this month, Next month's target) in one row, then the full-width health card
+              under them. On phones the cards stack. */}
+          <PartnerSummary partners={rows} target={isLoading ? null : shownTarget} />
+          <PipelineHealthCard health={health} demo={override ?? undefined} />
           <TableToolbar inline search={{ value: search, onChange: setSearch, placeholder: "Search partners", label: "Search partners" }}>
             <FilterSelect options={ownerOptions} value={owner} onChange={setOwner} ariaLabel="Filter by owner" sheetTitle="Owner" />
             <FilterSelect options={typeOptions} value={type} onChange={setType} ariaLabel="Filter by type" sheetTitle="Type" />

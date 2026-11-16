@@ -22,7 +22,7 @@ import type { Role } from "@/config/roles";
 export type MonthKey = string;
 
 // ---- Listings (curated opportunities) ---------------------------------------------------------------
-export const LISTING_TYPES = ["job", "internship", "scholarship", "fellowship", "grant", "event"] as const;
+export const LISTING_TYPES = ["job", "internship", "scholarship", "fellowship", "grant", "event", "volunteer", "training", "mentorship"] as const;
 export type ListingType = (typeof LISTING_TYPES)[number];
 export type ListingStatus = "draft" | "published";
 export const LISTING_FORMATS = ["online", "in-person", "hybrid"] as const;
@@ -61,6 +61,14 @@ export interface Listing {
   writerId?: string;
   /** Adds the ambassador's referral code to the apply link. */
   referralOnApply: boolean;
+  /** Who can apply and what it offers (one point a line). */
+  eligibility?: string;
+  benefits?: string;
+  /** Category details: how it is paid for, the study level or career stage or skill level, the cause, field or topic, and a certificate. */
+  fundingType?: string;
+  level?: string;
+  focusArea?: string;
+  certificateOffered?: boolean;
   /** Who vetted it, and the day. Both are set together with `vetted`. */
   vettedById?: string;
   vettedOn?: string;

@@ -2405,15 +2405,16 @@ test.describe('Phone (434px): detail pages', () => {
     }
   });
 
-  test('the drawer tagline is not cut off', async ({ page }) => {
+  test('the drawer logo is whole: inside the drawer, at its own shape', async ({ page }) => {
     await page.goto(`${BASE_URL}/`, { timeout: 30_000 });
     await page.getByRole('button', { name: 'Open navigation' }).click();
-    const tagline = page.locator('aside .brand-sub');
-    await expect(tagline).toBeVisible();
-    const m = await tagline.evaluate((el) => ({ sw: el.scrollWidth, cw: el.clientWidth, ellipsis: getComputedStyle(el).textOverflow }));
-    expect(m.sw).toBeLessThanOrEqual(m.cw);
-    expect(m.ellipsis).not.toBe('ellipsis');
-    await expect(tagline).toHaveText(BRAND.sub);
+    const logo = page.locator('aside').getByTestId('brand-logo');
+    await expect(logo).toBeVisible();
+    await expect(logo).toHaveAttribute('alt', `${BRAND.sub} logo`);
+    const box = (await logo.boundingBox())!;
+    const drawer = (await page.locator('aside').boundingBox())!;
+    expect(box.x + box.width).toBeLessThanOrEqual(drawer.x + drawer.width);
+    expect(Math.abs(box.width / box.height - 435 / 151)).toBeLessThan(0.05); // never stretched
   });
 });
 
@@ -4094,34 +4095,35 @@ test.describe('Roles fix pass: sidebar open state, direct rows, tagline, account
     await expect(nav.getByTestId('nav-item-ambassadors')).toBeVisible();
   });
 
-  test('the tagline is one line in the expanded desktop sidebar and the collapse button is visible', async ({ page }) => {
+  test('the full logo sits directly on the expanded desktop sidebar (own shape, max 120px) and the collapse button is visible', async ({ page }) => {
     await page.goto(`${BASE_URL}/`, { timeout: 30_000 });
-    const tagline = page.getByTestId('brand-tagline');
-    await expect(tagline).toHaveText('Global Opportunity Desk');
-    const m = await tagline.evaluate((el) => ({ h: el.getBoundingClientRect().height, sw: el.scrollWidth, cw: el.clientWidth, ws: getComputedStyle(el).whiteSpace, fs: getComputedStyle(el).fontSize }));
-    expect(m.fs).toBe('11px');
-    expect(m.ws).toBe('nowrap');
-    expect(m.h).toBeLessThanOrEqual(17);
-    expect(m.sw).toBeLessThanOrEqual(m.cw);
+    const logo = page.locator('aside').getByTestId('brand-logo');
+    await expect(logo).toBeVisible();
+    const lb = (await logo.boundingBox())!;
+    expect(lb.width).toBeLessThanOrEqual(120.5);
+    expect(Math.abs(lb.width / lb.height - 435 / 151)).toBeLessThan(0.05); // never stretched
+    expect(lb.height).toBeLessThan(64); // fits the 64px brand row
+    // no white tile behind it: the logo sits directly on the sidebar
+    expect(await logo.evaluate((el) => getComputedStyle(el.parentElement!.parentElement!).backgroundColor)).toBe('rgba(0, 0, 0, 0)');
+    await expect(page.locator('aside').getByTestId('brand-mark')).toHaveCount(0); // the ring mark is for the collapsed rail
     const toggle = page.getByTestId('sidebar-toggle');
     await expect(toggle).toBeVisible();
     const t = (await toggle.boundingBox())!;
     const a = (await page.locator('aside').boundingBox())!;
     expect(t.x + t.width).toBeLessThanOrEqual(a.x + a.width);
-    const textBox = (await tagline.boundingBox())!;
-    expect(textBox.x + m.sw).toBeLessThanOrEqual(t.x + 1); // the text does not run under the button
+    expect(lb.x + lb.width).toBeLessThanOrEqual(t.x + 1); // the logo does not run under the button
   });
 
-  test('in the phone drawer the tagline may wrap and is never cut off', async ({ page }) => {
+  test('in the phone drawer the logo is whole and the close button still fits', async ({ page }) => {
     await page.setViewportSize({ width: 434, height: 900 });
     await page.goto(`${BASE_URL}/`, { timeout: 30_000 });
     await page.getByRole('button', { name: 'Open navigation' }).click();
-    const tagline = page.getByTestId('brand-tagline');
-    await expect(tagline).toBeVisible();
-    const m = await tagline.evaluate((el) => ({ sw: el.scrollWidth, cw: el.clientWidth, ws: getComputedStyle(el).whiteSpace, ow: getComputedStyle(el).overflowWrap }));
-    expect(m.ws).toBe('normal');
-    expect(m.ow).toBe('break-word');
-    expect(m.sw).toBeLessThanOrEqual(m.cw);
+    const logo = page.locator('aside').getByTestId('brand-logo');
+    await expect(logo).toBeVisible();
+    const lb = (await logo.boundingBox())!;
+    const close = (await page.getByRole('button', { name: 'Close navigation' }).boundingBox())!;
+    expect(lb.x + lb.width).toBeLessThanOrEqual(close.x + 1); // the logo never runs under the close button
+    expect(Math.abs(lb.width / lb.height - 435 / 151)).toBeLessThan(0.05);
   });
 
   test('below 640px the "Viewing as" pill is hidden and the account menu names the roles as text', async ({ page, context }) => {
@@ -4283,20 +4285,37 @@ test.describe('Opportunities queue: one list for both sources', () => {
   const tabCount = async (page: import('@playwright/test').Page, name: string) =>
     (await page.getByRole('radiogroup', { name: 'Filter by type' }).getByRole('radio', { name: new RegExp(`^${name}`) }).innerText()).replace(/\D+/g, '');
 
-  test('columns, type tabs with counts, and the Other tab', async ({ page }) => {
+  test('columns, and the type tabs with counts: All and the eight opportunity categories', async ({ page }) => {
     await page.goto(`${BASE_URL}/opportunities`, { timeout: 30_000 });
     await expect(page.getByTestId('table-row').first()).toBeVisible();
     const headers = (await page.locator('main table thead th').allTextContents()).map((text) => text.trim()).filter((text) => text && text !== 'Open');
     expect(headers).toEqual(['Title', 'Company', 'Type', 'Source', 'Vetting', 'Posted', 'Status']);
     expect(await tabCount(page, 'All')).toBe('20');
-    expect(await tabCount(page, 'Jobs')).toBe('7');
-    expect(await tabCount(page, 'Internships')).toBe('3');
+    // The tabs are the eight categories, in the order of the app's Opportunities screen. Competitions count under Events & Competitions and
+    // internships under Jobs & Internships.
+    const tabs = await page.getByRole('radiogroup', { name: 'Filter by type' }).getByRole('radio').allInnerTexts();
+    expect(tabs.map((text) => text.replace(/\s*\d+\s*$/, '').trim())).toEqual([
+      'All',
+      'Events & Competitions',
+      'Volunteerism & Community Service',
+      'Awards, Grants & Funding',
+      'Jobs & Internships',
+      'Scholarships',
+      'Fellowships & Exchange Programmes',
+      'Training & Workshops',
+      'Mentorship & Career Development',
+    ]);
     expect(await tabCount(page, 'Events')).toBe('3');
-    expect(await tabCount(page, 'Grants')).toBe('3');
-    expect(await tabCount(page, 'Other')).toBe('4'); // 2 scholarships + 2 fellowships, all curated
-    await page.getByRole('radiogroup', { name: 'Filter by type' }).getByRole('radio', { name: /^Other/ }).click();
+    expect(await tabCount(page, 'Volunteerism')).toBe('0');
+    expect(await tabCount(page, 'Awards')).toBe('3');
+    expect(await tabCount(page, 'Jobs')).toBe('10'); // 7 jobs + 3 internships
+    expect(await tabCount(page, 'Scholarships')).toBe('2');
+    expect(await tabCount(page, 'Fellowships')).toBe('2');
+    expect(await tabCount(page, 'Training')).toBe('0');
+    expect(await tabCount(page, 'Mentorship')).toBe('0');
+    await page.getByRole('radiogroup', { name: 'Filter by type' }).getByRole('radio', { name: /^Scholarships/ }).click();
     const rows = page.getByTestId('table-row');
-    await expect(rows).toHaveCount(4);
+    await expect(rows).toHaveCount(2);
     for (const row of await rows.all()) await expect(row).toContainText('Staff-curated');
   });
 
@@ -4307,7 +4326,7 @@ test.describe('Opportunities queue: one list for both sources', () => {
     await source.getByRole('radio', { name: 'Hirer-submitted' }).click();
     await expect(page.getByTestId('table-row')).toHaveCount(6);
     expect(await tabCount(page, 'All')).toBe('6');
-    expect(await tabCount(page, 'Jobs')).toBe('3');
+    expect(await tabCount(page, 'Jobs')).toBe('4'); // jobs and internships
     for (const row of await page.getByTestId('table-row').all()) {
       await expect(row).toContainText('Hirer');
       await expect(row).not.toContainText('Vetted'); // vetting is for curated rows only
@@ -4315,7 +4334,7 @@ test.describe('Opportunities queue: one list for both sources', () => {
     }
     await source.getByRole('radio', { name: 'Staff-curated' }).click();
     expect(await tabCount(page, 'All')).toBe('14');
-    expect(await tabCount(page, 'Jobs')).toBe('4');
+    expect(await tabCount(page, 'Jobs')).toBe('6'); // jobs and internships
     await expect(page.getByTestId('table-row')).toHaveCount(10); // first of two pages
     const first = page.getByTestId('table-row').first();
     await expect(first.getByText(/^(Vetted|Unvetted)$/)).toBeVisible();
@@ -4378,10 +4397,10 @@ test.describe('Opportunities: the listing form', () => {
     await page.getByLabel('Official application link').fill('https://example.org/apply');
   };
 
-  test('has the four sections, the vetting card and the right actions', async ({ page }) => {
+  test('has the five sections, the vetting card and the right actions', async ({ page }) => {
     await page.goto(`${BASE_URL}/opportunities/new`, { timeout: 30_000 });
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('New listing');
-    for (const title of ['Basic details', 'Logistics', 'Media and attribution']) await expect(page.getByRole('heading', { name: title })).toBeVisible();
+    for (const title of ['Basic details', 'Logistics', 'Details', 'Media and attribution']) await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
     const vetting = page.getByTestId('vetting-checkpoint');
     await expect(vetting).toBeVisible();
     await expect(vetting).toContainText('Listings must be vetted before they can be published.');
@@ -4390,7 +4409,7 @@ test.describe('Opportunities: the listing form', () => {
     await expect(publishButton(page)).toBeDisabled();
     await expect(page.getByRole('switch', { name: 'Referral code on apply' })).toBeVisible();
     // required fields carry no "Optional" tag; the optional ones do
-    await expect(page.getByText('Optional', { exact: true })).toHaveCount(6); // logo, cost, location, duration, image, writer (the event date shows for events only: GOD-T31)
+    await expect(page.getByText('Optional', { exact: true })).toHaveCount(8); // logo, cost, location, duration, who can apply, what it offers, image, writer (the event date shows for events only: GOD-T31; the category facts show once a type is chosen)
     // the vetting card is visually distinct: a 2px warning-tinted border
     expect(await vetting.evaluate((el) => getComputedStyle(el).borderTopWidth)).toBe('2px');
   });
@@ -4440,7 +4459,7 @@ test.describe('Opportunities: the listing form', () => {
     await page.locator('header.sticky').getByRole('link', { name: 'Opportunities queue' }).click();
     await expect(page.getByTestId('table-row').first()).toBeVisible();
     expect(await tabCount(page, 'All')).toBe('21');
-    expect(await tabCount(page, 'Other')).toBe('5'); // the new one is a fellowship
+    expect(await tabCount(page, 'Fellowships')).toBe('3'); // the new one is a fellowship
     const row = page.getByTestId('table-row').filter({ hasText: 'Draft Saved Unvetted' });
     await expect(row).toContainText('Staff-curated');
     await expect(row).toContainText('Unvetted');
@@ -4449,6 +4468,68 @@ test.describe('Opportunities: the listing form', () => {
 
   const tabCount = async (page: import('@playwright/test').Page, name: string) =>
     (await page.getByRole('radiogroup', { name: 'Filter by type' }).getByRole('radio', { name: new RegExp(`^${name}`) }).innerText()).replace(/\D+/g, '');
+
+  test('the opportunity type of a new listing is one of the eight categories (the same list as the app)', async ({ page }) => {
+    await page.goto(`${BASE_URL}/opportunities/new`, { timeout: 30_000 });
+    await page.getByTestId('sidebar-toggle').waitFor();
+    await page.getByRole('combobox', { name: /Opportunity type/ }).click();
+    const labels = await page.getByRole('option').allInnerTexts();
+    expect(labels.map((label) => label.trim())).toEqual([
+      'Events & Competitions',
+      'Volunteerism & Community Service',
+      'Awards, Grants & Funding',
+      'Jobs & Internships',
+      'Scholarships',
+      'Fellowships & Exchange Programmes',
+      'Training & Workshops',
+      'Mentorship & Career Development',
+    ]);
+  });
+
+  test('the details: Who can apply and What it offers for every type; the facts of the category appear for it, are cleared when the type changes, and are saved', async ({ page }) => {
+    await page.goto(`${BASE_URL}/opportunities/new`, { timeout: 30_000 });
+    await page.getByTestId('sidebar-toggle').waitFor();
+    await expect(page.getByRole('heading', { name: 'Details', exact: true })).toBeVisible();
+    await expect(page.getByLabel('Who can apply')).toBeVisible();
+    await expect(page.getByLabel('What it offers')).toBeVisible();
+    await expect(page.getByRole('combobox', { name: 'Study level' })).toHaveCount(0); // no type chosen yet
+
+    await fillBasics(page, 'Scholarship With Details');
+    const chooseType = async (name: RegExp) => {
+      await page.getByRole('combobox', { name: 'Opportunity type' }).click();
+      await page.getByRole('option', { name }).click();
+    };
+    await chooseType(/^Scholarships$/);
+    for (const name of ['Field of study', 'Study level', 'Funding']) await expect(page.getByRole('combobox', { name })).toBeVisible();
+    await expect(page.getByRole('switch', { name: /Certificate/ })).toHaveCount(0);
+    await page.getByLabel('Who can apply').fill('Citizens of Ghana\nUnder 30');
+    await page.getByLabel('What it offers').fill('Tuition\nA living allowance');
+    await page.getByRole('combobox', { name: 'Study level' }).click();
+    await page.getByRole('option', { name: "Master's" }).click();
+    await page.getByRole('combobox', { name: 'Funding' }).click();
+    await page.getByRole('option', { name: 'Fully funded' }).click();
+    await page.getByRole('combobox', { name: 'Field of study' }).click();
+    await page.getByRole('option', { name: 'Health and medicine' }).click();
+
+    // another type brings its own facts, and the ones that do not apply are gone
+    await chooseType(/^Training & Workshops$/);
+    await expect(page.getByRole('combobox', { name: 'Study level' })).toHaveCount(0);
+    for (const name of ['Topic', 'Level', 'Cost']) await expect(page.getByRole('combobox', { name, exact: true })).toBeVisible();
+    await expect(page.getByRole('switch', { name: 'Certificate offered' })).toBeVisible();
+    await chooseType(/^Scholarships$/);
+    await expect(page.getByRole('combobox', { name: 'Study level' })).toContainText('Not set');
+
+    await page.getByRole('combobox', { name: 'Study level' }).click();
+    await page.getByRole('option', { name: "Master's" }).click();
+    await page.getByRole('combobox', { name: 'Funding' }).click();
+    await page.getByRole('option', { name: 'Partially funded' }).click();
+    await page.getByRole('button', { name: 'Save draft' }).click();
+    await expect(page).toHaveURL(/\/opportunities\/lst-new-/, { timeout: 15_000 });
+    await expect(page.getByText("Master's", { exact: true })).toBeVisible();
+    await expect(page.getByText('Partially funded', { exact: true })).toBeVisible();
+    await expect(page.getByText('Citizens of Ghana')).toBeVisible(); // Who can apply
+    await expect(page.getByText('A living allowance')).toBeVisible(); // What it offers: kept when the type changes, because it applies to every type
+  });
 
   test('Publish sets status published and the published date, and the list shows Published + Vetted', async ({ page }) => {
     await page.goto(`${BASE_URL}/opportunities/new`, { timeout: 30_000 });
@@ -6521,7 +6602,7 @@ test.describe('Partners: polish', () => {
   const overlaps = (a: { x: number; y: number; width: number; height: number }, b: { x: number; y: number; width: number; height: number }) =>
     a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 
-  test('from 1280px the three cards and the health card share ONE row; the column headers are above the fold', async ({ page }) => {
+  test('the three cards share one row and the full-width health card sits under them; the column headers are in the first screen', async ({ page }) => {
     for (const [width, height] of [[1440, 900], [1280, 800]]) {
       await open(page, width, height);
       const summary = await box(page.getByTestId('partner-summary'));
@@ -6530,22 +6611,20 @@ test.describe('Partners: polish', () => {
       const health = await box(page.getByRole('region', { name: 'Pipeline health' }));
       expect(Math.abs(closed.y - open1.y), `${width}: the cards are aligned in one row`).toBeLessThanOrEqual(1);
       expect(Math.abs(closed.height - open1.height), `${width}: the cards have the same height`).toBeLessThanOrEqual(1);
-      expect(health.x, `${width}: the health card is beside the tiles`).toBeGreaterThanOrEqual(summary.x + summary.width);
-      expect(Math.abs(health.y - summary.y), `${width}: one row`).toBeLessThanOrEqual(2);
-      // the column headers (before this pass they started at y=500) are in the first screen, with room for the first cards
+      expect(health.y, `${width}: the health card is under the cards`).toBeGreaterThanOrEqual(summary.y + summary.height - 1);
+      expect(Math.abs(health.width - summary.width), `${width}: the health card is as wide as the three cards together`).toBeLessThanOrEqual(2);
+      // the column headers are still in the first screen
       const header = page.getByTestId('kanban-column-prospect').locator('h3');
       await expect(header).toBeInViewport();
-      expect((await box(header)).y, `${width}: header y`).toBeLessThanOrEqual(400);
-      expect((await box(page.getByTestId('kanban-card-ptn-15'))).y, `${width}: first card y`).toBeLessThan(460);
+      expect((await box(header)).y, `${width}: header y`).toBeLessThanOrEqual(700);
     }
   });
 
-  test('below 1280px the tiles and the health card stack', async ({ page }) => {
-    await open(page, 1100, 900);
-    const summary = await box(page.getByTestId('partner-summary'));
-    const health = await box(page.getByRole('region', { name: 'Pipeline health' }));
-    expect(health.y).toBeGreaterThanOrEqual(summary.y + summary.height - 1);
-    expect(summary.width).toBeGreaterThan(240);
+  test('on a phone the three cards stack, one under the other', async ({ page }) => {
+    await open(page, 400, 900);
+    const open1 = await box(page.getByTestId('partner-summary-open'));
+    const closed = await box(page.getByTestId('partner-summary-closed'));
+    expect(closed.y).toBeGreaterThanOrEqual(open1.y + open1.height - 1);
   });
 
   test('tile captions: "Prospect to MOU" and the live count of closed partners', async ({ page }) => {
@@ -6795,18 +6874,18 @@ test.describe('Partners: compact health card', () => {
     expect(await sentence.evaluate((el) => el.scrollHeight <= el.clientHeight + 1)).toBe(true);
   });
 
-  test('the column headers start at y 400 or less at 1440x900, and the first card is in view at 1280x800', async ({ page }) => {
+  test('the column headers start in the first screen at 1440x900 (y 700 or less) and at 1280x800', async ({ page }) => {
     await open(page, 1440, 900);
     const header = page.getByTestId('kanban-column-prospect').locator('h3');
     const y1440 = Math.round((await header.boundingBox())!.y);
     test.info().annotations.push({ type: 'header-y', description: `1440x900: column header y=${y1440}` });
-    expect(y1440).toBeLessThanOrEqual(400);
+    expect(y1440).toBeLessThanOrEqual(700);
     await open(page, 1280, 800);
     const y1280 = Math.round((await header.boundingBox())!.y);
     const card = (await page.getByTestId('kanban-card-ptn-15').boundingBox())!;
     test.info().annotations.push({ type: 'header-y', description: `1280x800: column header y=${y1280}, first card y=${Math.round(card.y)}` });
-    expect(y1280).toBeLessThanOrEqual(400);
-    await expect(page.getByTestId('kanban-card-ptn-15')).toBeInViewport();
+    expect(y1280).toBeLessThanOrEqual(700);
+    await expect(header).toBeInViewport();
   });
 
   test('every state of the compact card still reads: the chip, the figures and the one-line sentence', async ({ page }) => {
@@ -12890,10 +12969,12 @@ test.describe('Monthly report: routes, access, the two templates and the coheren
     await open(page, context, 'desk_lead');
     const paper = page.getByTestId('partner-report');
     await expect(paper).toBeVisible();
-    await expect(paper.getByText('Global Opportunity Desk', { exact: true })).toBeVisible();
-    await expect(paper.getByRole('heading', { name: 'Progress report' })).toBeVisible();
+    // On screen the report is only the cards (the design): the sheet's title block and footer belong to the PDF and show only when printing (below).
+    await expect(paper.getByTestId('report-title')).toBeHidden();
+    await expect(paper.getByTestId('report-footer')).toBeHidden();
+    await expect(page.getByTestId('sample-data-pill')).toBeVisible(); // the sample-data label on screen is the pill next to the month
     await expect(page.getByTestId('report-month')).toHaveText(formatMonth(defaultMonth())); // the last COMPLETE month
-    await expect(paper.getByRole('heading', { name: 'Performance overview' })).toBeVisible();
+    await expect(paper.getByRole('heading', { name: 'Performance overview' })).toBeAttached();
     await expect(paper.getByText(`Percentage changes are compared with ${formatMonth(monthsBefore(defaultMonth(), 1))}.`, { exact: true })).toBeVisible();
     const cells = paper.locator('[data-testid^="metric-"]:not([data-testid="metric-value"]):not([data-testid="metric-delta"])');
     await expect(cells).toHaveCount(10);
@@ -12918,10 +12999,23 @@ test.describe('Monthly report: routes, access, the two templates and the coheren
     await expect(paper).toHaveAttribute('data-source', 'sample');
     await expect(paper.getByTestId('report-source')).toHaveText("Sample figures for layout and review. Not the Desk's records.");
     await expect(paper.getByText("Figures from the Desk's own records.")).toHaveCount(0);
-    // the grid is 5 across on the paper
-    const lefts = await paper.locator('[data-testid^="metric-"]:not([data-testid="metric-value"]):not([data-testid="metric-delta"])').evaluateAll((nodes) => new Set(nodes.map((node) => Math.round(node.getBoundingClientRect().left))).size);
-    expect(lefts).toBe(5);
+    // the four cards are two across: Website & app above Programs on the left, Social media performance above Network on the right (the design review)
+    const box = async (id: string) => (await paper.getByTestId(id).boundingBox())!;
+    const [website, channels, programs, network] = [await box('report-website'), await box('report-channels'), await box('report-programs'), await box('report-network')];
+    expect(Math.round(website.x)).toBe(Math.round(programs.x));
+    expect(Math.round(channels.x)).toBe(Math.round(network.x));
+    expect(channels.x).toBeGreaterThan(website.x + website.width - 1);
+    expect(programs.y).toBeGreaterThan(website.y + website.height - 1);
     await expect(page.getByTestId('audience-none').or(page.getByRole('group', { name: /^Views by platform, last \d+ months/ }))).toBeVisible();
+    // Printed (Download PDF), the same report is the A4 sheet: Global Opportunity Desk, "Progress report", the month, the sample label and the footer.
+    await page.emulateMedia({ media: 'print' });
+    await expect(paper.getByText('Global Opportunity Desk', { exact: true }).first()).toBeVisible();
+    await expect(paper.getByRole('heading', { name: 'Progress report' })).toBeVisible();
+    await expect(paper.getByTestId('report-month')).toBeVisible();
+    await expect(paper.getByTestId('sample-report-badge')).toBeVisible();
+    await expect(paper.getByTestId('report-footer')).toBeVisible();
+    await expect(paper.getByTestId('report-source')).toBeVisible();
+    await page.emulateMedia({ media: 'screen' });
   });
 
   test('the partner report holds no staff name, no ambassador name and not the word "scoreboard"', async ({ page, context }) => {
@@ -13027,7 +13121,7 @@ test.describe('Monthly report: routes, access, the two templates and the coheren
     expect(kinds.has('up') || kinds.has('down') || kinds.has('flat')).toBe(true); // a normal month
   });
 
-  test('channel performance: Channel, Posts, Reach, Engagement sorted by reach; with no post in the month the section is replaced by a neutral note', async ({ page, context }) => {
+  test('channel performance: Channel, Reach, Posts, Engagement sorted by reach; with no post in the month the table is replaced by a neutral note', async ({ page, context }) => {
     const month = defaultMonth();
     await open(page, context, 'desk_lead', `/monthly-report/partner?month=${month}`);
     const rows = page.getByTestId('channel-row');
@@ -13035,9 +13129,9 @@ test.describe('Monthly report: routes, access, the two templates and the coheren
     await expect(rows).toHaveCount(expected.length);
     for (const [index, row] of expected.entries()) {
       await expect(rows.nth(index)).toContainText(row.label);
-      await expect(rows.nth(index).locator('td').nth(2)).toHaveText(row.reach.toLocaleString('en-US'));
+      await expect(rows.nth(index).locator('td').nth(1)).toHaveText(row.reach.toLocaleString('en-US'));
     }
-    await expect(page.getByRole('columnheader')).toContainText(['Channel', 'Posts', 'Reach', 'Engagement']);
+    await expect(page.getByTestId('channel-table').getByRole('columnheader')).toContainText(['Channel', 'Reach', 'Posts', 'Engagement']);
     // a month with no data (the dev ?state=empty): the paper stays, with zeros, a neutral note and no channel table
     await page.goto(`${BASE_URL}/monthly-report/partner?state=empty`, { timeout: 30_000 });
     await expect(page.getByTestId('partner-report')).toBeVisible();
@@ -13112,7 +13206,7 @@ test.describe('Monthly report: routes, access, the two templates and the coheren
     }
   });
 
-  test('on a phone (434, 390 and 360px): the paper fills the width, the grids reflow to 2 across and there is no sideways scroll', async ({ page, context }) => {
+  test('on a phone (434, 390 and 360px): the paper fills the width, the cards stack in one column and there is no sideways scroll', async ({ page, context }) => {
     test.setTimeout(150_000);
     await signedIn(page);
     await asRoles(context, 'desk_lead');
@@ -13127,8 +13221,8 @@ test.describe('Monthly report: routes, access, the two templates and the coheren
         const paper = await page.getByTestId(`${view}-report`).boundingBox();
         expect(paper!.width).toBeGreaterThan(width - 40);
         if (view === 'partner') {
-          const across = await page.locator('[data-testid^="metric-"]:not([data-testid="metric-value"]):not([data-testid="metric-delta"])').evaluateAll((nodes) => new Set(nodes.map((node) => Math.round(node.getBoundingClientRect().left))).size);
-          expect(across, `${width}px: two across`).toBe(2);
+          const cardLefts = await page.locator('[data-testid="report-website"], [data-testid="report-channels"], [data-testid="report-programs"], [data-testid="report-network"]').evaluateAll((nodes) => new Set(nodes.map((node) => Math.round(node.getBoundingClientRect().left))).size);
+          expect(cardLefts, `${width}px: one column`).toBe(1);
         }
       }
     }

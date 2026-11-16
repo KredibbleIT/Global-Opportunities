@@ -566,6 +566,15 @@ body {
   box-shadow: var(--shadow-card);
 }
 
+/* The Partner report on screen: only the cards, straight on the page (the design). Its sheet, header and footer appear only when printing, below. */
+.report-paper--wide {
+  max-width: none;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 /*
  * THE PAGE: A4, portrait, 14mm margins. A top-level rule (it only ever applies when printing), so the browser's default paper is A4 and not the printer's
  * or the locale's (US Letter, 612 x 792pt). The print dialog can still be changed by the person printing; see the hint under "Download PDF".
@@ -609,6 +618,7 @@ body {
     border-radius: 0;
     box-shadow: none;
     padding: 0;
+    background: #fff;
     /* Fit more of the sheet on a page: the A4 content width is narrower than the screen paper, so the report is printed at 70%. */
     zoom: 0.7;
     -webkit-print-color-adjust: exact;

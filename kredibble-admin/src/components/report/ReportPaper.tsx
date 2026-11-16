@@ -10,15 +10,17 @@
  *   inside the paper, so they print too. False only for figures read from the live API (lib/services/report.ts, reportSource).
  * - note: one line under the month ("Internal. Not for partners.")
  * - children: the sections
+ * - wide: the Partner report. On screen it is just the cards on the page (no sheet, no title block, no footer: the month, the sample-data pill and
+ *   Download PDF are in the controls above). Printed, it is the full A4 sheet with the header, the sample label and the footer.
  */
 import type { ReactNode } from "react";
 import { formatMonth } from "@/lib/format";
 import type { MonthKey } from "@/lib/mock-entities";
 
-export function ReportPaper({ title, month, toDate = false, sample, note, children, testId }: { title: string; month: MonthKey; toDate?: boolean; sample: boolean; note?: string; children: ReactNode; testId: string }) {
+export function ReportPaper({ title, month, toDate = false, sample, note, children, testId, wide = false }: { title: string; month: MonthKey; toDate?: boolean; sample: boolean; note?: string; children: ReactNode; testId: string; wide?: boolean }) {
   return (
-    <article data-testid={testId} data-source={sample ? "sample" : "live"} aria-label={sample ? `${title} (sample report)` : title} className="report-paper p-4 min-[640px]:p-10">
-      <header>
+    <article data-testid={testId} data-source={sample ? "sample" : "live"} aria-label={sample ? `${title} (sample report)` : title} className={`report-paper${wide ? " report-paper--wide" : " p-4 min-[640px]:p-10"}`}>
+      <header className={wide ? "hidden print:block" : undefined}>
         <p className="text-sm font-medium text-orange-700">Global Opportunity Desk</p>
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
           <h2 data-testid="report-title" className="font-display text-3xl font-semibold leading-9 text-ink">
@@ -47,8 +49,8 @@ export function ReportPaper({ title, month, toDate = false, sample, note, childr
         )}
         <div aria-hidden="true" className="mt-4 h-1 rounded-pill bg-linear-to-r from-orange-500 to-purple-600" />
       </header>
-      <div className="mt-6 space-y-8 print:mt-4 print:space-y-4">{children}</div>
-      <footer className="report-footer mt-10 border-t border-line pt-4 print:mt-4 print:pt-2">
+      <div className={wide ? "space-y-5 print:mt-4 print:space-y-4" : "mt-6 space-y-8 print:mt-4 print:space-y-4"}>{children}</div>
+      <footer className={`report-footer mt-10 border-t border-line pt-4 print:mt-4 print:pt-2${wide ? " hidden print:block" : ""}`}>
         <p data-testid="report-footer" className="caption text-ink">
           Global Opportunity Desk · {formatMonth(month)}
         </p>

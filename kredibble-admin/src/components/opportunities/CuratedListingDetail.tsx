@@ -19,7 +19,7 @@
  */
 import Link from "next/link";
 import { useCallback } from "react";
-import { Award, Briefcase, CalendarDays, EyeOff, GraduationCap, HandCoins, Pencil, Sparkles, type LucideIcon } from "lucide-react";
+import { Award, Briefcase, CalendarDays, Compass, EyeOff, GraduationCap, HandCoins, HeartHandshake, Pencil, Presentation, Sparkles, type LucideIcon } from "lucide-react";
 import { useRoles, VIEW_ONLY_TOOLTIP } from "@/components/access/RoleProvider";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { useBreadcrumbLabel } from "@/lib/breadcrumb-label";
@@ -38,6 +38,7 @@ import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TagPill } from "@/components/ui/TagPill";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { useToast } from "@/components/ui/Toast";
+import { FUNDING_LABELS } from "@/lib/opportunity-types";
 import { ReachCard } from "./ReachCard";
 
 const TYPE_META: Record<ListingType, { label: string; icon: LucideIcon }> = {
@@ -47,6 +48,9 @@ const TYPE_META: Record<ListingType, { label: string; icon: LucideIcon }> = {
   grant: { label: "Grant", icon: HandCoins },
   scholarship: { label: "Scholarship", icon: Award },
   fellowship: { label: "Fellowship", icon: Sparkles },
+  volunteer: { label: "Volunteering", icon: HeartHandshake },
+  training: { label: "Training", icon: Presentation },
+  mentorship: { label: "Mentorship", icon: Compass },
 };
 const FORMAT_LABEL = { online: "Online", "in-person": "In person", hybrid: "Hybrid" } as const;
 
@@ -142,6 +146,17 @@ export function CuratedListingDetail({ id }: { id: string }) {
               <p className="input-text whitespace-pre-line text-ink">{listing.description}</p>
             </InfoCard>
 
+            {listing.eligibility && (
+              <InfoCard title="Who can apply">
+                <p className="input-text whitespace-pre-line text-ink">{listing.eligibility}</p>
+              </InfoCard>
+            )}
+            {listing.benefits && (
+              <InfoCard title="What it offers">
+                <p className="input-text whitespace-pre-line text-ink">{listing.benefits}</p>
+              </InfoCard>
+            )}
+
             <InfoCard title="Vetting">
               {listing.vetted ? (
                 <KeyValueList
@@ -174,6 +189,10 @@ export function CuratedListingDetail({ id }: { id: string }) {
                 { label: "Cost or fee", value: listing.costLabel },
                 { label: "Event date", value: listing.eventAt ? formatDateTime(listing.eventAt) : undefined },
                 { label: "Duration", value: listing.durationLabel },
+                { label: "Funding", value: listing.fundingType ? FUNDING_LABELS[listing.fundingType] ?? listing.fundingType : undefined },
+                { label: "Level", value: listing.level },
+                { label: "Focus", value: listing.focusArea },
+                { label: "Certificate", value: listing.certificateOffered ? "Offered" : undefined },
                 { label: "Writer", value: staffName(listing.writerId) },
                 { label: "Referral code on apply", value: listing.referralOnApply ? "On" : "Off" },
                 { label: "Apply link", value: listing.applyUrl },
