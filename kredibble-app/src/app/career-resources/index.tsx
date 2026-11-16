@@ -1,447 +1,173 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, Modal, StyleSheet } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ChevronLeft, Search, Clock, X, BookOpen } from 'lucide-react-native';
+import { useState } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, FlatList, TextInput, useWindowDimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Clock, FileText, MessageSquare, Compass, BookOpen, Search, X, type LucideIcon } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import { Colors, FontSize, FontWeight, Radius, LineHeight, Size } from '../../constants/design';
-import { getArticles } from '../../lib/api';
+import { Colors, Radius } from '../../constants/design';
+import { CAREER_CATEGORIES, useCareerArticles, type CareerArticle } from '../../constants/careerResources';
+import { Header } from '../../components/ui/Header';
 
+// The Career resources center uses the same design and structure as the News screen: a header, a row of featured guides you swipe
+// through, category chips, then the list of guides with an icon tile. A guide opens on its own screen (career-resources/[id]).
 
-interface Article {
-  id: string;
-  category: string;
-  title: string;
-  duration: string;
-  summary: string;
-  content: string;
-}
+const CATEGORY_ICON: Record<string, LucideIcon> = {
+  'Resume Writing': FileText,
+  'Interview Prep': MessageSquare,
+  'Career Planning': Compass,
+};
 
-const ARTICLES: Article[] = [
-  {
-    id: '1',
-    category: 'Resume Writing',
-    title: 'How to write a developer resume that gets noticed',
-    duration: '5 min read',
-    summary: 'Learn key formatting guidelines, action verbs, and structural details that make your engineering resume stand out to recruiters.',
-    content: `Writing a great software developer resume is about demonstrating impact, not just listing technologies. Recruiters spend an average of 6 seconds scanning a CV. Here are key strategies to make your resume stand out:\n\n1. Keep it Concise\nLimit your resume to 1-2 pages maximum. Put your most impressive and recent experience at the top. Use clean layouts and bullet points for scan-readability.\n\n2. Focus on Impact\nUse the Action-Result format. Instead of saying "worked on the backend", say "Re-architected query layers, reducing search database latency by 40%". Quantify your accomplishments whenever possible.\n\n3. Match Job Keywords\nTailor your skills section to include language directly from the job description. Automated applicant tracking systems (ATS) look for matching terms to filter candidates.\n\n4. Link Projects & Portfolios\nEnsure your GitHub, personal portfolio website, and LinkedIn profiles are updated and hyperlinked. Live projects provide proof of your capabilities.`
-  },
-  {
-    id: '2',
-    category: 'Interview Prep',
-    title: 'Mastering behavioral interviews: The STAR Method',
-    duration: '8 min read',
-    summary: 'A complete walkthrough of the Situation, Task, Action, and Result framework to successfully answer behavioral questions.',
-    content: `Behavioral interview questions ("Tell me about a time you resolved a conflict...") are designed to predict future performance based on past actions. The STAR method is the gold standard for structuring answers:\n\n• Situation\nDescribe the context of the challenge you faced. Keep this concise and set the scene.\n\n• Task\nExplain your responsibility or the goal you needed to achieve in that situation.\n\n• Action\nOutline the exact steps you took to address the issue. Be specific about your contribution, even if it was a team project. Use "I did" instead of "We did".\n\n• Result\nState the outcome of your actions. Quantify achievements (e.g. saved 10 hours per week, increased sales by 15%) whenever possible.\n\nPractice beforehand by preparing 4-5 core stories that can adapt to different themes like leadership, technical difficulty, or handling failures.`
-  },
-  {
-    id: '3',
-    category: 'Career Planning',
-    title: 'Top 10 skills for Product Designers in 2026',
-    duration: '4 min read',
-    summary: 'Discover the essential soft and technical skills required to remain competitive as a modern UI/UX and product designer.',
-    content: `The landscape of digital design is evolving rapidly. To stand out as a Product Designer, focus on mastering these key pillars:\n\n1. Advanced Prototyping\nCreating interactive, high-fidelity micro-interactions inside tools like Figma to communicate design flows effectively.\n\n2. Design Systems Governance\nUnderstanding how to build, scale, and maintain shared component libraries that align with developer frameworks.\n\n3. Business and Product Strategy\nDesigning with metrics in mind. Knowing how your layouts impact conversion rates, retention, and business growth.\n\n4. Design Tokens & Code Literacy\nFamiliarity with CSS/React layouts to improve communication and handoff with developers.`
-  }
-];
+const FeaturedCard = ({ item, width, onPress }: { item: CareerArticle; width: number; onPress: () => void }) => {
+  const Icon: LucideIcon = CATEGORY_ICON[item.category] ?? BookOpen;
+  return (
+    <TouchableOpacity
+      activeOpacity={0.9}
+      onPress={onPress}
+      style={{ width, height: 210, borderRadius: Radius.card, backgroundColor: Colors.primary, overflow: 'hidden', padding: 16, justifyContent: 'space-between' }}
+    >
+      {/* Soft decorative shapes */}
+      <View style={{ position: 'absolute', right: -50, top: -50, width: 190, height: 190, borderRadius: 95, backgroundColor: 'rgba(255,255,255,0.08)' }} />
+      <View style={{ position: 'absolute', right: 24, bottom: -42, opacity: 0.18 }}>
+        <Icon size={120} color={Colors.white} strokeWidth={1.2} />
+      </View>
+
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <View style={{ backgroundColor: Colors.accent600, borderRadius: 9999, paddingHorizontal: 10, paddingVertical: 4 }}>
+          <Text style={{ color: Colors.white, fontSize: 11, fontWeight: '700' }}>{item.category}</Text>
+        </View>
+      </View>
+
+      <View>
+        <Text numberOfLines={3} style={{ color: Colors.white, fontSize: 18, lineHeight: 25 }} className="font-heading font-bold">
+          {item.title}
+        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12, gap: 6 }}>
+          <Clock size={13} color="rgba(255,255,255,0.8)" />
+          <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12 }}>{item.duration}</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+};
+
+const GuideRow = ({ item, onPress }: { item: CareerArticle; onPress: () => void }) => {
+  const Icon: LucideIcon = CATEGORY_ICON[item.category] ?? BookOpen;
+  return (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={onPress}
+      style={{ backgroundColor: Colors.bgCard, borderRadius: Radius.card, padding: 14, marginBottom: 12, flexDirection: 'row', gap: 14 }}
+    >
+      <View style={{ flex: 1, justifyContent: 'space-between' }}>
+        <View>
+          <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.accent700, marginBottom: 4 }}>{item.category.toUpperCase()}</Text>
+          <Text numberOfLines={3} style={{ fontSize: 15, lineHeight: 21, color: Colors.textBody }} className="font-heading font-semibold">
+            {item.title}
+          </Text>
+        </View>
+        <Text numberOfLines={2} style={{ fontSize: 12, lineHeight: 17, color: Colors.textMuted, marginTop: 10 }}>
+          {item.summary}
+        </Text>
+      </View>
+
+      <View style={{ alignItems: 'flex-end', justifyContent: 'space-between' }}>
+        <View style={{ width: 96, height: 96, borderRadius: 12, backgroundColor: Colors.primary10, alignItems: 'center', justifyContent: 'center' }}>
+          <Icon size={36} color={Colors.primary} strokeWidth={1.6} />
+        </View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 }}>
+          <Clock size={12} color={Colors.textMuted} />
+          <Text style={{ fontSize: 11, color: Colors.textMuted }}>{item.duration}</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+};
 
 export default function CareerResourcesScreen() {
   const router = useRouter();
-  const insets = useSafeAreaInsets();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [activeArticle, setActiveArticle] = useState<Article | null>(null);
-  
-  const [articles, setArticles] = useState<Article[]>(ARTICLES);
+  const { width } = useWindowDimensions();
+  const articles = useCareerArticles();
+  const [category, setCategory] = useState<string>('All');
+  const [query, setQuery] = useState('');
 
-  React.useEffect(() => {
-    const fetchArticles = async () => {
-      try {
-        const data = await getArticles();
-        if (data && data.length > 0) {
-          setArticles(data);
-        }
-      } catch (err) {
-        console.warn('Failed to load articles from API', err);
-      }
-    };
-    fetchArticles();
-  }, []);
-
-  const categories = ['All', 'Resume Writing', 'Interview Prep', 'Career Planning'];
-
-  const filteredArticles = articles.filter(article => {
-    const matchesSearch = article.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          article.summary.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === 'All' || article.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
+  const featured = articles.slice(0, 3);
+  const term = query.trim().toLowerCase();
+  const guides = articles.filter(
+    (a) => (category === 'All' || a.category === category) && (!term || a.title.toLowerCase().includes(term) || a.summary.toLowerCase().includes(term)),
+  );
+  const cardWidth = width - 40 - 24;
+  const open = (id: string) => router.push({ pathname: '/career-resources/[id]', params: { id } } as any);
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#F7F7F9' }} edges={['top', 'left', 'right', 'bottom']}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => router.canGoBack() ? router.back() : router.replace('/(tabs)')}
-          style={styles.backButton}
-        >
-          <ChevronLeft size={20} color="#1A1A1A" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle} className="font-sans">
-          Career resources center
-        </Text>
-        <View style={styles.headerSpacer} />
-      </View>
+    <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen }} edges={['top', 'left', 'right', 'bottom']}>
+      <Header title="Career Resources" showBack onBackPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)'))} />
 
-      {/* Main Content */}
-      <View style={{ flex: 1 }}>
-        {/* Search & Filters container */}
-        <View style={styles.searchContainer}>
-          <View style={styles.searchBar}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
+        {/* Search (kept from the earlier screen) */}
+        <View style={{ paddingHorizontal: 20, marginBottom: 16 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.white, borderRadius: Radius.searchBar, paddingHorizontal: 16, height: 48 }}>
             <Search size={18} color="#A1A1AA" style={{ marginRight: 10 }} />
             <TextInput
               placeholder="Search guides and playbooks..."
               placeholderTextColor="#A1A1AA"
-              style={[styles.input, { outline: 'none' } as any]}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
+              value={query}
+              onChangeText={setQuery}
+              style={{ flex: 1, fontSize: 14, color: Colors.textBody }}
               className="font-sans"
             />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
+            {query.length > 0 && (
+              <TouchableOpacity onPress={() => setQuery('')} accessibilityRole="button" accessibilityLabel="Clear search" hitSlop={10}>
                 <X size={16} color="#A1A1AA" />
               </TouchableOpacity>
             )}
           </View>
         </View>
 
-        {/* Category Filter Tabs */}
-        <View style={styles.categoriesWrapper}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoriesScroll}>
-            {categories.map((cat) => (
-              <TouchableOpacity
-                key={cat}
-                onPress={() => setSelectedCategory(cat)}
-                style={[
-                  styles.categoryTab,
-                  selectedCategory === cat && styles.activeCategoryTab
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.categoryTabText,
-                    selectedCategory === cat && styles.activeCategoryTabText
-                  ]}
-                  className="font-sans"
-                >
-                  {cat}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+        {/* Featured guides */}
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', paddingHorizontal: 20, marginTop: 4, marginBottom: 12 }}>
+          <Text style={{ fontSize: 20, color: Colors.textBody }} className="font-heading font-bold">Featured Guides</Text>
+          <Text style={{ fontSize: 12, color: Colors.textMuted }}>{articles.length} {articles.length === 1 ? 'guide' : 'guides'}</Text>
         </View>
 
-        {/* Articles List */}
-        <ScrollView
-          contentContainerStyle={[styles.articlesScrollContent, { paddingBottom: insets.bottom + 20 }]}
-          showsVerticalScrollIndicator={false}
-        >
-          {filteredArticles.length > 0 ? (
-            filteredArticles.map((article) => (
+        <FlatList
+          data={featured}
+          horizontal
+          keyExtractor={(a) => String(a.id)}
+          showsHorizontalScrollIndicator={false}
+          snapToInterval={cardWidth + 12}
+          decelerationRate="fast"
+          contentContainerStyle={{ paddingHorizontal: 20, gap: 12 }}
+          renderItem={({ item }) => <FeaturedCard item={item} width={cardWidth} onPress={() => open(String(item.id))} />}
+        />
+
+        {/* Category filter */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20, gap: 8, marginTop: 24 }}>
+          {(['All', ...CAREER_CATEGORIES] as const).map((c) => {
+            const active = category === c;
+            return (
               <TouchableOpacity
-                key={article.id}
-                activeOpacity={0.8}
-                onPress={() => setActiveArticle(article)}
-                style={styles.articleCard}
+                key={c}
+                onPress={() => setCategory(c)}
+                style={{
+                  paddingHorizontal: 16, height: 36, borderRadius: 18, justifyContent: 'center',
+                  backgroundColor: active ? Colors.primary : Colors.bgCard,
+                  borderWidth: 1, borderColor: active ? Colors.primary : Colors.borderDefault,
+                }}
               >
-                <View style={styles.cardHeader}>
-                  <Text style={styles.cardTag} className="font-sans">
-                    {article.category.toUpperCase()}
-                  </Text>
-                  <View style={styles.durationBadge}>
-                    <Clock size={12} color="#8A8D9F" style={{ marginRight: 4 }} />
-                    <Text style={styles.durationText} className="font-sans">
-                      {article.duration}
-                    </Text>
-                  </View>
-                </View>
-                <Text style={styles.cardTitle} className="font-sans">
-                  {article.title}
-                </Text>
-                <Text numberOfLines={2} style={styles.cardSummary} className="font-sans">
-                  {article.summary}
-                </Text>
-                <View style={styles.cardFooter}>
-                  <Text style={styles.readMoreText} className="font-sans">
-                    Read playbook
-                  </Text>
-                  <BookOpen size={14} color={Colors.primary} style={{ marginLeft: 4 }} />
-                </View>
+                <Text style={{ fontSize: 13, fontWeight: '600', color: active ? Colors.white : Colors.textMuted }}>{c}</Text>
               </TouchableOpacity>
-            ))
-          ) : (
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText} className="font-sans">
-                No guides match your search parameters.
-              </Text>
-            </View>
-          )}
+            );
+          })}
         </ScrollView>
-      </View>
 
-      {/* Article Detail Modal */}
-      <Modal
-        visible={activeArticle !== null}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setActiveArticle(null)}
-      >
-        <View style={styles.modalOverlay}>
-          <SafeAreaView style={styles.modalContainer} edges={['top', 'left', 'right', 'bottom']}>
-            {/* Modal Header */}
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalCategory} className="font-sans">
-                {activeArticle?.category.toUpperCase()}
-              </Text>
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => setActiveArticle(null)}
-              >
-                <X size={20} color="#1A1A1A" />
-              </TouchableOpacity>
-            </View>
-
-            {/* Modal Body */}
-            <ScrollView
-              style={{ flex: 1 }}
-              contentContainerStyle={styles.modalScrollContent}
-              showsVerticalScrollIndicator={false}
-            >
-              <Text style={styles.modalTitle} className="font-sans">
-                {activeArticle?.title}
-              </Text>
-              
-              <View style={styles.modalMetaRow}>
-                <Clock size={14} color="#8A8D9F" style={{ marginRight: 6 }} />
-                <Text style={styles.modalDuration} className="font-sans">
-                  {activeArticle?.duration}
-                </Text>
-              </View>
-
-              <View style={styles.modalDivider} />
-
-              <Text style={styles.modalBodyText} className="font-sans">
-                {activeArticle?.content}
-              </Text>
-            </ScrollView>
-          </SafeAreaView>
+        {/* All guides */}
+        <View style={{ paddingHorizontal: 20, marginTop: 24 }}>
+          <Text style={{ fontSize: 20, color: Colors.textBody, marginBottom: 12 }} className="font-heading font-bold">All Guides</Text>
+          {guides.map((item) => <GuideRow key={String(item.id)} item={item} onPress={() => open(String(item.id))} />)}
+          {guides.length === 0 && (
+            <Text style={{ textAlign: 'center', color: Colors.textMuted, paddingVertical: 32 }}>No guides match your search.</Text>
+          )}
         </View>
-      </Modal>
+      </ScrollView>
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 12,
-  },
-  backButton: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 1,
-    borderColor: Colors.borderDefault,
-    backgroundColor: Colors.white,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: FontSize.screenTitle,
-    fontWeight: FontWeight.semibold,
-    color: Colors.textHeading,
-  },
-  headerSpacer: {
-    width: 38,
-  },
-  searchContainer: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 12,
-    backgroundColor: Colors.bgScreen,
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.white,
-    borderRadius: Radius.searchBar,
-    paddingHorizontal: 16,
-    height: Size.searchBarHeight,
-  },
-  input: {
-    flex: 1,
-    fontSize: FontSize.base,
-    color: Colors.textBody,
-  },
-  categoriesWrapper: {
-    backgroundColor: Colors.bgScreen,
-    paddingBottom: 12,
-  },
-  categoriesScroll: {
-    paddingHorizontal: 20,
-    gap: 8,
-  },
-  categoryTab: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.white,
-    borderWidth: 1,
-    borderColor: Colors.borderDefault,
-  },
-  activeCategoryTab: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-  },
-  categoryTabText: {
-    fontSize: FontSize.xs,
-    color: Colors.textMuted,
-    fontWeight: FontWeight.medium,
-  },
-  activeCategoryTabText: {
-    color: Colors.white,
-    fontWeight: FontWeight.semibold,
-  },
-  articlesScrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 16,
-  },
-  articleCard: {
-    backgroundColor: Colors.white,
-    borderRadius: Radius.card,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: Colors.borderDefault,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  cardTag: {
-    fontSize: FontSize.xs - 1,
-    fontWeight: FontWeight.bold,
-    color: Colors.primary,
-    letterSpacing: 0.5,
-  },
-  durationBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  durationText: {
-    fontSize: FontSize.xs - 1,
-    color: Colors.textMuted,
-  },
-  cardTitle: {
-    fontSize: FontSize.md,
-    fontWeight: FontWeight.semibold,
-    color: Colors.textHeading,
-    lineHeight: LineHeight.card,
-    marginBottom: 6,
-  },
-  cardSummary: {
-    fontSize: FontSize.sm,
-    color: Colors.textMuted,
-    lineHeight: LineHeight.body,
-    marginBottom: 12,
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-  },
-  readMoreText: {
-    fontSize: FontSize.xs,
-    fontWeight: FontWeight.semibold,
-    color: Colors.primary,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    marginTop: 40,
-  },
-  emptyText: {
-    fontSize: FontSize.base,
-    color: Colors.textMuted,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    justifyContent: 'flex-end',
-  },
-  modalContainer: {
-    backgroundColor: Colors.white,
-    borderTopLeftRadius: Radius.card,
-    borderTopRightRadius: Radius.card,
-    height: '85%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.borderDefault,
-  },
-  modalCategory: {
-    fontSize: FontSize.xs - 1,
-    fontWeight: FontWeight.bold,
-    color: Colors.primary,
-    letterSpacing: 0.5,
-  },
-  closeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: Colors.bgAlt,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalScrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 40,
-  },
-  modalTitle: {
-    fontSize: FontSize.lg,
-    fontWeight: FontWeight.bold,
-    color: Colors.textHeading,
-    lineHeight: 28,
-    marginBottom: 8,
-  },
-  modalMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  modalDuration: {
-    fontSize: FontSize.xs,
-    color: Colors.textMuted,
-    fontWeight: FontWeight.medium,
-  },
-  modalDivider: {
-    height: 1,
-    backgroundColor: Colors.borderDefault,
-    marginBottom: 16,
-  },
-  modalBodyText: {
-    fontSize: FontSize.base,
-    lineHeight: 22,
-    color: Colors.textSecondary,
-  },
-});

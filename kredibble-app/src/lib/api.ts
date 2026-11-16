@@ -750,6 +750,7 @@ const toEventShape = (item: any) => {
 export const getEvents = async (params?: Record<string, any>) => {
   const items = await mergeListSources([
     `/opportunities${toQueryString({ type: 'event', q: params?.q })}`,
+    `/opportunities${toQueryString({ type: 'competition', q: params?.q })}`,
     `/events${toQueryString(params)}`,
   ]);
   return items.map(toEventShape);
@@ -1049,3 +1050,10 @@ export const joinChannel = async (channelId: string) => {
     body: JSON.stringify({}),
   });
 };
+
+/** The opportunities of several types in one list (a category such as "Jobs & Internships" holds more than one type). A type that fails is skipped. */
+export const getOpportunitiesOfTypes = (types: string[], q?: string): Promise<any[]> =>
+  mergeListSources(types.map((type) => `/opportunities${toQueryString({ type, q })}`));
+
+/** How many listings each of the eight opportunity categories holds, by category key (GET /opportunities/category-counts). */
+export const getOpportunityCategoryCounts = () => request<Record<string, number>>('/opportunities/category-counts');

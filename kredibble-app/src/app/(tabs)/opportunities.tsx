@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Colors } from '../../constants/design';
-import { View, Text, TouchableOpacity, ScrollView, Image } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Image, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Bookmark, Sparkles, Plus, Briefcase } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { authStore } from '../../constants/authStore';
-import { getOpportunities, getApplicants } from '../../lib/api';
+import { getOpportunities, getApplicants, getOpportunityCategoryCounts } from '../../lib/api';
+import { OPPORTUNITY_CATEGORIES, type OpportunityCategory } from '../../constants/opportunityCategories';
 import { useSaved } from '../../lib/useSaved';
 
 // ─── Logo ─────────────────────────────────────────────────────────────────────
@@ -20,25 +21,33 @@ const LogoSVG = () => (
 
 // ─── Category cards ───────────────────────────────────────────────────────────
 
-// Card artwork is exported from the approved design; title and count are part of the image.
-const CATEGORIES = [
-  { title: 'Events',      image: require('../../../assets/images/opp_card_events.png') },
-  { title: 'Jobs',        image: require('../../../assets/images/opp_card_jobs.png') },
-  { title: 'Internships', image: require('../../../assets/images/opp_card_internships.png') },
-  { title: 'Grants',      image: require('../../../assets/images/opp_card_grants.png') },
-];
-
-const CategoryCard = ({ title, image, onPress }: { title: string; image: any; onPress?: () => void }) => (
+// The eight categories: each is its own card artwork with the title and the number of listings on top. The numbers are the listings the admin dashboard has
+// approved for the app (GET /opportunities/category-counts), so they change as the admin posts; they are never part of the artwork.
+const CategoryCard = ({ category, count, onPress }: { category: OpportunityCategory; count: number | undefined; onPress: () => void }) => {
+  // Two cards across with 20px side padding and a 20px gap: the artwork gets that exact size (a percentage size is not reliable here).
+  const { width } = useWindowDimensions();
+  const cardWidth = (width - 60) / 2;
+  // The artwork is 328 x 250: the card keeps that shape, so nothing of the icon is cut off.
+  const cardHeight = Math.round((cardWidth * 250) / 328);
+  return (
   <TouchableOpacity
     activeOpacity={0.85}
     onPress={onPress}
     accessibilityRole="button"
-    accessibilityLabel={title}
-    style={{ flex: 1, aspectRatio: 164 / 125 }}
+    accessibilityLabel={count === undefined ? category.title : `${category.title}, ${count} listings`}
+    style={{ width: cardWidth, height: cardHeight, borderRadius: 16, overflow: 'hidden', padding: 14, justifyContent: 'space-between' }}
   >
-    <Image source={image} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
+    {/* This category's card artwork (purple, with its 3D icon); the title and the number go on top */}
+    <Image source={category.card} style={{ position: 'absolute', width: cardWidth, height: cardHeight }} resizeMode="cover" />
+    <Text numberOfLines={3} style={{ color: '#FFFFFF', fontSize: 14, lineHeight: 18, fontWeight: '500', width: '78%' }} className="font-sans">
+      {category.title}
+    </Text>
+    <Text style={{ color: '#FFFFFF', fontSize: 24, lineHeight: 28, fontWeight: '700' }} className="font-sans">
+      {count === undefined ? '' : count}
+    </Text>
   </TouchableOpacity>
-);
+  );
+};
 
 // ─── Job cards ────────────────────────────────────────────────────────────────
 
@@ -206,6 +215,7 @@ export default function OpportunitiesScreen() {
   const [opps, setOpps] = useState(authStore.opportunities);
   const [recommended, setRecommended] = useState<Job[]>([]);
   const [recommendedLoading, setRecommendedLoading] = useState(true);
+  const [counts, setCounts] = useState<Record<string, number> | undefined>(undefined);
   const [recruiterActiveTab, setRecruiterActiveTab] = useState<'Jobs' | 'Internships' | 'Grants' | 'Events'>('Jobs');
 
   useEffect(() => {
@@ -244,6 +254,17 @@ export default function OpportunitiesScreen() {
         fetchOpps();
       }
     }, [role])
+  );
+
+  // The category numbers load each time the screen comes into view, so a listing the admin approved since shows when the person returns.
+  useFocusEffect(
+    useCallback(() => {
+      let active = true;
+      getOpportunityCategoryCounts()
+        .then((data) => { if (active) setCounts(data); })
+        .catch(() => { /* keep the last numbers; the cards still open */ });
+      return () => { active = false; };
+    }, [])
   );
 
   useEffect(() => {
@@ -513,15 +534,19 @@ export default function OpportunitiesScreen() {
         contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24 }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Category grid */}
-        <View style={{ flexDirection: 'row', gap: 20, marginBottom: 20 }}>
-          <CategoryCard {...CATEGORIES[0]} onPress={() => router.push('/events' as any)} />
-          <CategoryCard {...CATEGORIES[1]} onPress={() => router.push('/jobs' as any)} />
-        </View>
-        <View style={{ flexDirection: 'row', gap: 20, marginBottom: 24 }}>
-          <CategoryCard {...CATEGORIES[2]} onPress={() => router.push('/internships' as any)} />
-          <CategoryCard {...CATEGORIES[3]} onPress={() => router.push('/grants' as any)} />
-        </View>
+        {/* Category grid: two across, the eight categories */}
+        {Array.from({ length: OPPORTUNITY_CATEGORIES.length / 2 }, (_, row) => (
+          <View key={row} style={{ flexDirection: 'row', gap: 20, marginBottom: row === OPPORTUNITY_CATEGORIES.length / 2 - 1 ? 24 : 20 }}>
+            {OPPORTUNITY_CATEGORIES.slice(row * 2, row * 2 + 2).map((category) => (
+              <CategoryCard
+                key={category.key}
+                category={category}
+                count={counts?.[category.key]}
+                onPress={() => router.push(category.route as any)}
+              />
+            ))}
+          </View>
+        ))}
 
         {/* Recommended header */}
         <View

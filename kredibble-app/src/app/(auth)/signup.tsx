@@ -177,11 +177,13 @@ const isMulti = (t: PickerType) => MULTI_PICKERS.includes(t);
 
 // ─── Logo SVG ─────────────────────────────────────────────────────────────────
 
+// The full "Global Opportunity Desk" logo (the same file as the admin sign-in page, 435x151), in its own 435:151 shape: 150 x 52.
 const LogoSVG = () => (
-  <Image 
-    source={require('../../../assets/images/logo.png')} 
-    style={{ width: 56, height: 56, borderRadius: 28 }} 
-    resizeMode="contain" 
+  <Image
+    source={require('../../../assets/images/god-logo.png')}
+    style={{ width: 150, height: 52 }} // 150 x 52 is the file's 435:151 shape (explicit sizes: a width plus aspectRatio is ignored here)
+    resizeMode="contain"
+    accessibilityLabel="Global Opportunity Desk"
   />
 );
 

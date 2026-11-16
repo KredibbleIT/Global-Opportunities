@@ -68,12 +68,8 @@ export default function Onboarding2Screen() {
           </View>
           <Image
             source={require('../../../assets/images/onboarding_2.png')}
-            style={{ 
-              width: '100%', 
-              height: '100%', 
-              zIndex: 1,
-              transform: [{ scale: 1.15 }, { translateY: 20 }]
-            }}
+            // The same box as the first onboarding screen (a little smaller than the hero area, bottom-anchored by the parent).
+            style={{ width: '86%', height: '84%', zIndex: 1 }}
             resizeMode="contain"
           />
 

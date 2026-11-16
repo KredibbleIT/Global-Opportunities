@@ -343,6 +343,17 @@ export default function HomeScreen() {
               />
             </View>
           </View>
+
+            {/* Feature grid, row 4: Our People sits under the AI assistant card */}
+            <View style={{ flexDirection: 'row', gap: 20, marginTop: 20 }}>
+              <View style={{ width: cardWidth, height: 121.7 }}>
+                <FeatureCard
+                  title={'Meet our\npeople'}
+                  backgroundImage={require('../../../assets/images/our_people.png')}
+                  onPress={() => router.push('/profile/people' as any)}
+                />
+              </View>
+            </View>
         </ScrollView>
       </SafeAreaView>
     );
@@ -414,26 +425,13 @@ export default function HomeScreen() {
           />
         </View>
 
-        {/* Ads banner */}
-        <View
-          style={{
-            backgroundColor: '#EBEBEE', borderRadius: 12,
-            height: 59, marginBottom: 20,
-            justifyContent: 'center', alignItems: 'center',
-            overflow: 'hidden',
-          }}
-        >
-          {/* Faint background decoration */}
-          <View
-            style={{
-              position: 'absolute', top: 8, left: 12, right: 12, bottom: 8,
-              borderRadius: 8, backgroundColor: '#E0E0E6', opacity: 0.5,
-            }}
-          />
-          <Text style={{ fontSize: 13, color: '#B0B0BC', letterSpacing: 0.5 }} className="font-sans">
-            Ads
-          </Text>
-        </View>
+        {/* Ads banner: the "101 Training Sessions" banner (1280x306, so its box keeps that shape and it is never stretched). */}
+        <Image
+          source={require('../../../assets/images/ad_banner_project101.jpg')}
+          accessibilityLabel="101 Training Sessions: practical skills, real opportunities. Global Opportunity Desk and Project 101."
+          resizeMode="cover"
+          style={{ width: width - 40, height: ((width - 40) * 306) / 1280, borderRadius: 12, marginBottom: 20 }}
+        />
 
         {/* Feature grid — row 1 */}
         <View style={{ flexDirection: 'row', gap: 20, marginBottom: 20 }}>
@@ -480,6 +478,17 @@ export default function HomeScreen() {
               />
             </View>
         </View>
+
+            {/* Feature grid, row 4: Our People sits under the AI assistant card */}
+            <View style={{ flexDirection: 'row', gap: 20, marginTop: 20 }}>
+              <View style={{ width: cardWidth, height: 121.7 }}>
+                <FeatureCard
+                  title={'Meet our\npeople'}
+                  backgroundImage={require('../../../assets/images/our_people.png')}
+                  onPress={() => router.push('/profile/people' as any)}
+                />
+              </View>
+            </View>
       </ScrollView>
     </SafeAreaView>
   );
