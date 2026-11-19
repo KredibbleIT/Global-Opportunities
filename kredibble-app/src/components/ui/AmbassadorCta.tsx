@@ -15,7 +15,7 @@ export const markAmbassadorRequestPending = () => {
   announcedStatus = 'pending';
 };
 
-const APPROVED = 'Congratulations! Your ambassador request has been approved. Welcome to the Kredibble ambassador community.';
+const APPROVED = 'Congratulations! Your ambassador request has been approved. Welcome to the Global Opportunity Desk ambassador community.';
 const REJECTED = 'Thank you for your interest in becoming an ambassador. We are unable to approve your request right now, and you are welcome to apply again soon.';
 
 /**
@@ -58,7 +58,7 @@ export function AmbassadorCta() {
       <View style={{ backgroundColor: Colors.successTint, borderRadius: Radius.card, padding: 16, marginBottom: 16 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <BadgeCheck size={20} color={Colors.successDot} />
-          <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.success }} className="font-sans">You are a Kredibble ambassador</Text>
+          <Text style={{ fontSize: 14, fontWeight: '700', color: Colors.success }} className="font-sans">You are a Global Opportunity Desk ambassador</Text>
         </View>
         {channelId && (
           <TouchableOpacity
