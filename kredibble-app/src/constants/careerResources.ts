@@ -10,6 +10,8 @@ export interface CareerArticle {
   duration: string;
   summary: string;
   content: string;
+  imageUrl?: string;
+  bannerImage?: string;
 }
 
 export const CAREER_CATEGORIES = ['Resume Writing', 'Interview Prep', 'Career Planning'];
@@ -54,7 +56,12 @@ export function useCareerArticles(): CareerArticle[] {
     getArticles()
       .then((data) => {
         if (!active || !data || data.length === 0) return;
-        current = data.map((item: any) => ({ ...item, id: String(item.id ?? item._id) })) as CareerArticle[];
+        current = data.map((item: any) => ({
+          ...item,
+          id: String(item.id ?? item._id),
+          imageUrl: item.imageUrl || item.coverImage || item.bannerImage,
+          bannerImage: item.bannerImage || item.coverImage || item.imageUrl,
+        })) as CareerArticle[];
         setArticles(current);
       })
       .catch(() => {
