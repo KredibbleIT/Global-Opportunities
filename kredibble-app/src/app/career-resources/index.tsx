@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, Modal, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, Modal, StyleSheet, Image } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { ChevronLeft, Search, Clock, X, BookOpen } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { Colors, FontSize, FontWeight, Radius, LineHeight, Size } from '../../constants/design';
@@ -14,6 +15,8 @@ interface Article {
   duration: string;
   summary: string;
   content: string;
+  imageUrl?: string;
+  bannerImage?: string;
 }
 
 const ARTICLES: Article[] = [
@@ -57,7 +60,16 @@ export default function CareerResourcesScreen() {
       try {
         const data = await getArticles();
         if (data && data.length > 0) {
-          setArticles(data);
+          setArticles(data.map((item: any) => ({
+            id: item.id ?? item._id,
+            category: item.category || 'General',
+            title: item.title,
+            duration: item.duration || (item.readTime ? `${item.readTime} min read` : ''),
+            summary: item.summary || '',
+            content: item.content || '',
+            imageUrl: item.imageUrl || item.coverImage || item.bannerImage,
+            bannerImage: item.bannerImage || item.coverImage || item.imageUrl,
+          })));
         }
       } catch (err) {
         console.warn('Failed to load articles from API', err);
@@ -152,6 +164,19 @@ export default function CareerResourcesScreen() {
                 onPress={() => setActiveArticle(article)}
                 style={styles.articleCard}
               >
+                {(article.imageUrl || article.bannerImage) ? (
+                  <View style={styles.cardImageWrap}>
+                    <Image
+                      source={{ uri: (article.imageUrl || article.bannerImage) as string }}
+                      style={styles.cardImage}
+                      resizeMode="cover"
+                    />
+                    <LinearGradient
+                      colors={['transparent', 'rgba(0,0,0,0.35)']}
+                      style={styles.cardImageGradient}
+                    />
+                  </View>
+                ) : null}
                 <View style={styles.cardHeader}>
                   <Text style={styles.cardTag} className="font-sans">
                     {article.category.toUpperCase()}
@@ -215,6 +240,19 @@ export default function CareerResourcesScreen() {
               contentContainerStyle={styles.modalScrollContent}
               showsVerticalScrollIndicator={false}
             >
+              {(activeArticle?.imageUrl || activeArticle?.bannerImage) ? (
+                <View style={styles.modalImageWrap}>
+                  <Image
+                    source={{ uri: (activeArticle.imageUrl || activeArticle.bannerImage) as string }}
+                    style={styles.modalImage}
+                    resizeMode="cover"
+                  />
+                  <LinearGradient
+                    colors={['transparent', 'rgba(0,0,0,0.45)']}
+                    style={styles.modalImageGradient}
+                  />
+                </View>
+              ) : null}
               <Text style={styles.modalTitle} className="font-sans">
                 {activeArticle?.title}
               </Text>
@@ -326,6 +364,44 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     borderWidth: 1,
     borderColor: Colors.borderDefault,
+  },
+  cardImageWrap: {
+    marginHorizontal: -16,
+    marginTop: -16,
+    marginBottom: 12,
+    borderTopLeftRadius: Radius.card,
+    borderTopRightRadius: Radius.card,
+    overflow: 'hidden',
+    height: 140,
+  },
+  cardImage: {
+    width: '100%',
+    height: '100%',
+  },
+  cardImageGradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '50%',
+  },
+  modalImageWrap: {
+    marginHorizontal: -20,
+    marginTop: -20,
+    marginBottom: 16,
+    height: 200,
+    overflow: 'hidden',
+  },
+  modalImage: {
+    width: '100%',
+    height: '100%',
+  },
+  modalImageGradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '60%',
   },
   cardHeader: {
     flexDirection: 'row',
