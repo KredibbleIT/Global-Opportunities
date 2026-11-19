@@ -50,5 +50,7 @@ export const LISTING_COUNTRIES = [
   "Uganda",
   "Zambia",
   "Zimbabwe",
+  "Multiple countries",
+  "Online Global",
   "Worldwide",
 ] as const;

@@ -115,7 +115,7 @@ const env = {
   // similar addresses (GOD-T64). CI has no key, so tests already run this way there.
   emailEnabled: nodeEnv !== 'test' && (process.env.EMAIL_ENABLED === 'true' || Boolean(process.env.RESEND_API_KEY)),
   resendApiKey: nodeEnv === 'test' ? undefined : process.env.RESEND_API_KEY,
-  resendFromEmail: process.env.RESEND_FROM_EMAIL || 'verify@kredibble.com',
+  resendFromEmail: process.env.RESEND_FROM_EMAIL || 'Global Opportunity Desk <verify@kredibble.com>',
   emailVerificationCodeTtlMinutes: Number(process.env.EMAIL_VERIFICATION_CODE_TTL_MINUTES || 10),
   outboundRequestTimeoutMs: Number(process.env.OUTBOUND_REQUEST_TIMEOUT_MS || 10000),
   // SEC-138: phone push through the Expo push service. On by default outside
