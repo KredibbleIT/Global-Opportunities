@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, FlatList, TextInput, useWindowDimensions } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, FlatList, TextInput, useWindowDimensions, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Clock, FileText, MessageSquare, Compass, BookOpen, Search, X, type LucideIcon } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { Colors, Radius } from '../../constants/design';
@@ -18,17 +19,26 @@ const CATEGORY_ICON: Record<string, LucideIcon> = {
 
 const FeaturedCard = ({ item, width, onPress }: { item: CareerArticle; width: number; onPress: () => void }) => {
   const Icon: LucideIcon = CATEGORY_ICON[item.category] ?? BookOpen;
+  const image = item.imageUrl || item.bannerImage;
   return (
     <TouchableOpacity
       activeOpacity={0.9}
       onPress={onPress}
       style={{ width, height: 210, borderRadius: Radius.card, backgroundColor: Colors.primary, overflow: 'hidden', padding: 16, justifyContent: 'space-between' }}
     >
-      {/* Soft decorative shapes */}
-      <View style={{ position: 'absolute', right: -50, top: -50, width: 190, height: 190, borderRadius: 95, backgroundColor: 'rgba(255,255,255,0.08)' }} />
-      <View style={{ position: 'absolute', right: 24, bottom: -42, opacity: 0.18 }}>
-        <Icon size={120} color={Colors.white} strokeWidth={1.2} />
-      </View>
+      {image ? (
+        <>
+          <Image source={{ uri: image }} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} resizeMode="cover" />
+          <LinearGradient colors={['rgba(0,0,0,0.15)', 'rgba(0,0,0,0.6)']} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+        </>
+      ) : (
+        <>
+          <View style={{ position: 'absolute', right: -50, top: -50, width: 190, height: 190, borderRadius: 95, backgroundColor: 'rgba(255,255,255,0.08)' }} />
+          <View style={{ position: 'absolute', right: 24, bottom: -42, opacity: 0.18 }}>
+            <Icon size={120} color={Colors.white} strokeWidth={1.2} />
+          </View>
+        </>
+      )}
 
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <View style={{ backgroundColor: Colors.accent600, borderRadius: 9999, paddingHorizontal: 10, paddingVertical: 4 }}>
@@ -51,6 +61,7 @@ const FeaturedCard = ({ item, width, onPress }: { item: CareerArticle; width: nu
 
 const GuideRow = ({ item, onPress }: { item: CareerArticle; onPress: () => void }) => {
   const Icon: LucideIcon = CATEGORY_ICON[item.category] ?? BookOpen;
+  const image = item.imageUrl || item.bannerImage;
   return (
     <TouchableOpacity
       activeOpacity={0.85}
@@ -70,9 +81,13 @@ const GuideRow = ({ item, onPress }: { item: CareerArticle; onPress: () => void 
       </View>
 
       <View style={{ alignItems: 'flex-end', justifyContent: 'space-between' }}>
-        <View style={{ width: 96, height: 96, borderRadius: 12, backgroundColor: Colors.primary10, alignItems: 'center', justifyContent: 'center' }}>
-          <Icon size={36} color={Colors.primary} strokeWidth={1.6} />
-        </View>
+        {image ? (
+          <Image source={{ uri: image }} style={{ width: 96, height: 96, borderRadius: 12 }} resizeMode="cover" />
+        ) : (
+          <View style={{ width: 96, height: 96, borderRadius: 12, backgroundColor: Colors.primary10, alignItems: 'center', justifyContent: 'center' }}>
+            <Icon size={36} color={Colors.primary} strokeWidth={1.6} />
+          </View>
+        )}
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 8 }}>
           <Clock size={12} color={Colors.textMuted} />
           <Text style={{ fontSize: 11, color: Colors.textMuted }}>{item.duration}</Text>
