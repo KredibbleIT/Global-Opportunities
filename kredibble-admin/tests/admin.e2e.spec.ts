@@ -218,6 +218,7 @@ test.describe('Admin Dashboard Functionality', () => {
     // "Dashboard" is labelled "Overview"; Seekers / Hirers / Opportunities queue sit inside groups.
     await expect(sidebar.getByRole('button', { name: 'Dashboard' })).toHaveAttribute('aria-expanded', 'true'); // group was "Overview"
     await expect(sidebar.getByRole('link', { name: 'Overview' })).toBeVisible(); // its child keeps the name
+    await expect(sidebar.getByRole('link', { name: 'Insights' })).toBeVisible();
     await sidebar.getByRole('button', { name: 'People' }).click();
     await expect(sidebar.getByRole('link', { name: 'Seekers' })).toBeVisible();
     await expect(sidebar.getByRole('link', { name: 'Hirers' })).toBeVisible();
@@ -578,10 +579,10 @@ test.describe('Sidebar: the active group is always open', () => {
     await expect(dashboard).toHaveAttribute('aria-expanded', 'false');
     await page.waitForTimeout(500); // nothing re-opens it on its own
 
-    await page.keyboard.press('Control+k'); // navigate within the same group (Overview -> Monthly report)
-    await page.keyboard.type('monthly');
+    await page.keyboard.press('Control+k'); // navigate within the same group (Overview -> Insights)
+    await page.keyboard.type('insights');
     await page.keyboard.press('Enter');
-    await expect(page).toHaveURL(`${BASE_URL}/monthly-report`);
+    await expect(page).toHaveURL(`${BASE_URL}/analytics`);
     await expect(dashboard).toHaveAttribute('aria-expanded', 'true'); // re-opened by the navigation
   });
 });
@@ -1954,8 +1955,8 @@ test.describe('Insights', () => {
   test('the charts follow decisions made elsewhere (shared mock store)', async ({ page }) => {
     await page.goto(`${BASE_URL}/verification/comp-2`, { timeout: 30_000 });
     await page.getByRole('button', { name: 'Approve Proof of Organization' }).click();
-    await page.locator('aside').getByRole('button', { name: 'Opportunities', exact: true }).click();
-    await page.locator('aside').getByRole('link', { name: 'Opportunity insights' }).click();
+    await page.locator('aside').getByRole('button', { name: 'Dashboard', exact: true }).click();
+    await page.locator('aside').getByRole('link', { name: 'Insights' }).click();
     const approved = page.getByRole('region', { name: 'Verification status' }).getByRole('listitem').filter({ hasText: 'Approved' });
     await expect(approved).toContainText('2'); // comp-3 was approved already; comp-2 just joined it
   });
@@ -2785,8 +2786,8 @@ test.describe('Month selector', () => {
 // Roles, permissions, gated navigation and placeholder routes
 // ---------------------------------------------------------------------------
 const NAV_ORDER = [
-  'Overview', 'Monthly report', 'Scorecard',
-  'Opportunities queue', 'Opportunity insights', 'Events', 'Grants', 'Programs',
+  'Overview', 'Insights', 'Monthly report', 'Scorecard',
+  'Opportunities queue', 'Events', 'Grants', 'Programs',
   'Partners', 'Network', 'Ambassadors', 'Leaderboard',
   'Seekers', 'Hirers', 'Channels', 'Database',
   'Verification queue', 'Reports queue',
