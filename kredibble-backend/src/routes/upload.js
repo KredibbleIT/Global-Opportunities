@@ -57,6 +57,8 @@ export const ADMIN_UPLOAD_SCREENS = Object.freeze({
   // BE-031: Showcase pictures, for the editors of any category (the Showcase
   // routes then check the category itself).
   'showcase-photo': ['showcase', 'showcase.ambassadors', 'showcase.partners'],
+  // A listing's logo and featured image, for the staff who can create and edit listings (lib/listing-images.js).
+  'listing-image': 'listings_curate',
 });
 
 export const requireAdminUploadScreen = requireAdminScreen(
