@@ -1,19 +1,24 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
-import { authRouter } from './auth.js';
+import { authRouter, sessionUser } from './auth.js';
 import { uploadRouter, createUploadRouter, IMAGE_MIME_TYPES, requireAdminUploadScreen } from './upload.js';
 import { assistantRouter } from './assistant.js';
 import { newsRouter } from './news.js';
 import { adminApiRouter, getAttentionCounts, requireAdminScreen, showcaseAppRouter } from './admin-api.js';
 import { accountsRouter } from './accounts.js';
 import { ambassadorRouter } from './ambassador.js';
+import { expertsRouter } from './experts.js';
 import { syncRouter } from './sync.js';
 import { asyncHandler, itemResponse, listResponse, notFound, stripSensitive, ApiError, parsePagination } from '../utils/http.js';
 import { requireAuth, optionalAuth, requireEmailVerified } from '../middleware/auth.js';
 import { env } from '../config/env.js';
 import { validate } from '../middleware/validate.js';
 import { staffInviteSchema, grantApplicationDecisionSchema } from '../schemas/admin.js';
-import { pushTokenSchema, notificationPreferencesSchema } from '../schemas/auth.js';
+import { pushTokenSchema, notificationPreferencesSchema, alertPreferencesSchema, avatarSchema, profileUpdateSchema, SEEKER_PROFILE_FIELDS, HIRER_PROFILE_FIELDS } from '../schemas/auth.js';
+import { checkDateOfBirth } from '../lib/age.js';
+import { syncAppBeneficiary } from '../lib/app-beneficiaries.js';
+import { deleteImage, storedFileExists, storedPathFromUrl } from '../lib/storage.js';
+import { assertChannelImage, channelImageFolder } from '../lib/channel-image.js';
 import {
   RESOURCE_POLICIES,
   ADMIN,
@@ -31,7 +36,7 @@ import {
   GrantApplication, CompanyVerification, VerificationDoc, EventAttendee, opportunityTypes,
 } from '../models/Platform.js';
 import { Channel, ChannelPost, CommunityMembership, Report } from '../models/Community.js';
-import { Article, Notification } from '../models/Content.js';
+import { Article, Notification, NotificationRead } from '../models/Content.js';
 import { Ambassador, OpportunityEngagement, Testimonial } from '../models/AdminPortal.js';
 import { auditReq, AUDIT_ACTIONS, AUDIT_RESOURCE_TYPES } from '../lib/audit.js';
 import { CLEARED_REJECTION, rejectionReasonLabel } from '../lib/opportunity-rejection.js';
@@ -786,11 +791,11 @@ const mountAdminDataRoutes = (router) => {
     res.status(201).json({ data: toClientObject(staff) });
   }));
 
-  // Admin pictures (article banners, ambassador and Showcase photos, listing images): images only, stored outside any
+  // Admin pictures (article banners, ambassador, Showcase and channel photos, listing images): images only, stored outside any
   // user's folder. ADMIN_UPLOAD_SCREENS (routes/upload.js) names the screen each purpose needs.
   router.use('/admin/upload', createUploadRouter({
     authenticate: requireAdminUploadScreen,
-    purposes: ['article-banner', 'ambassador-photo', 'showcase-photo', 'listing-image'],
+    purposes: ['article-banner', 'ambassador-photo', 'showcase-photo', 'channel-avatar', 'listing-image'],
     folderFor: (req, purpose) => `kredibble/admin/${purpose}`,
     allowedMimeTypes: IMAGE_MIME_TYPES,
   }));
@@ -949,6 +954,7 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
   // Super-Admin guard (or public rate limit for accept-invite).
   router.use('/admin', accountsRouter);
   router.use('/ambassador-requests', ambassadorRouter);
+  router.use('/experts', expertsRouter);
   // BE-026: inbound website sync. The webhook authenticates via HMAC, not a
   // user token (every verification failure answers 401 — see sync.js).
   router.use('/sync', syncRouter);
@@ -1153,7 +1159,8 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
   router.get('/seekers/search', searchLimiter, ...guard('seekers', 'read', 'seeker'), asyncHandler(async (req, res) => {
     const { skills, university, country, q } = req.query;
     const { page, limit, skip } = parsePagination(req.query);
-    const filter = {};
+    // Only approved experts are searchable (admins see everyone).
+    const filter = req.auth?.role === ADMIN ? {} : { expertStatus: 'approved' };
 
     const query = searchPattern(q);
     if (query) filter.profession = query;
@@ -1242,7 +1249,8 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
   }));
 
   router.post('/community/channels', requireAuth, asyncHandler(async (req, res) => {
-    const { visibility = 'public', bio, avatar } = req.body;
+    const { visibility = 'public', bio } = req.body;
+    const avatar = await assertChannelImage(req.body.avatar, channelImageFolder(req.auth.sub));
     const name = String(req.body.name || '').trim();
     const category = String(req.body.category || '').trim();
     if (!name || !category) throw new ApiError(400, 'name and category are required');
@@ -1287,6 +1295,13 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
     if (updates.visibility && !['public', 'private'].includes(updates.visibility)) throw new ApiError(400, 'visibility must be public or private');
     // BE-023: audience segments are validated against the enum (400 on unknown values).
     if (updates.segments !== undefined) updates.segments = normalizeSegments(updates.segments);
+    // A new picture must be one this person uploaded; the old one is deleted from storage once it is replaced.
+    const previousImage = channel.avatar;
+    if (updates.avatar !== undefined) {
+      updates.avatar = await assertChannelImage(updates.avatar, channelImageFolder(req.auth.sub)) ?? undefined;
+      const oldPath = previousImage && previousImage !== updates.avatar ? storedPathFromUrl(previousImage) : null;
+      if (oldPath?.startsWith('kredibble/')) await deleteImage(oldPath.replace(/\.[a-z0-9]+$/i, '')).catch(() => undefined);
+    }
     Object.assign(channel, updates);
     await channel.save();
     itemResponse(res, toClientObject(channel));
@@ -1507,6 +1522,118 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
     itemResponse(res, { success: true });
   }));
 
+  // A person's own profile picture. It must be one they uploaded to their own avatar folder (POST /upload?purpose=avatars), never a link to
+  // another site or to someone else's file, and it must be an image. `null` removes it. The picture it replaces is deleted from storage.
+  router.patch('/users/me/avatar', requireAuth, validate(avatarSchema), asyncHandler(async (req, res) => {
+    const { avatarUrl } = req.body;
+    if (avatarUrl !== null) {
+      const stored = storedPathFromUrl(avatarUrl);
+      if (!stored || !stored.startsWith(`kredibble/${req.auth.sub}/avatars/`) || /\.pdf$/i.test(stored) || !(await storedFileExists(stored))) {
+        throw new ApiError(400, 'Upload the picture with the app first; other addresses are not accepted.');
+      }
+    }
+    const user = await User.findById(req.auth.sub).select('avatarUrl');
+    if (!user) throw notFound('User');
+    const previous = user.avatarUrl;
+    await User.updateOne({ _id: user._id }, avatarUrl === null ? { $unset: { avatarUrl: '' } } : { $set: { avatarUrl } });
+
+    // Best effort: a failed clean-up never fails the change.
+    const previousPath = previous && previous !== avatarUrl ? storedPathFromUrl(previous) : null;
+    if (previousPath) await deleteImage(previousPath.replace(/\.[a-z0-9]+$/i, '')).catch(() => undefined);
+
+    itemResponse(res, { avatarUrl: avatarUrl ?? null });
+  }));
+
+  // "Complete your profile": a seeker or hirer fills in or changes their own details after sign-up. Only the fields in profileUpdateSchema are
+  // accepted, seeker-only fields are refused for a hirer (and the other way round), a date of birth can be given once and not changed, and a
+  // CV or logo must be a file the person uploaded to their own folder. The reply is the same account object sign-in returns, with the new
+  // profile completion.
+  router.patch('/users/me/profile', requireAuth, validate(profileUpdateSchema), asyncHandler(async (req, res) => {
+    const body = req.body;
+    const user = await User.findById(req.auth.sub);
+    if (!user) throw notFound('User');
+    if (user.role !== 'seeker' && user.role !== 'hirer') throw new ApiError(403, 'Only seekers and hirers have a profile to update');
+    const isSeeker = user.role === 'seeker';
+    const Profile = isSeeker ? SeekerProfile : HirerAccount;
+    const allowed = new Set(isSeeker ? SEEKER_PROFILE_FIELDS : HIRER_PROFILE_FIELDS);
+    const person = new Set(['firstName', 'lastName', 'gender', 'dateOfBirth']);
+    const refused = Object.keys(body).filter((key) => !allowed.has(key) && !person.has(key));
+    if (refused.length) throw new ApiError(400, `Not available for your account type: ${refused.join(', ')}`);
+
+    const profile = await Profile.findOne({ userId: user._id });
+    if (!profile) throw notFound('Profile');
+
+    // The person
+    const userSet = {};
+    const userUnset = {};
+    if (body.firstName !== undefined || body.lastName !== undefined) {
+      const firstName = body.firstName ?? user.firstName;
+      const lastName = body.lastName ?? user.lastName;
+      const name = [firstName, lastName].filter(Boolean).join(' ');
+      if (name.length < 2 || name.length > 50) throw new ApiError(400, 'Your name must be between 2 and 50 characters');
+      Object.assign(userSet, { firstName, lastName, name });
+    }
+    if (body.gender === null) userUnset.gender = '';
+    else if (body.gender !== undefined) userSet.gender = body.gender;
+    if (body.dateOfBirth !== undefined) {
+      if (user.dateOfBirth) throw new ApiError(400, 'Your date of birth cannot be changed here. Contact the Global Opportunity Desk if it is wrong.');
+      const checked = checkDateOfBirth(body.dateOfBirth);
+      if (!checked.ok) throw new ApiError(400, checked.message);
+      userSet.dateOfBirth = checked.date;
+    }
+
+    // Files: a CV or logo must be one this person uploaded for that purpose.
+    const fileFields = isSeeker ? { resumeUrl: 'cvs' } : { logo: 'company-logos' };
+    const replacedFiles = [];
+    for (const [field, folder] of Object.entries(fileFields)) {
+      const address = body[field];
+      if (address === undefined) continue;
+      if (address !== null) {
+        const stored = storedPathFromUrl(address);
+        if (!stored || !stored.startsWith(`kredibble/${req.auth.sub}/${folder}/`) || !(await storedFileExists(stored))) {
+          throw new ApiError(400, 'Upload the file with the app first; other addresses are not accepted.');
+        }
+      }
+      const previous = profile[field] && profile[field] !== address ? storedPathFromUrl(profile[field]) : null;
+      if (previous) replacedFiles.push(previous);
+    }
+
+    // The profile. Lists are kept as JSON text, like the skill lists registration writes.
+    const jsonFields = new Set(['technicalSkills', 'softSkills', 'tools', 'certifications', 'preferredCountries', 'education', 'workExperience', 'projects']);
+    const profileSet = {};
+    const profileUnset = {};
+    for (const key of allowed) {
+      if (body[key] === undefined) continue;
+      if (body[key] === null) profileUnset[key] = '';
+      else profileSet[key] = jsonFields.has(key) ? JSON.stringify(body[key]) : body[key];
+    }
+
+    const userUpdate = {};
+    if (Object.keys(userSet).length) userUpdate.$set = userSet;
+    if (Object.keys(userUnset).length) userUpdate.$unset = userUnset;
+    if (Object.keys(userUpdate).length) await User.updateOne({ _id: user._id }, userUpdate);
+    const update = {};
+    if (Object.keys(profileSet).length) update.$set = profileSet;
+    if (Object.keys(profileUnset).length) update.$unset = profileUnset;
+    if (Object.keys(update).length) await Profile.updateOne({ _id: profile._id }, update);
+
+    // Best effort: a failed clean-up or sync never fails the change.
+    for (const stored of replacedFiles) await deleteImage(stored.replace(/\.[a-z0-9]+$/i, '')).catch(() => undefined);
+    const [freshUser, freshProfile] = await Promise.all([User.findById(user._id), Profile.findOne({ _id: profile._id })]);
+    if (isSeeker) await syncAppBeneficiary(freshUser, freshProfile).catch(() => undefined);
+
+    await auditReq(req, {
+      action: 'profile.update',
+      resourceType: AUDIT_RESOURCE_TYPES.USER,
+      resourceId: user._id,
+      outcome: 'success',
+      // Which fields changed, never their values.
+      metadata: { fields: Object.keys(body) },
+    });
+
+    itemResponse(res, sessionUser(freshUser, freshProfile));
+  }));
+
   // SEC-138: the caller's push switch. Off stops phone pushes; the in-app list is unchanged.
   router.patch('/users/me/notification-preferences', requireAuth, validate(notificationPreferencesSchema), asyncHandler(async (req, res) => {
     const user = await User.findByIdAndUpdate(
@@ -1516,6 +1643,14 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
     ).select('notificationPreferences').lean();
     if (!user) throw notFound('User');
     itemResponse(res, { push: user.notificationPreferences?.push !== false });
+  }));
+
+  // The caller's alert switches (job alerts, application updates, community posts and so on), saved on their account. Only the keys sent change.
+  router.patch('/users/me/alert-preferences', requireAuth, validate(alertPreferencesSchema), asyncHandler(async (req, res) => {
+    const update = Object.fromEntries(Object.entries(req.body).map(([key, value]) => [`notificationPreferences.alerts.${key}`, value]));
+    const user = await User.findByIdAndUpdate(req.auth.sub, { $set: update }, { returnDocument: 'after' }).select('notificationPreferences');
+    if (!user) throw notFound('User');
+    itemResponse(res, user.notificationPreferences?.toObject?.().alerts ?? {});
   }));
 
   // Collection routes with populate option
@@ -1531,6 +1666,8 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
     ownerField: 'userId',
     populate: { path: 'userId', select: 'name avatarUrl' },
     enablePopulate,
+    // Not every seeker is public: other people read only the approved experts (the Expert listing) and their own profile.
+    readScope: (req) => (req.auth?.role === ADMIN ? {} : { $or: [{ expertStatus: 'approved' }, ...(req.auth?.sub ? [{ userId: req.auth.sub }] : [])] }),
   }));
   router.use('/hirers', collectionRoutes({ Model: HirerAccount, resourceName: 'Hirer', policyKey: 'hirers', searchFields: ['companyName', 'industry'], ownerField: 'userId', populate: { path: 'userId', select: 'name avatarUrl' }, enablePopulate }));
   // How many listings each of the eight categories holds, for the app's Opportunities screen. The same listings the app's lists show: approved,
@@ -1603,15 +1740,32 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
   }));
   router.post('/notifications/:id/read', requireAuth, asyncHandler(async (req, res) => {
     if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Notification');
-    const notification = await Notification.findOneAndUpdate(
+    // A notification addressed to this person: its own readAt.
+    const personal = await Notification.findOneAndUpdate(
       { _id: req.params.id, userId: req.auth.sub },
       { $set: { readAt: new Date() } },
       { new: true },
     );
-    if (!notification) throw notFound('Notification');
-    itemResponse(res, toClientObject(notification));
+    if (personal) return itemResponse(res, toClientObject(personal));
+    // An admin broadcast: a read row for this person, only for one they are allowed to see.
+    const broadcast = await Notification.findOne(withScope({ _id: req.params.id, userId: null }, await notificationReadScope(req)));
+    if (!broadcast) throw notFound('Notification');
+    const read = await NotificationRead.findOneAndUpdate(
+      { notificationId: broadcast._id, userId: req.auth.sub },
+      { $setOnInsert: { readAt: new Date() } },
+      { upsert: true, new: true },
+    );
+    itemResponse(res, { ...toClientObject(broadcast), readAt: read.readAt });
   }));
-  router.use('/notifications', collectionRoutes({ Model: Notification, resourceName: 'Notification', policyKey: 'notifications', searchFields: ['title', 'message'], enablePopulate, readScope: notificationReadScope }));
+  // Each person sees their own read state on a broadcast; other people's reads are never exposed.
+  const withReadState = async (items, req) => {
+    const ids = items.filter((item) => !item.userId).map((item) => item.id).filter(Boolean);
+    if (!ids.length || !req.auth?.sub) return items;
+    const reads = await NotificationRead.find({ userId: req.auth.sub, notificationId: { $in: ids } }).select('notificationId readAt').lean();
+    const readAt = new Map(reads.map((row) => [String(row.notificationId), row.readAt]));
+    return items.map((item) => (readAt.has(String(item.id)) ? { ...item, readAt: readAt.get(String(item.id)) } : item));
+  };
+  router.use('/notifications', collectionRoutes({ Model: Notification, resourceName: 'Notification', policyKey: 'notifications', searchFields: ['title', 'message'], enablePopulate, readScope: notificationReadScope, decorate: withReadState }));
   router.use('/verification/companies', collectionRoutes({
     Model: CompanyVerification,
     resourceName: 'Company verification',
@@ -1640,6 +1794,11 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
     );
     applicant.set('opportunityId', opportunity._id);
     applicant.set('seekerId', req.auth.sub);
+    // The CV the applicant saved on their profile goes with the application, so it does not have to be sent again.
+    if (!applicant.resumeUrl) {
+      const saved = await SeekerProfile.findOne({ userId: req.auth.sub }).select('resumeUrl').lean();
+      if (saved?.resumeUrl) applicant.set('resumeUrl', saved.resumeUrl);
+    }
     
     if (ambassador) {
       applicant.set('referralCode', referralCode);

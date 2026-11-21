@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useLeaveRemovedChannel } from '../../lib/useChannelRemoved';
 import { View, Text, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams } from 'expo-router';
@@ -19,6 +20,7 @@ const timeOf = (iso: string) => new Date(iso).toLocaleTimeString([], { hour: '2-
 export default function ThreadScreen() {
   const params = useLocalSearchParams<{ channelId?: string; messageId?: string; name?: string }>();
   const channelId = String(params.channelId || '');
+  useLeaveRemovedChannel(channelId);
   const messageId = String(params.messageId || '');
   const { showToast } = useToast();
   const myId = authStore.user?.id;

@@ -42,6 +42,8 @@ export const createAdminChannelSchema = z.object({
     name: z.string().trim().min(2).max(80),
     category: z.string().trim().min(2).max(60).default('General'),
     bio: z.string().trim().max(500).optional(),
+    // The address of a picture uploaded with POST /admin/upload?purpose=channel-avatar (checked again by the route).
+    avatar: z.string().trim().url().max(500).optional(),
     visibility: z.enum(['public', 'private']).default('private'),
     // BE-023: audience segments (default general).
     segments: z.array(z.enum(['general', 'ambassador'])).min(1).max(2).optional(),

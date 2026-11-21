@@ -28,7 +28,8 @@ const fromApi = (n: any): NotificationItem => {
     title: n.title ?? 'Notification',
     body: n.message ?? n.body ?? '',
     time: timeAgo(n.createdAt) || n.time || '',
-    read: existing?.read ?? !!n.readAt,
+    // Read here, or already read on the server (which now remembers it for broadcasts too, so it survives a restart).
+    read: !!existing?.read || !!n.readAt,
   };
 };
 

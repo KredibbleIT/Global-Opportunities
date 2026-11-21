@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { CollapsibleRichText } from '../../components/ui/RichText';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Clipboard, Alert, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChevronLeft, Bookmark, Clock, MapPin, Copy, ChevronDown, ChevronUp } from 'lucide-react-native';
@@ -129,13 +130,7 @@ export default function EventDetailScreen() {
           <Text style={styles.sectionTitle} className="font-sans">
             Overview
           </Text>
-          <Text
-            style={styles.descriptionText}
-            numberOfLines={expanded ? undefined : 3}
-            className="font-sans"
-          >
-            {event.description}
-          </Text>
+          <CollapsibleRichText text={event.description || ''} expanded={expanded} collapsedLines={3} textStyle={styles.descriptionText} />
           <TouchableOpacity
             style={styles.readMoreButton}
             onPress={() => setExpanded(!expanded)}

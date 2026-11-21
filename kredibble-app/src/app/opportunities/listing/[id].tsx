@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react';
+import { hasRichMarks } from '../../../lib/rich-text';
+import { RichText } from '../../../components/ui/RichText';
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Linking, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft, CalendarClock, MapPin, Wallet, Timer, Laptop, Layers, Tag, BadgeCheck } from 'lucide-react-native';
@@ -6,6 +8,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Colors, Radius } from '../../../constants/design';
 import { getOpportunityCategory } from '../../../constants/opportunityCategories';
 import { applyForOpportunity, getOpportunityById } from '../../../lib/api';
+import { askForCv, lacksCv } from '../../../lib/apply-prompt';
+import { stepRoute } from '../../../lib/profile-prompts';
 import { useToast } from '../../../components/ui/ToastProvider';
 import { applyUrlOf, deadlineBadge, formatDeadline, formatLabel, fundingOf, isClosed, orgOf, placeOf, toLines, type Listing } from '../../../lib/opportunityListing';
 
@@ -27,8 +31,17 @@ function Fact({ icon: Icon, label, value }: { icon: typeof MapPin; label: string
   );
 }
 
-function Section({ title, lines }: { title: string; lines: string[] }) {
+function Section({ title, lines, text }: { title: string; lines: string[]; text?: unknown }) {
   if (lines.length === 0) return null;
+  // Text that uses formatting (a heading, a list, bold, a link) is shown formatted; plain text keeps its lines as bullets, as it always did.
+  if (typeof text === 'string' && hasRichMarks(text)) {
+    return (
+      <View style={{ marginTop: 22 }}>
+        <Text style={{ fontSize: 16, color: Colors.textBody, marginBottom: 8 }} className="font-heading font-bold">{title}</Text>
+        <RichText text={text} textStyle={{ fontSize: 14, lineHeight: 22, color: Colors.textMuted }} />
+      </View>
+    );
+  }
   return (
     <View style={{ marginTop: 22 }}>
       <Text style={{ fontSize: 16, color: Colors.textBody, marginBottom: 8 }} className="font-heading font-bold">{title}</Text>
@@ -75,6 +88,14 @@ export default function OpportunityListingScreen() {
     if (url) {
       Linking.openURL(url).catch(() => showToast('Could not open the application link.'));
       return;
+    }
+        if (lacksCv()) {
+      const choice = await askForCv();
+      if (choice === 'cancel') return;
+      if (choice === 'add') {
+        router.push(stepRoute('cv') as never);
+        return;
+      }
     }
     setApplying(true);
     try {
@@ -172,9 +193,9 @@ export default function OpportunityListingScreen() {
           {!!item.certificateOffered && <Fact icon={BadgeCheck} label="Certificate" value="Offered" />}
         </View>
 
-        <Section title="About" lines={toLines(item.description)} />
-        <Section title="Who can apply" lines={toLines(item.eligibility)} />
-        <Section title="What it offers" lines={toLines(item.benefits)} />
+        <Section title="About" lines={toLines(item.description)} text={item.description} />
+        <Section title="Who can apply" lines={toLines(item.eligibility)} text={item.eligibility} />
+        <Section title="What it offers" lines={toLines(item.benefits)} text={item.benefits} />
       </ScrollView>
 
       <View style={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12 }}>

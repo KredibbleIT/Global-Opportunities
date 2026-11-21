@@ -25,6 +25,7 @@ module.exports = {
     '^react-native$': 'react-native-web',
     '^expo-secure-store$': '<rootDir>/__mocks__/expo-secure-store.ts',
     '^react-native/(.*)$': 'react-native-web/$1',
+    '\\.(png|jpe?g|gif|webp)$': '<rootDir>/__mocks__/fileStub.js',
   },
   extensionsToTreatAsEsm: ['.ts', '.tsx'],
 };

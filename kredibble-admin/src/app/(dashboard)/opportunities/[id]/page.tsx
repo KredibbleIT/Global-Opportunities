@@ -43,6 +43,7 @@ import { DetailError, DetailNotFound, DetailSkeleton } from "@/components/detail
 import { InfoCard } from "@/components/detail/InfoCard";
 import { Button } from "@/components/ui/Button";
 import { KeyValueList } from "@/components/ui/KeyValueList";
+import { RichText } from "@/components/ui/RichText";
 import { MiniStat } from "@/components/ui/MiniStat";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TagPill } from "@/components/ui/TagPill";
@@ -190,7 +191,7 @@ function HirerPostingReview() {
         main={
           <>
             <InfoCard title="Description">
-              <p className="input-text text-ink">{opp.description}</p>
+              <RichText text={opp.description} testId="posting-description" />
             </InfoCard>
 
             {hasExtraDetails && (

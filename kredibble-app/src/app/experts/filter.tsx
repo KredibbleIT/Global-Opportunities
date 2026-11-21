@@ -8,7 +8,8 @@ import {
 } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Colors, FontSize, FontWeight, Radius } from '../../constants/design';
-import { professions, experienceLevels, ratingOptions, countries } from '../../constants/mockExperts';
+import { experienceLevels, ratingOptions } from '../../constants/mockExperts';
+import { useExpertFacets } from '../../lib/useExpertFacets';
 import { BottomSafeBar } from '../../components/ui/BottomSafeBar';
 
 type Section = 'city' | 'profession' | 'experience' | 'rating' | 'country' | null;
@@ -107,6 +108,9 @@ export default function FilterExpertsScreen() {
     rating?: string;
     country?: string;
   }>();
+
+  // The profession and country choices are the ones the listed experts have.
+  const { professions, countries } = useExpertFacets();
 
   // Multi-select lists initialized from url parameters
   const [city, setCity] = useState(params.city || '');

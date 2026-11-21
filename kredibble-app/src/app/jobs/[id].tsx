@@ -1,10 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import { CollapsibleRichText } from '../../components/ui/RichText';
 import { ScrollView, View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft, Bookmark, Sparkles, Users, MapPin, ChevronDown, ChevronUp } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSaved } from '../../lib/useSaved';
 import { getOpportunityById, applyForOpportunity } from '../../lib/api';
+import { askForCv, lacksCv } from '../../lib/apply-prompt';
+import { stepRoute } from '../../lib/profile-prompts';
 import { Colors, FontSize, FontWeight, Radius } from '../../constants/design';
 import { useToast } from '../../components/ui/ToastProvider';
 import { BottomSafeBar } from '../../components/ui/BottomSafeBar';
@@ -45,6 +48,14 @@ export default function JobDetailScreen() {
 
   const handleApply = async () => {
     if (applied || applying || !id) return;
+        if (lacksCv()) {
+      const choice = await askForCv();
+      if (choice === 'cancel') return;
+      if (choice === 'add') {
+        router.push(stepRoute('cv') as never);
+        return;
+      }
+    }
     setApplying(true);
     try {
       await applyForOpportunity(id, { coverLetter: 'Applied via Kredibble Mobile' });
@@ -155,13 +166,7 @@ export default function JobDetailScreen() {
           <Text style={styles.sectionTitle} className="font-sans">
             Overview
           </Text>
-          <Text
-            style={styles.bodyText}
-            numberOfLines={expanded ? undefined : 3}
-            className="font-sans"
-          >
-            {fullDescription}
-          </Text>
+          <CollapsibleRichText text={fullDescription} expanded={expanded} collapsedLines={3} textStyle={styles.bodyText} />
           <TouchableOpacity
             style={styles.readMoreButton}
             onPress={() => setExpanded(!expanded)}

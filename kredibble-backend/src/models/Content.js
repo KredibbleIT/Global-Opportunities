@@ -35,6 +35,17 @@ notificationSchema.index({ userId: 1, readAt: 1, createdAt: -1 });
 notificationSchema.index({ status: 1, scheduledFor: 1 });
 notificationSchema.index({ audience: 1, status: 1, sentAt: -1 });
 
+// Who has read an admin broadcast. A broadcast belongs to a whole audience, so each person's "read" is its own row
+// (a personal notification keeps using its own `readAt`).
+const notificationReadSchema = new mongoose.Schema({
+  notificationId: { type: mongoose.Schema.Types.ObjectId, ref: 'Notification', required: true },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  readAt: { type: Date, default: Date.now },
+}, { timestamps: false });
+notificationReadSchema.index({ userId: 1, notificationId: 1 }, { unique: true });
+notificationReadSchema.index({ notificationId: 1 });
+
+export const NotificationRead = mongoose.model('NotificationRead', notificationReadSchema);
 export const Article = mongoose.model('Article', articleSchema);
 export const Notification = mongoose.model('Notification', notificationSchema);
 

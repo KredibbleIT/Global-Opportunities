@@ -14,7 +14,7 @@ const MIN_LENGTH = 20;
 const MAX_LENGTH = 1000;
 
 const THANK_YOU =
-  'Thank you for applying to become a Global Opportunity Desk ambassador. We have received your request and our team will review it shortly. You will receive a notification here as soon as a decision has been made.';
+  'Thank you for applying to become a Global Opportunity Desk’s ambassador. We have received your request and our team will review it shortly. You will receive a notification here as soon as a decision has been made.';
 
 /** Asks the person why they want to be an ambassador; the answer is what the admin reads when reviewing the request. */
 export default function BecomeAmbassadorScreen() {
@@ -59,7 +59,7 @@ export default function BecomeAmbassadorScreen() {
             Why do you want to be an ambassador?
           </Text>
           <Text style={{ fontSize: 14, lineHeight: 21, color: Colors.textBody, fontWeight: '300', marginTop: 8 }} className="font-sans">
-            Tell our team a little about yourself and what you would bring to the Kredibble community. Your answer is shared with the team reviewing your request.
+            Tell our team a little about yourself and what you would bring to the Global Opportunity Desk community. Your answer is shared with the team reviewing your request.
           </Text>
 
           <TextInput

@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { previewText } from '../../lib/rich-text';
+import { RichText } from '../../components/ui/RichText';
 import { Colors } from '../../constants/design';
 import { View, Text, TouchableOpacity, ScrollView, Image, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -7,7 +9,6 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { authStore, PostedOpportunity, Applicant } from '../../constants/authStore';
 import { deleteOpportunity, updateApplicantStatus as apiUpdateApplicantStatus } from '../../lib/api';
 import { useToast } from '../../components/ui/ToastProvider';
-import { mockExperts } from '../../constants/mockExperts';
 
 const VerifiedBadge = () => (
   <View style={{
@@ -172,14 +173,18 @@ export default function OpportunityDetailScreen() {
           </View>
 
           {/* Description */}
-          <Text style={{ fontSize: 13, color: '#5E6175', lineHeight: 18 }} className="font-sans">
-            {isDescriptionExpanded ? opp.description : `${opp.description.slice(0, 150)}...`}
-            {!isDescriptionExpanded && opp.description.length > 150 && (
-              <Text onPress={() => setIsDescriptionExpanded(true)} style={{ color: Colors.primary, fontWeight: '500' }}>
-                See More
-              </Text>
-            )}
-          </Text>
+          {isDescriptionExpanded ? (
+            <RichText text={opp.description} textStyle={{ fontSize: 13, color: '#5E6175', lineHeight: 18 }} />
+          ) : (
+            <Text style={{ fontSize: 13, color: '#5E6175', lineHeight: 18 }} className="font-sans">
+              {previewText(opp.description).length > 150 ? `${previewText(opp.description).slice(0, 150)}...` : previewText(opp.description)}
+              {previewText(opp.description).length > 150 && (
+                <Text onPress={() => setIsDescriptionExpanded(true)} style={{ color: Colors.primary, fontWeight: '500' }}>
+                  {' '}See More
+                </Text>
+              )}
+            </Text>
+          )}
 
           {(opp.type === 'jobs' || opp.type === 'internships') && (opp.workType || opp.salary || opp.experienceLevels || opp.organizationType) && (
             <>
@@ -362,13 +367,11 @@ export default function OpportunityDetailScreen() {
           <View style={{ gap: 16 }}>
             {opp.applicants.map((applicant) => {
               const candidate = authStore.candidates.find(c => c.name === applicant.name);
-              const bio = candidate?.bio || `i am a curious and detail-oriented Junior ${applicant.profession} with strong visual design skills, user-centered...`;
-              
+              const bio = candidate?.bio || '';
+
+              // The real profile of the person who applied.
               const handleCardPress = () => {
-                const expert = mockExperts.find(e => e.name.toLowerCase() === applicant.name.toLowerCase()) || mockExperts[0];
-                if (expert) {
-                  router.push(`/experts/${expert.id}`);
-                }
+                router.push({ pathname: '/experts/[id]', params: { id: String(applicant.id), applicant: '1' } });
               };
               
               return (
@@ -401,9 +404,11 @@ export default function OpportunityDetailScreen() {
                     </View>
 
                     {/* Bio */}
-                    <Text style={{ fontSize: 12, color: '#7F8295', marginTop: 8, lineHeight: 16 }} className="font-sans">
-                      {bio}
-                    </Text>
+                    {!!bio && (
+                      <Text style={{ fontSize: 12, color: '#7F8295', marginTop: 8, lineHeight: 16 }} className="font-sans">
+                        {bio}
+                      </Text>
+                    )}
                   </TouchableOpacity>
 
                   <View style={{ height: 1, backgroundColor: '#F0F0F2', marginVertical: 12 }} />

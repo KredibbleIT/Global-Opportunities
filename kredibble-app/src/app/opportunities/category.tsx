@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { previewText } from '../../lib/rich-text';
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft, Search, SlidersHorizontal, X } from 'lucide-react-native';
@@ -80,7 +81,7 @@ function ListingCard({ item, chips, onPress }: { item: Listing; chips: string[];
 
       {!!item.description && (
         <Text numberOfLines={2} style={{ fontSize: 13, lineHeight: 19, color: Colors.textMuted, marginTop: 12 }} className="font-sans">
-          {item.description}
+          {previewText(String(item.description))}
         </Text>
       )}
 
