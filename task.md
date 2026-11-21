@@ -2045,7 +2045,7 @@ How it works now:
 **Fix (`kredibble-admin/tests/admin.e2e.spec.ts`, on `fix/god-t108-nav-insights`, merged into `fix/god-t92-ambassador-naming` and `fix/god-t99-vetting-reviewer-list`):** the referral-code test snapshots `ambassadors` and `amplificationLogs` and puts them back in a `finally`, like the other store-writing rule tests. The Download PDF test waits for the partner URL, the partner report and no team report before it clicks the combobox, then for `aria-expanded="true"` before the keys. Merging #198's branch into #199 and #200 restores the sidebar test updates there. No app code changed.
 **Acceptance criteria:**
 - [x] The referral-code test then the Month to date test pass in one worker (they failed on main), and the Download PDF test passes 4 of 4 runs on the T108 branch
-- [ ] #198, #199 and #200 green in CI, with no flaky Monthly report test
+- [x] #198, #199 and #200 green in CI, with no flaky Monthly report test (2026-11-21 runs 44848785446, 44848829116, 44848839734: every leg green, 0 flaky, 0 failed; mock shard 2 548 passed where it used to report 547 passed and 1 flaky)
 
 ### SEC-163 — The weekly backend Dependabot job failed on ioredis 6
 **Priority:** P3
