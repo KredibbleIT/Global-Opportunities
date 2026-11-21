@@ -2014,8 +2014,8 @@ adminApiRouter.post('/ambassador-requests/:id/approve', requireAdminScreen('netw
   await notifyUser(user._id, {
     title: 'Ambassador request approved',
     message: channel
-      ? `Congratulations! Your request to become a Kredibble ambassador has been approved. Welcome to the team! You have been added to "${channel.name}" in Community, where our team will share next steps.`
-      : 'Congratulations! Your request to become a Kredibble ambassador has been approved. Welcome to the team! Our team will be in touch shortly with next steps.',
+      ? `Congratulations! Your request to become a Global Opportunity Desk ambassador has been approved. Welcome to the team! You have been added to "${channel.name}" in Community, where our team will share next steps.`
+      : 'Congratulations! Your request to become a Global Opportunity Desk ambassador has been approved. Welcome to the team! Our team will be in touch shortly with next steps.',
     type: 'ambassador',
     priority: 'high',
   });
@@ -2042,7 +2042,7 @@ adminApiRouter.post('/ambassador-requests/:id/reject', requireAdminScreen('netwo
 
   await notifyUser(request.userId, {
     title: 'Ambassador request update',
-    message: 'Thank you for your interest in becoming a Kredibble ambassador. We have carefully reviewed your request and are unable to approve it at this time. You are welcome to apply again in a few days, and we encourage you to keep contributing to the Kredibble community.',
+    message: 'Thank you for your interest in becoming a Global Opportunity Desk ambassador. We have carefully reviewed your request and are unable to approve it at this time. You are welcome to apply again in a few days, and we encourage you to keep contributing to the Kredibble community.',
     type: 'ambassador',
   });
   await auditReq(req, {
@@ -2093,7 +2093,7 @@ adminApiRouter.post('/ambassador-requests/:id/revoke', requireAdminScreen('netwo
 
   await notifyUser(request.userId, {
     title: 'Ambassador status update',
-    message: 'Thank you for your time as a Kredibble ambassador. Your ambassador status has now ended, and your access to the ambassador group has been removed. We appreciate your contribution and you are welcome to apply again in future.',
+    message: 'Thank you for your time as a Global Opportunity Desk ambassador. Your ambassador status has now ended, and your access to the ambassador group has been removed. We appreciate your contribution and you are welcome to apply again in future.',
     type: 'ambassador',
   });
   await auditReq(req, {

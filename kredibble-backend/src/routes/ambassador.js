@@ -75,7 +75,7 @@ ambassadorRouter.post('/', requireAuth, validate(createAmbassadorRequestSchema),
   const user = await User.findById(req.auth.sub);
   if (!user || !['seeker', 'hirer'].includes(user.role)) throw new ApiError(403, 'Only seekers and hirers can apply to become an ambassador');
 
-  if (await ownAmbassador(user)) throw new ApiError(409, 'You are already a Kredibble ambassador');
+  if (await ownAmbassador(user)) throw new ApiError(409, 'You are already a Global Opportunity Desk ambassador');
   if (await AmbassadorRequest.exists({ userId: user._id, status: 'pending' })) {
     throw new ApiError(409, 'You already have a pending ambassador request');
   }

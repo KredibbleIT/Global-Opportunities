@@ -14,7 +14,7 @@ const MIN_LENGTH = 20;
 const MAX_LENGTH = 1000;
 
 const THANK_YOU =
-  'Thank you for applying to become a Kredibble ambassador. We have received your request and our team will review it shortly. You will receive a notification here as soon as a decision has been made.';
+  'Thank you for applying to become a Global Opportunity Desk ambassador. We have received your request and our team will review it shortly. You will receive a notification here as soon as a decision has been made.';
 
 /** Asks the person why they want to be an ambassador; the answer is what the admin reads when reviewing the request. */
 export default function BecomeAmbassadorScreen() {
