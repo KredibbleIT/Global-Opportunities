@@ -11,6 +11,12 @@ updates:
     groups:
       minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # package.json overrides ioredis to ^5 because ioredis-mock (the test Redis) needs ioredis ^5. The ioredis 6
+      # bump therefore fails with EOVERRIDE and turned this weekly job red from 2026-11-02. Remove this entry once an
+      # ioredis-mock release accepts ioredis 6, and move the override with it. Minor and patch updates still come.
+      - dependency-name: ioredis
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: npm
     directory: /kredibble-admin
