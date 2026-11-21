@@ -40,7 +40,7 @@ import {
   type AmbassadorWriteInput,
   type AmplificationLogApiRecord,
 } from "@/lib/api";
-import { dataUrlToFile, fetchAll } from "@/lib/services/api-helpers";
+import { fetchAll, uploadableImageFile } from "@/lib/services/api-helpers";
 import { isMockMode } from "@/lib/services/mock-mode";
 
 const MOCK_DELAY_MS = 300;
@@ -394,7 +394,7 @@ export async function saveAmbassador(fields: AmbassadorFields, id?: string): Pro
     return saved;
   }
   const photo = fields.photoUrl?.startsWith("data:")
-    ? (await uploadAmbassadorPhoto(dataUrlToFile(fields.photoUrl, "ambassador-photo"))).url
+    ? (await uploadAmbassadorPhoto(await uploadableImageFile(fields.photoUrl, "ambassador-photo"))).url
     : fields.photoUrl;
   const body: AmbassadorWriteInput = {
     fullName: fields.name,

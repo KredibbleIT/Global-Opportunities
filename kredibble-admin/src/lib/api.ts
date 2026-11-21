@@ -1470,6 +1470,13 @@ export const getLeaderboardApi = async (month?: string) => {
   return request<LeaderboardRowApiRecord[]>(`/admin/leaderboard${query}`);
 };
 
+/** Upload a listing's logo or featured image; store the returned `url` on the listing (the API refuses the picture itself). */
+export const uploadListingImage = async (file: File) => {
+  const body = new FormData();
+  body.append("file", file);
+  return request<UploadResult>(`/admin/upload?purpose=listing-image`, { method: "POST", body });
+};
+
 /** Upload an ambassador's profile photo; store the returned `url` as the ambassador's photo. */
 export const uploadAmbassadorPhoto = async (file: File) => {
   const body = new FormData();

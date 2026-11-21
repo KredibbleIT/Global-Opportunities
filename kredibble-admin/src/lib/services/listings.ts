@@ -13,18 +13,21 @@
  * - Publishing needs a vetted listing; it sets status "published" and the published date.
  * - A published listing is always vetted (unvetting it, or unpublishing it, is handled by the callers).
  * - Vetting sets "vetted by" and "vetted on" together.
+ * - A newly picked logo or featured image is uploaded first and the listing saves its link (the API refuses the picture itself:
+ *   saved as base64 text, one listing weighed about 1.1 MB).
  */
 import { getMockCollection, setMockCollection, subscribeMockStore } from "@/lib/mock-store";
 import type { Listing, ListingFormat, ListingMetrics, ListingType } from "@/lib/mock-entities";
 import type { StaffMember } from "@/lib/mock-entities";
 import { isMockMode } from "./mock-mode";
-import { orMissing } from "./api-helpers";
+import { orMissing, uploadableImageFile } from "./api-helpers";
 import {
   createOpportunityApi,
   getOpportunityById,
   getOpportunityMetricsApi,
   unpublishOpportunityApi,
   updateOpportunityApi,
+  uploadListingImage,
   type OpportunityRecord,
 } from "@/lib/api";
 
@@ -182,6 +185,18 @@ const apiBody = (fields: ListingFields, status: Listing["status"], publish: bool
   certificateOffered: Boolean(fields.certificateOffered),
 });
 
+/** A picked picture (data: URL) is uploaded and replaced by its link; a link already saved is kept; no picture stays empty. */
+async function imageLink(image: string | undefined, baseName: string): Promise<string | undefined> {
+  if (!image || !image.startsWith("data:")) return image;
+  return (await uploadListingImage(await uploadableImageFile(image, baseName))).url;
+}
+
+/** The form's fields with any newly picked logo or featured image uploaded first, so the listing saves links. */
+async function withImageLinks(fields: ListingFields): Promise<ListingFields> {
+  const [logoUrl, imageUrl] = await Promise.all([imageLink(fields.logoUrl, "listing-logo"), imageLink(fields.imageUrl, "listing-image")]);
+  return { ...fields, logoUrl, imageUrl };
+}
+
 /**
  * Creates a listing as a draft, or published when `publish` is true (the form only allows that when vetted).
  * Real mode (GOD-T31): waits for POST /admin/opportunities and resolves with the listing as the server saved it (its real id), so it
@@ -189,7 +204,7 @@ const apiBody = (fields: ListingFields, status: Listing["status"], publish: bool
  */
 export async function createListing(fields: ListingFields, publish: boolean): Promise<Listing> {
   if (!isMockMode()) {
-    const saved = toListing(await createOpportunityApi(apiBody(fields, publish ? "published" : "draft", publish)));
+    const saved = toListing(await createOpportunityApi(apiBody(await withImageLinks(fields), publish ? "published" : "draft", publish)));
     cacheListing(saved);
     if (saved.status === "published") startMetrics(saved.id);
     return saved;
@@ -216,7 +231,8 @@ export async function updateListing(id: string, fields: ListingFields, publish =
   if (!current) return undefined;
   const publishing = publish && current.status !== "published";
   if (!isMockMode()) {
-    const saved = toListing(await updateOpportunityApi(id, { ...apiBody(fields, publish ? "published" : current.status, publish), fundingType: fields.fundingType ?? null }));
+    const body = apiBody(await withImageLinks(fields), publish ? "published" : current.status, publish);
+    const saved = toListing(await updateOpportunityApi(id, { ...body, fundingType: fields.fundingType ?? null }));
     cacheListing(saved);
     if (publishing) startMetrics(id);
     return saved;

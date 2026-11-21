@@ -61,6 +61,8 @@ export const ADMIN_UPLOAD_SCREENS = Object.freeze({
   'showcase-photo': ['showcase', 'showcase.ambassadors', 'showcase.partners'],
   // The picture of a channel an admin creates.
   'channel-avatar': 'channels',
+  // A listing's logo and featured image, for the staff who can create and edit listings (lib/listing-images.js).
+  'listing-image': 'listings_curate',
 });
 
 export const requireAdminUploadScreen = requireAdminScreen(

@@ -10,7 +10,7 @@
  */
 import { createArticle, getArticleById, getArticles, updateArticle, uploadArticleBanner, type ArticleInput, type ArticleRecord } from "@/lib/api";
 import { articles as sampleArticles, type Article, type ArticleStatus } from "@/lib/mock-articles";
-import { dataUrlToFile, fetchAll, isRecordId, orMissing } from "./api-helpers";
+import { fetchAll, isRecordId, orMissing, uploadableImageFile } from "./api-helpers";
 import { isMockMode } from "./mock-mode";
 
 /** What the editor saves. */
@@ -47,7 +47,7 @@ export async function loadArticle(id: string): Promise<Article | undefined> {
 /** A picked image (data: URL) is uploaded and replaced by its URL; a URL already stored is kept; no image clears it. */
 async function bannerUrl(image: string | undefined): Promise<string | undefined> {
   if (!image || !image.startsWith("data:")) return image;
-  const uploaded = await uploadArticleBanner(dataUrlToFile(image, "article-cover"));
+  const uploaded = await uploadArticleBanner(await uploadableImageFile(image, "article-cover"));
   return uploaded.url;
 }
 

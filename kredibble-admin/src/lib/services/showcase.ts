@@ -46,7 +46,7 @@ import {
   type EntryForm,
 } from "@/lib/showcase";
 import { flatDetails } from "@/lib/services/ambassador-import";
-import { dataUrlToFile } from "@/lib/services/api-helpers";
+import { uploadableImageFile } from "@/lib/services/api-helpers";
 import { recordAudit, type AuditAction, type AuditEntry } from "@/lib/services/audit-log";
 import { isMockMode } from "@/lib/services/mock-mode";
 import { loadAmbassadorRows } from "@/lib/services/network";
@@ -378,7 +378,7 @@ export async function saveEntry(
   if (isMockMode()) return editingId ? updateEntry(editingId, form, actor) : addEntry(form, links, actor);
   try {
     const photoUrl = form.photoUrl?.startsWith("data:")
-      ? (await uploadShowcasePhoto(dataUrlToFile(form.photoUrl, "showcase-photo"))).url
+      ? (await uploadShowcasePhoto(await uploadableImageFile(form.photoUrl, "showcase-photo"))).url
       : form.photoUrl;
     const body: ShowcaseEntryWriteInput = {
       categoryId: form.categoryId,
