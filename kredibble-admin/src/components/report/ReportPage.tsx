@@ -53,7 +53,7 @@ export function ReportPage({ view }: { view: ReportView }) {
   const active = view === "partner" ? partner : team;
   const loading = active.isLoading;
   const issue = view === "partner" ? partner.data?.issue : team.data?.issue;
-  // Sample figures in either mode until the report reads the API: the paper says "Sample report", on screen and in the PDF.
+  // Sample figures in mock mode only: the paper says "Sample report", on screen and in the PDF. Real-API mode shows no sample figures.
   const sample = reportSource() === "sample";
 
   // The title of the printed page (and the proposed file name): set before printing, put back after. The events cover Ctrl+P too.
@@ -111,7 +111,7 @@ export function ReportPage({ view }: { view: ReportView }) {
         <p data-testid="download-hint" className="caption min-[640px]:text-right">
           In the print dialog choose A4 and untick Headers and footers.
         </p>
-        <NotConnectedNotice />
+        <NotConnectedNotice message="Monthly figures aren't connected to live data yet, so this report has no figures." />
         <Tabs ariaLabel="Report templates" idPrefix="report" value={view} onChange={() => undefined} tabs={tabs} links={links} />
         {toDate && (
           <p data-testid="to-date-note" className="caption">

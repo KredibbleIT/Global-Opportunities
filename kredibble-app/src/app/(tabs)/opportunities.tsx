@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { previewText } from '../../lib/rich-text';
 import { Colors } from '../../constants/design';
 import { View, Text, TouchableOpacity, ScrollView, Image, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -6,7 +7,7 @@ import { Bookmark, Sparkles, Plus, Briefcase } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { authStore } from '../../constants/authStore';
 import { getOpportunities, getApplicants, getOpportunityCategoryCounts } from '../../lib/api';
-import { OPPORTUNITY_CATEGORIES, type OpportunityCategory } from '../../constants/opportunityCategories';
+import { OPPORTUNITY_CATEGORIES, categoryOfApiType, getOpportunityCategory, type OpportunityCategory } from '../../constants/opportunityCategories';
 import { useSaved } from '../../lib/useSaved';
 
 // ─── Logo ─────────────────────────────────────────────────────────────────────
@@ -162,7 +163,7 @@ const JobCard = ({ job, onPress }: { job: Job; onPress: () => void }) => {
       numberOfLines={2}
       className="font-sans"
     >
-      {job.description}
+      {previewText(job.description)}
     </Text>
 
     {/* Divider */}
@@ -216,7 +217,9 @@ export default function OpportunitiesScreen() {
   const [recommended, setRecommended] = useState<Job[]>([]);
   const [recommendedLoading, setRecommendedLoading] = useState(true);
   const [counts, setCounts] = useState<Record<string, number> | undefined>(undefined);
-  const [recruiterActiveTab, setRecruiterActiveTab] = useState<'Jobs' | 'Internships' | 'Grants' | 'Events'>('Jobs');
+  // The hirer's Active Posts are grouped in the same eight categories as the admin's Opportunities queue.
+  const [recruiterActiveKey, setRecruiterActiveKey] = useState<string>('jobs');
+  const recruiterCategory = getOpportunityCategory(recruiterActiveKey) ?? OPPORTUNITY_CATEGORIES[0];
 
   useEffect(() => {
     // State is initialised from authStore; the subscription keeps it in sync.
@@ -277,7 +280,7 @@ export default function OpportunitiesScreen() {
   }, []);
   if (role === 'hirer') {
     if (viewMode !== 'all') {
-      const filteredOpps = opps.filter((opp) => opp.type.toLowerCase() === recruiterActiveTab.toLowerCase());
+      const filteredOpps = opps.filter((opp) => categoryOfApiType(opp.type)?.key === recruiterCategory.key);
 
       // ─── ACTIVE LISTINGS FEED ─────────────────────────────────────────
       return (
@@ -321,36 +324,28 @@ export default function OpportunitiesScreen() {
 
           <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
             {/* Category Tabs Selector */}
-            <View style={{ 
-              backgroundColor: '#FFFFFF', 
-              borderRadius: 14, 
-              padding: 4, 
-              flexDirection: 'row', 
-              justifyContent: 'space-between', 
-              marginBottom: 20,
-              borderWidth: 1,
-              borderColor: '#E5E6F2'
-            }}>
-              {(['Jobs', 'Internships', 'Grants', 'Events'] as const).map((tab) => {
-                const isActive = recruiterActiveTab === tab;
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 }} accessibilityRole="tablist">
+              {OPPORTUNITY_CATEGORIES.map((category) => {
+                const isActive = recruiterCategory.key === category.key;
+                const count = opps.filter((opp) => categoryOfApiType(opp.type)?.key === category.key).length;
                 return (
                   <TouchableOpacity
-                    key={tab}
-                    onPress={() => setRecruiterActiveTab(tab)}
+                    key={category.key}
+                    testID={`posts-tab-${category.key}`}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: isActive }}
+                    onPress={() => setRecruiterActiveKey(category.key)}
                     style={{
-                      flex: 1,
                       paddingVertical: 10,
-                      alignItems: 'center',
-                      borderRadius: 10,
-                      backgroundColor: isActive ? Colors.primary : 'transparent',
+                      paddingHorizontal: 14,
+                      borderRadius: 12,
+                      backgroundColor: isActive ? Colors.primary : '#FFFFFF',
+                      borderWidth: 1,
+                      borderColor: isActive ? Colors.primary : '#E5E6F2',
                     }}
                   >
-                    <Text style={{ 
-                      fontSize: 13, 
-                      fontWeight: isActive ? '600' : '500', 
-                      color: isActive ? '#FFFFFF' : '#8A8D9F' 
-                    }} className="font-sans">
-                      {tab}
+                    <Text style={{ fontSize: 13, fontWeight: isActive ? '600' : '500', color: isActive ? '#FFFFFF' : '#8A8D9F' }} className="font-sans">
+                      {count > 0 ? `${category.title} (${count})` : category.title}
                     </Text>
                   </TouchableOpacity>
                 );
@@ -362,7 +357,7 @@ export default function OpportunitiesScreen() {
                 <Briefcase size={64} color="#A1A1AA" style={{ marginBottom: 16 }} />
                 <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#1A1A1A' }} className="font-sans">No Listings Yet</Text>
                 <Text style={{ fontSize: 12, color: '#8A8D9F', marginTop: 4, textAlign: 'center' }} className="font-sans">
-                  Click the &quot;+ Post&quot; button above to publish your first {recruiterActiveTab.toLowerCase()}.
+                  Click the &quot;+ Post&quot; button above to publish your first listing in {recruiterCategory.title}.
                 </Text>
               </View>
             ) : (
@@ -437,7 +432,7 @@ export default function OpportunitiesScreen() {
                       numberOfLines={2}
                       className="font-sans"
                     >
-                      {opp.description}
+                      {previewText(opp.description)}
                     </Text>
 
                     {/* Divider */}

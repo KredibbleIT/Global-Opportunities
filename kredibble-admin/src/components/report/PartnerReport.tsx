@@ -61,10 +61,10 @@ export function PartnerReportSkeleton() {
   );
 }
 
-/** A card of the report: a title and what is inside it. Never split across two printed pages. */
-function ReportCard({ title, subtitle, children, testId }: { title: string; subtitle?: string; children: ReactNode; testId?: string }) {
+/** A card of the report: a title and what is inside it. Never split across two printed pages. `className` is for layout (a card that spans both columns). */
+export function ReportCard({ title, subtitle, children, testId, className }: { title: string; subtitle?: string; children: ReactNode; testId?: string; className?: string }) {
   return (
-    <section data-testid={testId} aria-label={title} className="report-section card-surface min-w-0 p-5">
+    <section data-testid={testId} aria-label={title} className={cn("report-section card-surface min-w-0 p-5", className)}>
       <h3 className="font-display text-xl font-semibold leading-7 text-ink">{title}</h3>
       {subtitle && <p className="caption mt-1">{subtitle}</p>}
       <div className="mt-4">{children}</div>
@@ -114,7 +114,7 @@ function StatRow({ metric, icon }: { metric: PartnerMetric; icon: LucideIcon }) 
 }
 
 /** A table that scrolls sideways inside its card on a narrow phone, and never in print. */
-function TableScroll({ children }: { children: ReactNode }) {
+export function TableScroll({ children }: { children: ReactNode }) {
   return <div className="overflow-x-auto print:overflow-visible">{children}</div>;
 }
 

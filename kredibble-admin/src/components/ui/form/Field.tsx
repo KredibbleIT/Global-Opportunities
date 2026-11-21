@@ -34,6 +34,7 @@ interface FieldContextValue {
   id: string;
   describedBy?: string;
   invalid: boolean;
+  labelId: string;
 }
 
 const FieldContext = createContext<FieldContextValue | null>(null);
@@ -47,6 +48,11 @@ export function useFieldControlProps() {
     "aria-describedby": field.describedBy,
     "aria-invalid": field.invalid || undefined,
   };
+}
+
+/** For a control that is not a native input (an editable area): the id of the field's label, to name it with aria-labelledby. */
+export function useFieldLabelId() {
+  return useContext(FieldContext)?.labelId;
 }
 
 export const CONTROL_CLASSES = cn(
@@ -75,10 +81,10 @@ export function Field({ label, hideLabel, optional, helper, error, className, ch
   const describedBy = [error ? errorId : null, helper ? helperId : null].filter(Boolean).join(" ") || undefined;
 
   return (
-    <FieldContext.Provider value={{ id, describedBy, invalid: !!error }}>
+    <FieldContext.Provider value={{ id, describedBy, invalid: !!error, labelId: `${id}-label` }}>
       <div className={cn("min-w-0", className)}>
         <div className={cn("mb-1.5 flex items-baseline gap-2", hideLabel && "sr-only")}>
-          <label htmlFor={id} className="field-label text-ink">
+          <label id={`${id}-label`} htmlFor={id} className="field-label text-ink">
             {label}
           </label>
           {optional && <span className="caption">Optional</span>}

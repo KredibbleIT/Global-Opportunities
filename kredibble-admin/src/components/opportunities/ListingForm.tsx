@@ -39,7 +39,7 @@ import { Input } from "@/components/ui/form/Input";
 import { Select, type SelectOption } from "@/components/ui/form/Select";
 import { StickyActionBar } from "@/components/ui/form/StickyActionBar";
 import { Switch } from "@/components/ui/form/Switch";
-import { Textarea } from "@/components/ui/form/Textarea";
+import { RichTextEditor } from "@/components/ui/form/RichTextEditor";
 import { focusFirstInvalid, useTouched } from "@/components/ui/form/use-touched";
 import { useUnsavedGuard } from "@/components/ui/form/use-unsaved-guard";
 import { useToast } from "@/components/ui/Toast";
@@ -308,7 +308,7 @@ export function ListingForm({ listing }: { listing?: Listing }) {
                 <Input value={form.title} onChange={(e) => set("title", e.target.value)} onBlur={() => touch("title")} placeholder="e.g. Graduate Software Engineer" autoComplete="off" />
               </Field>
               <Field label="Description" error={show("description") ? errors.description : undefined}>
-                <Textarea value={form.description} onChange={(e) => set("description", e.target.value)} onBlur={() => touch("description")} rows={5} placeholder="What the opportunity is, who it is for and what is needed." />
+                <RichTextEditor value={form.description} onChange={(value) => set("description", value)} onBlur={() => touch("description")} rows={8} placeholder="What the opportunity is, who it is for and what is needed. Use the buttons above to add headings, bold, lists and links." />
               </Field>
               <Field label="Offering organisation" error={show("organisation") ? errors.organisation : undefined}>
                 <Input value={form.organisation} onChange={(e) => set("organisation", e.target.value)} onBlur={() => touch("organisation")} placeholder="e.g. MTN Ghana" autoComplete="off" />
@@ -357,10 +357,10 @@ export function ListingForm({ listing }: { listing?: Listing }) {
           <Card>
             <FormSection title="Details" description="What seekers read before they apply, and the facts the app uses to filter this listing.">
               <Field label="Who can apply" optional helper="One point on each line.">
-                <Textarea value={form.eligibility} onChange={(e) => set("eligibility", e.target.value)} rows={4} placeholder={"Citizens of Ghana\nUnder 30 years old"} />
+                <RichTextEditor value={form.eligibility} onChange={(value) => set("eligibility", value)} rows={5} placeholder={"Citizens of Ghana\nUnder 30 years old"} />
               </Field>
               <Field label="What it offers" optional helper="One point on each line.">
-                <Textarea value={form.benefits} onChange={(e) => set("benefits", e.target.value)} rows={4} placeholder={"Tuition\nA monthly allowance"} />
+                <RichTextEditor value={form.benefits} onChange={(value) => set("benefits", value)} rows={5} placeholder={"Tuition\nA monthly allowance"} />
               </Field>
               {details && (
                 <>

@@ -130,7 +130,7 @@ export async function purgeUserData(user, { deleteMedia = deleteUserMedia } = {}
     { _id: userId },
     {
       $set: { name: DELETED_NAME, email: placeholder, emailNormalized: placeholder, emailVerified: false, role: 'deleted' },
-      $unset: { passwordHash: '', avatarUrl: '', refreshTokenHash: '', lockUntil: '', lastFailedLogin: '' },
+      $unset: { passwordHash: '', avatarUrl: '', firstName: '', lastName: '', dateOfBirth: '', gender: '', refreshTokenHash: '', lockUntil: '', lastFailedLogin: '' },
     },
   );
 

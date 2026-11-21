@@ -86,6 +86,8 @@ const env = {
   isDevelopment: !isProduction,
   isTest: nodeEnv === 'test',
   isE2E: e2eModeEnabled({ NODE_ENV: nodeEnv, E2E_SERVER: process.env.E2E_SERVER }),
+  // Sign-up needs a date of birth. Off until the app that sends one is out, so people on the old app can still register.
+  requireDateOfBirth: process.env.REQUIRE_DATE_OF_BIRTH === 'true',
   port: Number(process.env.PORT || 4000),
   corsOrigins: parseOrigins(process.env.CORS_ORIGIN),
   databaseUrl: process.env.DATABASE_URL || process.env.MONGODB_URI || process.env.MONGO_URI,

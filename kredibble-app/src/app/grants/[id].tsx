@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { CollapsibleRichText } from '../../components/ui/RichText';
 import { ScrollView, View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft, Bookmark, Calendar, Coins, Globe, Briefcase, Award, MapPin, ChevronDown, ChevronUp } from 'lucide-react-native';
@@ -131,13 +132,7 @@ export default function GrantDetailScreen() {
           <Text style={styles.sectionTitle} className="font-sans">
             Overview
           </Text>
-          <Text
-            style={styles.bodyText}
-            numberOfLines={expanded ? undefined : 3}
-            className="font-sans"
-          >
-            {grant.description || 'No description provided.'}
-          </Text>
+          <CollapsibleRichText text={grant.description || 'No description provided.'} expanded={expanded} collapsedLines={3} textStyle={styles.bodyText} />
           <TouchableOpacity
             style={styles.readMoreButton}
             onPress={() => setExpanded(!expanded)}

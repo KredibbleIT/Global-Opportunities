@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useLeaveRemovedChannel } from '../../lib/useChannelRemoved';
 import { View, Text, Image, ScrollView, TouchableOpacity, TextInput, Modal, Animated, Dimensions, ActivityIndicator } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -29,6 +30,7 @@ export default function ChannelFeedScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const channelId = (params.id as string) || '';
+  useLeaveRemovedChannel(channelId);
   const insets = useSafeAreaInsets();
 
   const [channel, setChannel] = useState<any | null>(null);

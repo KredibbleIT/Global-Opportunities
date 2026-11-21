@@ -6,7 +6,7 @@
  * routes. A group is "active" when any of its children is.
  *
  * Every child has a `screen` key (src/config/permissions.ts). What a person sees is the full list filtered
- * by `visibleNavGroups(can)`: a page appears only where they can at least view its screen, and a group with
+ * by `visibleNavGroups(can)`: a page appears only where they can at least view its screen and it is not hidden, and a group with
  * no visible page is hidden. The same screen key guards the route itself (RequireAccess).
  *
  * `match` lists extra path prefixes that should also highlight a child ("Team" stays highlighted on a member's
@@ -33,6 +33,11 @@ export interface NavChild {
   countKey?: CountKey;
   /** Extra path prefixes that also mark this page active (see file header). */
   match?: string[];
+  /**
+   * Left out of the sidebar and the command palette, but still a real page: its address, breadcrumbs, access check and the links from the Overview and
+   * the KPI cards keep working. Remove the flag to bring it back.
+   */
+  hidden?: boolean;
 }
 
 export interface NavGroup {
@@ -58,9 +63,10 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: Briefcase,
     children: [
       { label: "Opportunities queue", href: "/opportunities", icon: Briefcase, screen: "opportunities_queue", accent: "orange" },
-      { label: "Events", href: "/events", icon: CalendarDays, screen: "events" },
-      { label: "Grants", href: "/grants", icon: HandCoins, screen: "grants" },
-      { label: "Programs", href: "/programs", icon: GraduationCap, screen: "programs", accent: "orange" },
+      // Not in the sidebar: events and grants that people post are in the queue, under its "Events & Competitions" and "Awards, Grants & Funding" tabs.
+      { label: "Events", href: "/events", icon: CalendarDays, screen: "events", hidden: true },
+      { label: "Grants", href: "/grants", icon: HandCoins, screen: "grants", hidden: true },
+      { label: "Programs", href: "/programs", icon: GraduationCap, screen: "programs", accent: "orange", hidden: true },
     ],
   },
   {
@@ -122,7 +128,7 @@ export function hrefForScreen(screen: Screen): string {
 
 /** The nav a person may see: only pages whose screen they can view; groups left empty are dropped. */
 export function visibleNavGroups(can: (screen: Screen, level: AccessLevel) => boolean): NavGroup[] {
-  return NAV_GROUPS.map((group) => ({ ...group, children: group.children.filter((child) => can(child.screen, "view")) })).filter(
+  return NAV_GROUPS.map((group) => ({ ...group, children: group.children.filter((child) => !child.hidden && can(child.screen, "view")) })).filter(
     (group) => group.children.length > 0,
   );
 }

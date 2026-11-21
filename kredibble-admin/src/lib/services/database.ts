@@ -254,8 +254,9 @@ export const toRecordRow = (b: BeneficiaryApiRecord): RecordRow => ({
   name: b.name || b.fullName || "",
   email: b.email,
   phone: b.phone || undefined,
-  country: b.country,
-  institution: b.institution,
+  // A person who has only signed up has not given a country or institution yet.
+  country: b.country ?? "",
+  institution: b.institution ?? "",
   source: (b.source as RecordSource) || "organic",
   verified: Boolean(b.verified),
   createdAt: b.createdAt,

@@ -36,6 +36,25 @@ export type ReportData = KpiData & { amplificationLogs: AmplificationLog[]; staf
 
 export const storeReportData = (): ReportData => ({ ...storeData(), amplificationLogs: getMockCollection("amplificationLogs"), staff: getMockCollection("staff") });
 
+/**
+ * The report's data with NO records at all (no listings, programs, ambassadors, partners, posts, views, people or generated reports), so a report built
+ * from it shows zeros and "No data" instead of sample figures. The targets and thresholds are settings, not records, so they stay: the Team report
+ * can still say what each figure is judged against. Used outside mock mode, where no API serves the monthly figures yet.
+ */
+export const emptyReportData = (): ReportData => ({
+  ...storeData(),
+  listings: [],
+  programs: [],
+  ambassadors: [],
+  partners: [],
+  databaseRecords: [],
+  socialPosts: [],
+  websiteMonths: [],
+  monthlyReports: [],
+  amplificationLogs: [],
+  staff: [],
+});
+
 // ---- months ------------------------------------------------------------------------------------------------------------
 
 /** The default month of the report: the last complete month. */

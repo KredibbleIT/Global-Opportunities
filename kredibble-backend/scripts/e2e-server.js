@@ -43,6 +43,7 @@ const { app } = await import('../src/app.js');
 const { connectToDatabase } = await import('../src/lib/mongodb.js');
 const { User, StaffMember } = await import('../src/models/User.js');
 const { env } = await import('../src/config/env.js');
+const { initSocket } = await import('../src/socket.js');
 
 await connectToDatabase();
 const adminUser = await User.create({
@@ -211,7 +212,9 @@ if (process.env.E2E_SEED === 'demo') {
   );
 }
 
-const server = http.createServer(app).listen(env.port, () => {
+const server = http.createServer(app);
+initSocket(server);
+server.listen(env.port, () => {
   console.log(`e2e API listening on http://localhost:${env.port}/api`);
 });
 

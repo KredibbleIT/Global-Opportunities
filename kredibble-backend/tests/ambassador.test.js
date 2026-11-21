@@ -62,7 +62,7 @@ describe('ambassador requests (user side)', () => {
       .set(bearer(user))
       .send({ motivation: 'I would love to represent Kredibble at my campus' });
     expect(res.status).toBe(409);
-    expect(res.body.error.message).toMatch(/already a Kredibble ambassador/i);
+    expect(res.body.error.message).toMatch(/already a Global Opportunity Desk’s ambassador/i);
 
     const meRes = await request(app).get(api('/ambassador-requests/me')).set(bearer(user));
     expect(meRes.status).toBe(200);

@@ -145,6 +145,11 @@ export const RESOURCE_POLICIES = {
       'eventCategory',
       'grantBudgetRange',
       'grantSector',
+      'country',
+      'deadline',
+      'applyUrl',
+      'eligibility',
+      'benefits',
     ],
     updateFields: [
       'title',
@@ -161,6 +166,11 @@ export const RESOURCE_POLICIES = {
       'eventCategory',
       'grantBudgetRange',
       'grantSector',
+      'country',
+      'deadline',
+      'applyUrl',
+      'eligibility',
+      'benefits',
     ],
     // `moderationStatus` and `applicantsCount` are server/admin controlled.
     adminUpdateFields: ['moderationStatus', 'applicantsCount', 'status'],

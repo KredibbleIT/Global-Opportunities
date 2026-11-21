@@ -21,6 +21,8 @@ import { Testimonial, Beneficiary } from '../models/AdminPortal.js';
 import { AccountInvite } from '../models/AdminPortal.js';
 import { ensureAppBeneficiary } from '../lib/app-beneficiaries.js';
 import { SavedItem } from '../models/User.js';
+import { checkDateOfBirth } from '../lib/age.js';
+import { profileCompletion } from '../lib/profile-completion.js';
 import { createVerificationCode, hashVerificationCode, sendVerificationEmail, sendPasswordResetEmail } from '../lib/email.js';
 import { env } from '../config/env.js';
 import { AUDIT_ACTIONS, AUDIT_RESOURCE_TYPES, auditReq } from '../lib/audit.js';
@@ -46,6 +48,27 @@ const publicUser = (user) => {
   const userObj = user.toJSON ? user.toJSON() : user;
   const { passwordHash, _id, __v, refreshTokenHash, tokenVersion, emailNormalized, ...safeUser } = userObj;
   return { id: _id, ...safeUser };
+};
+
+/**
+ * The account as the app sees it after sign-up, sign-in or "me": the user, their seeker or hirer profile, and how complete that profile is.
+ * @param {import('mongoose').Document} user
+ * @param {object | null} profile their SeekerProfile or HirerAccount
+ */
+export const sessionUser = (user, profile) => {
+  const finalUser = user.toObject();
+  finalUser[user.role] = profile;
+  return { ...publicUser(finalUser), profileCompletion: profileCompletion(user, profile) };
+};
+
+/** First name, last name and full name from either the new sign-up (first + last) or an older app's single `name`. */
+const namesFrom = (body) => {
+  if (body.firstName && body.lastName) {
+    return { firstName: body.firstName, lastName: body.lastName, name: `${body.firstName} ${body.lastName}` };
+  }
+  const name = String(body.name).trim();
+  const [firstName, ...rest] = name.split(/\s+/);
+  return { firstName, lastName: rest.join(' ') || undefined, name };
 };
 
 const PUBLIC_ROLES = ['seeker', 'hirer'];
@@ -90,7 +113,8 @@ authRouter.post(
   registrationLimiter,
   validate(registerSchema),
   asyncHandler(async (req, res) => {
-    const { name, email, password } = req.body;
+    const { email, password } = req.body;
+    const { firstName, lastName, name } = namesFrom(req.body);
     const role = PUBLIC_ROLES.includes(req.body.role) ? req.body.role : 'seeker';
 
     // SEC-028: Normalize email for case-insensitive uniqueness
@@ -111,6 +135,11 @@ authRouter.post(
 
     const user = new User({
       name,
+      firstName,
+      lastName,
+      // The schema has already checked the date and the minimum age.
+      dateOfBirth: req.body.dateOfBirth ? checkDateOfBirth(req.body.dateOfBirth).date : undefined,
+      gender: req.body.gender,
       email,
       emailNormalized: normalizedEmail,
       role,
@@ -119,6 +148,7 @@ authRouter.post(
 
     await user.save();
 
+    let profile = null;
     if (role === 'seeker') {
       const seeker = new SeekerProfile({
         userId: user._id,
@@ -132,6 +162,7 @@ authRouter.post(
           : '[]',
       });
       await seeker.save();
+      profile = seeker;
       // GOD-T3: the seeker appears in the admin Database as an "App registration". A failure here must not undo a valid
       // registration: it is logged, and migration 003 (run on every deploy, idempotent) creates the missing record.
       try {
@@ -155,6 +186,7 @@ authRouter.post(
         recruiterLinkedin: req.body.recruiterLinkedin,
       });
       await hirer.save();
+      profile = hirer;
     }
 
     const refreshToken = generateRefreshToken();
@@ -177,7 +209,7 @@ authRouter.post(
     });
 
     res.status(201).json({
-      data: { user: publicUser(user), token: signToken(user), refreshToken },
+      data: { user: sessionUser(user, profile), token: signToken(user), refreshToken },
     });
   }),
 );
@@ -322,9 +354,6 @@ authRouter.post(
       throw new ApiError(403, SUSPENDED_MESSAGE);
     }
 
-    const finalUser = user.toObject();
-    finalUser[user.role] = profile;
-
     const { token, refreshToken } = await issueSession(user, req);
 
     await auditReq(req, {
@@ -336,7 +365,7 @@ authRouter.post(
     });
 
     res.json({
-      data: { user: publicUser(finalUser), token, refreshToken },
+      data: { user: sessionUser(user, profile), token, refreshToken },
     });
   }),
 );
@@ -1134,10 +1163,7 @@ authRouter.get(
     if (user.role === 'seeker') profile = await SeekerProfile.findOne({ userId: user._id });
     if (user.role === 'hirer') profile = await HirerAccount.findOne({ userId: user._id });
 
-    const finalUser = user.toObject();
-    finalUser[user.role] = profile;
-
-    itemResponse(res, publicUser(finalUser));
+    itemResponse(res, sessionUser(user, profile));
   }),
 );
 

@@ -1,3 +1,5 @@
+import type { ProfileCompletion } from '../lib/api';
+
 /**
  * Kredibble Auth & Hirer State Store
  * Manages active user role, recruiter profile, posted opportunities,
@@ -31,7 +33,8 @@ export interface Applicant {
 export interface PostedOpportunity {
   id: string;
   title: string;
-  type: 'jobs' | 'internships' | 'events' | 'grants';
+  /** jobs, internships, events, grants, volunteer, scholarship, fellowship, training or mentorship (any spelling the API stores). */
+  type: string;
   company: string;
   location: string;
   logoColor: string;
@@ -58,6 +61,11 @@ export interface PostedOpportunity {
   eventTicketType?: string;
   eventStyle?: string;
   eventBannerUri?: string;
+  /** The newer categories (volunteering, scholarships, fellowships, training, mentorship): when it closes (YYYY-MM-DD), where to apply, who can apply, what it offers. */
+  deadline?: string;
+  applyUrl?: string;
+  eligibility?: string;
+  benefits?: string;
   /** SEC-151: the Desk's review: pending, published (or approved), rejected. */
   moderationStatus?: string;
   /** SEC-151: set while rejected; the sentence and note the reviewer chose. */
@@ -111,6 +119,13 @@ export interface BackendUser {
   name: string;
   email: string;
   role: string;
+  firstName?: string;
+  lastName?: string;
+  dateOfBirth?: string;
+  gender?: string;
+  avatarUrl?: string | null;
+  /** How much of their profile the person has filled in, worked out by the server. */
+  profileCompletion?: ProfileCompletion | null;
   seeker?: unknown;
   hirer?: unknown;
   staff?: unknown;
@@ -183,6 +198,13 @@ class AuthStateStore {
 
   setCandidates(cands: Candidate[]) {
     this.candidates = cands;
+    this.notify();
+  }
+
+  /** A new profile picture (or null for none) for the signed-in person. */
+  setAvatar(avatarUrl: string | null) {
+    if (!this.user) return;
+    this.user = { ...this.user, avatarUrl };
     this.notify();
   }
 

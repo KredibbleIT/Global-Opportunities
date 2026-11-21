@@ -120,6 +120,9 @@ export const storedPathFromUrl = (url) => {
   return relative;
 };
 
+/** Does a stored file (`folder/name.ext`, as storedPathFromUrl returns it) exist? */
+export const storedFileExists = (relativePath) => fs.access(insideRoot(...String(relativePath).split('/'))).then(() => true, () => false);
+
 /**
  * Deletes one stored image by its public id (`folder/name`, no extension). A missing file is not an error.
  * @param {string} publicId

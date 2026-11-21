@@ -222,8 +222,10 @@ test.describe('Admin Dashboard Functionality', () => {
     await sidebar.getByRole('button', { name: 'People' }).click();
     await expect(sidebar.getByRole('link', { name: 'Seekers' })).toBeVisible();
     await expect(sidebar.getByRole('link', { name: 'Hirers' })).toBeVisible();
-    await sidebar.getByRole('button', { name: 'Opportunities' }).click();
+    // Events, Grants and Programs are not in the sidebar, so Opportunities holds one page: it shows as a plain row, not a group.
+    await expect(sidebar.getByRole('button', { name: 'Opportunities', exact: true })).toHaveCount(0);
     await expect(sidebar.getByRole('link', { name: 'Opportunities queue' })).toBeVisible();
+    for (const hidden of ['Events', 'Grants', 'Programs']) await expect(sidebar.getByRole('link', { name: hidden, exact: true })).toHaveCount(0);
   });
 });
 
@@ -491,7 +493,7 @@ test.describe('Sidebar: the active group is always open', () => {
       [...document.querySelectorAll('aside nav button[aria-expanded="true"]')].map((el) => el.textContent?.trim()),
     );
 
-  // The reported repro: rail -> Dashboard flyout -> Opportunities flyout -> Opportunities queue -> expand.
+  // The reported repro: rail -> Dashboard flyout -> Partners & network flyout -> Partners -> expand.
   test('rail -> flyouts -> navigate -> expand opens the active group', async ({ page }) => {
     await page.context().addCookies([{ name: 'sidebar', value: 'collapsed', url: BASE_URL }]);
     await signedIn(page);
@@ -499,16 +501,16 @@ test.describe('Sidebar: the active group is always open', () => {
     const aside = page.locator('aside');
 
     await aside.getByRole('button', { name: 'Dashboard' }).click(); // Dashboard flyout open ...
-    await aside.getByRole('button', { name: 'Opportunities' }).click(); // ... then straight to another flyout
-    await page.getByRole('region', { name: 'Opportunities' }).getByRole('link', { name: 'Opportunities queue' }).click();
-    await expect(page).toHaveURL(`${BASE_URL}/opportunities`);
+    await aside.getByRole('button', { name: 'Partners & network' }).click(); // ... then straight to another flyout
+    await page.getByRole('region', { name: 'Partners & network' }).getByRole('link', { name: 'Partners', exact: true }).click();
+    await expect(page).toHaveURL(`${BASE_URL}/partners`);
 
     await page.getByRole('button', { name: 'Expand sidebar' }).click();
     await expect.poll(() => sidebarWidth(page)).toBe(248);
     // Only the active group is open: Dashboard was auto-opened (active) and was never opened by hand,
-    // so it closed when navigation moved to Opportunities.
-    expect(await expandedGroups(page)).toEqual(['Opportunities']);
-    await expect(aside.getByRole('link', { name: 'Opportunities queue' })).toHaveAttribute('aria-current', 'page');
+    // so it closed when navigation moved to Partners & network.
+    expect(await expandedGroups(page)).toEqual(['Partners & network']);
+    await expect(aside.getByRole('link', { name: 'Partners', exact: true })).toHaveAttribute('aria-current', 'page');
   });
 
   test('the same repro with Ctrl+B and Esc between flyouts', async ({ page }) => {
@@ -520,12 +522,12 @@ test.describe('Sidebar: the active group is always open', () => {
     const aside = page.locator('aside');
     await aside.getByRole('button', { name: 'Dashboard' }).click();
     await page.keyboard.press('Escape');
-    await aside.getByRole('button', { name: 'Opportunities' }).click();
-    await page.getByRole('region', { name: 'Opportunities' }).getByRole('link', { name: 'Events' }).click();
-    await expect(page).toHaveURL(`${BASE_URL}/events`);
+    await aside.getByRole('button', { name: 'Partners & network' }).click();
+    await page.getByRole('region', { name: 'Partners & network' }).getByRole('link', { name: 'Network', exact: true }).click();
+    await expect(page).toHaveURL(`${BASE_URL}/network`);
     await page.keyboard.press('Control+b');
     await expect.poll(() => sidebarWidth(page)).toBe(248);
-    expect(await expandedGroups(page)).toEqual(['Opportunities']); // the active group is open after expanding
+    expect(await expandedGroups(page)).toEqual(['Partners & network']); // the active group is open after expanding
   });
 
   test('groups opened by hand stay open, and the active group is added on each navigation', async ({ page }) => {
@@ -533,11 +535,11 @@ test.describe('Sidebar: the active group is always open', () => {
     await page.goto(`${BASE_URL}/`);
     const aside = page.locator('aside');
     await aside.getByRole('button', { name: 'People' }).click(); // opened by hand
-    await aside.getByRole('button', { name: 'Opportunities' }).click(); // opened by hand
-    await aside.getByRole('link', { name: 'Events' }).click(); // navigate: Opportunities is now active
-    await expect(page).toHaveURL(`${BASE_URL}/events`);
-    // Hand-opened groups (People, Opportunities) stay open; Dashboard was only auto-opened, so it closed.
-    expect((await expandedGroups(page)).sort()).toEqual(['Opportunities', 'People']);
+    await aside.getByRole('button', { name: 'Partners & network' }).click(); // opened by hand
+    await aside.getByRole('link', { name: 'Network', exact: true }).click(); // navigate: Partners & network is now active
+    await expect(page).toHaveURL(`${BASE_URL}/network`);
+    // Hand-opened groups (People, Partners & network) stay open; Dashboard was only auto-opened, so it closed.
+    expect((await expandedGroups(page)).sort()).toEqual(['Partners & network', 'People']);
   });
 
   test('Seekers -> Verification queue leaves only Trust & safety open', async ({ page }) => {
@@ -558,15 +560,15 @@ test.describe('Sidebar: the active group is always open', () => {
     await signedIn(page);
     await page.goto(`${BASE_URL}/seekers`);
     const aside = page.locator('aside');
-    const opportunities = aside.getByRole('button', { name: 'Opportunities' });
-    await opportunities.click(); // userOpened
-    await expect(opportunities).toHaveAttribute('aria-expanded', 'true');
-    await opportunities.click(); // closes and removes it from userOpened
-    await expect(opportunities).toHaveAttribute('aria-expanded', 'false');
+    const partnersGroup = aside.getByRole('button', { name: 'Partners & network' });
+    await partnersGroup.click(); // userOpened
+    await expect(partnersGroup).toHaveAttribute('aria-expanded', 'true');
+    await partnersGroup.click(); // closes and removes it from userOpened
+    await expect(partnersGroup).toHaveAttribute('aria-expanded', 'false');
     // Navigating elsewhere (Hirers is in the same group as Seekers) must not bring it back.
     await aside.getByRole('link', { name: 'Hirers' }).click();
     await expect(page).toHaveURL(`${BASE_URL}/hirers`);
-    await expect(opportunities).toHaveAttribute('aria-expanded', 'false');
+    await expect(partnersGroup).toHaveAttribute('aria-expanded', 'false');
   });
 
   test('collapsing the active group by hand keeps it collapsed until the next navigation', async ({ page }) => {
@@ -1756,7 +1758,7 @@ test.describe('Sidebar: only the active group stays open', () => {
     const expanded = async () =>
       (
         await Promise.all(
-          ['Dashboard', 'Opportunities', 'People', 'Trust & safety', 'Content', 'Comms & admin'].map(async (name) => ({
+          ['Dashboard', 'Partners & network', 'People', 'Trust & safety', 'Content', 'Comms & admin'].map(async (name) => ({
             name,
             open: (await aside.getByRole('button', { name, exact: true }).getAttribute('aria-expanded')) === 'true',
           })),
@@ -2787,12 +2789,13 @@ test.describe('Month selector', () => {
 // ---------------------------------------------------------------------------
 const NAV_ORDER = [
   'Overview', 'Insights', 'Monthly report', 'Scorecard',
-  'Opportunities queue', 'Events', 'Grants', 'Programs',
   'Partners', 'Network', 'Ambassadors', 'Leaderboard',
   'Seekers', 'Hirers', 'Channels', 'Database',
   'Verification queue', 'Reports queue',
   'Career resources', 'Reference data', 'Social', 'Testimonials', 'Showcase',
   'Notifications', 'Team', 'Settings',
+  // Events, Grants and Programs are not in the sidebar, so the Opportunities group has one page: a direct row, after the groups.
+  'Opportunities queue',
 ];
 const slugOf = (label: string) => label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
@@ -2804,12 +2807,12 @@ const EXPECTED_NAV: Record<string, string[]> = {
   moderator: ['Overview', 'Scorecard', 'Seekers', 'Hirers', 'Channels', 'Verification queue', 'Reports queue', 'Opportunities queue', 'Settings'],
   support: ['Overview', 'Scorecard', 'Seekers', 'Hirers', 'Settings'],
   partnerships_officer: ['Overview', 'Monthly report', 'Scorecard', 'Partners', 'Network', 'Ambassadors', 'Leaderboard', 'Showcase', 'Settings'],
-  opportunities_officer: ['Overview', 'Scorecard', 'Opportunities queue', 'Events', 'Grants', 'Career resources', 'Settings'],
-  training_officer: ['Overview', 'Scorecard', 'Events', 'Programs', 'Network', 'Ambassadors', 'Settings'],
+  opportunities_officer: ['Overview', 'Scorecard', 'Opportunities queue', 'Career resources', 'Settings'],
+  training_officer: ['Overview', 'Scorecard', 'Network', 'Ambassadors', 'Settings'],
   database_officer: ['Overview', 'Scorecard', 'Network', 'Ambassadors', 'Database', 'Settings'],
   communications_officer: ['Overview', 'Monthly report', 'Scorecard', 'Career resources', 'Social', 'Testimonials', 'Showcase', 'Notifications', 'Settings'],
   social_media_manager: ['Overview', 'Scorecard', 'Social', 'Testimonials', 'Settings'],
-  country_lead: ['Overview', 'Scorecard', 'Partners', 'Network', 'Ambassadors', 'Leaderboard', 'Programs', 'Database', 'Showcase', 'Settings'],
+  country_lead: ['Overview', 'Scorecard', 'Partners', 'Network', 'Ambassadors', 'Leaderboard', 'Database', 'Showcase', 'Settings'],
   admin_support: ['Overview', 'Scorecard', 'Team', 'Settings'],
   'moderator,communications_officer': ['Overview', 'Monthly report', 'Scorecard', 'Seekers', 'Hirers', 'Channels', 'Verification queue', 'Reports queue', 'Career resources', 'Social', 'Testimonials', 'Showcase', 'Notifications', 'Settings', 'Opportunities queue'],
 };
@@ -4065,8 +4068,8 @@ test.describe('Roles fix pass: sidebar open state, direct rows, tagline, account
     await page.goto(`${BASE_URL}/scorecard`, { timeout: 30_000 });
     await page.getByTestId('sidebar-toggle').waitFor();
     await page.waitForTimeout(500);
-    await page.getByTestId('nav-group-opportunities').click(); // now Dashboard (active) and Opportunities are open
-    expect(await openGroups(page)).toEqual(['nav-group-dashboard', 'nav-group-opportunities']);
+    await page.getByTestId('nav-group-partners-network').click(); // now Dashboard (active) and Partners & network are open
+    expect(await openGroups(page)).toEqual(['nav-group-dashboard', 'nav-group-partners-network']);
     await page.getByRole('button', { name: /Account menu/ }).click();
     const menu = page.getByRole('menu', { name: 'Account' });
     await menu.getByRole('menuitemcheckbox', { name: 'Super Admin', exact: true }).click();
@@ -6183,8 +6186,9 @@ test.describe('Partners: form and detail', () => {
     await expect(page.getByTestId('kanban-card-ptn-01')).toHaveCount(0);
     expect(Number((await page.getByTestId('kanban-count-onboard').innerText()).trim())).toBe(2);
     // the program that was linked to MTN Ghana keeps running, without a partner (client-side, so the store survives)
-    await page.getByTestId('nav-group-opportunities').click();
-    await page.getByTestId('nav-item-programs').click();
+    // (Programs is not in the sidebar: go there client side, so the store survives)
+    await page.evaluate(() => (window as unknown as { next: { router: { push: (href: string) => void } } }).next.router.push('/programs'));
+    await expect(page).toHaveURL(`${BASE_URL}/programs`);
     await page.getByRole('radiogroup', { name: 'Filter by status' }).getByRole('radio', { name: /^Delivered/ }).click(); // CV is on page 2 of All
     await page.getByRole('link', { name: 'CV and Interview Masterclass' }).click();
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('CV and Interview Masterclass');
@@ -13147,9 +13151,28 @@ test.describe('Monthly report: routes, access, the two templates and the coheren
   test('the team report: the ten KPIs with target and status, the gauges, the network and top five, the social totals, and the scoreboard of the Team scorecard', async ({ page, context }) => {
     const month = defaultMonth();
     await open(page, context, 'desk_lead', `/monthly-report/team?month=${month}`);
-    await expect(page.getByTestId('team-report')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Team report' })).toBeVisible();
+    const paper = page.getByTestId('team-report');
+    await expect(paper).toBeVisible();
+    // Laid out like the partner report: on screen only the cards (the title block belongs to the PDF), with a line saying it is internal.
+    await expect(paper.getByTestId('report-title')).toBeHidden();
+    await expect(paper.getByTestId('report-footer')).toBeHidden();
+    await expect(page.getByTestId('team-internal-note')).toContainText('Internal. Not for partners.');
     await expect(page.getByTestId('report-note')).toHaveText('Internal. Not for partners.');
+    // the four cards are two across, as in the partner report: Network above Partner pipeline on the left, Key figures above Database on the right
+    const box = async (id: string) => (await paper.getByTestId(id).boundingBox())!;
+    const [network, kpis, pipeline, database] = [await box('team-network'), await box('team-kpis'), await box('team-pipeline'), await box('team-database')];
+    expect(Math.round(network.x)).toBe(Math.round(pipeline.x));
+    expect(Math.round(kpis.x)).toBe(Math.round(database.x));
+    expect(kpis.x).toBeGreaterThan(network.x + network.width - 1);
+    expect(pipeline.y).toBeGreaterThan(network.y + network.height - 1);
+    // Social and the scoreboard follow, each across the full width
+    const [socialBox, scoreboardBox] = [await box('team-social'), await box('team-scoreboard')];
+    expect(socialBox.y).toBeGreaterThan(pipeline.y + pipeline.height - 1);
+    expect(scoreboardBox.y).toBeGreaterThan(socialBox.y + socialBox.height - 1);
+    expect(Math.round(socialBox.x)).toBe(Math.round(network.x));
+    // no card sits inside another card
+    const framedInside = await paper.locator('.card-surface .card-surface').evaluateAll((nodes) => nodes.filter((node) => parseFloat(getComputedStyle(node).borderTopWidth) > 0).length);
+    expect(framedInside, 'a framed card inside another card').toBe(0);
     const cards = buildKpiCards(month, today(), data());
     for (const card of cards) {
       await expect(page.getByTestId(`team-kpi-${card.key}`).getByTestId('team-kpi-value')).toHaveText((card.value ?? 0).toLocaleString('en-US'));
@@ -13181,6 +13204,12 @@ test.describe('Monthly report: routes, access, the two templates and the coheren
     await expect(page.getByTestId('team-scoreboard').getByTestId('team-unranked').getByRole('heading', { name: 'No metrics assigned' })).toBeVisible();
     // no edit actions of any kind in the report
     await expect(page.getByTestId('team-report').getByRole('button', { name: /^(Save|Edit|Delete|Remove|Assign|Add)/ })).toHaveCount(0);
+    // Printed (Download PDF), the title block and the footer show, as for the partner report
+    await page.emulateMedia({ media: 'print' });
+    await expect(page.getByTestId('team-report').getByRole('heading', { name: 'Team report' })).toBeVisible();
+    await expect(page.getByTestId('team-report').getByTestId('report-note')).toBeVisible();
+    await expect(page.getByTestId('team-report').getByTestId('report-footer')).toBeVisible();
+    await page.emulateMedia({ media: 'screen' });
   });
 
   test('the team scoreboard keeps the grace period ("Scores start on day 5") and the "Highest/Lowest" labels', async ({ page, context }) => {
@@ -13226,6 +13255,9 @@ test.describe('Monthly report: routes, access, the two templates and the coheren
         if (view === 'partner') {
           const cardLefts = await page.locator('[data-testid="report-website"], [data-testid="report-channels"], [data-testid="report-programs"], [data-testid="report-network"]').evaluateAll((nodes) => new Set(nodes.map((node) => Math.round(node.getBoundingClientRect().left))).size);
           expect(cardLefts, `${width}px: one column`).toBe(1);
+        } else {
+          const cardLefts = await page.locator('[data-testid="team-network"], [data-testid="team-kpis"], [data-testid="team-pipeline"], [data-testid="team-database"]').evaluateAll((nodes) => new Set(nodes.map((node) => Math.round(node.getBoundingClientRect().left))).size);
+          expect(cardLefts, `${width}px: team cards in one column`).toBe(1);
         }
       }
     }

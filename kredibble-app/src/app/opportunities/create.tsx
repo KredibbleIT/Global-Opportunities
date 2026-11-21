@@ -1,14 +1,18 @@
 import React, { useState, useEffect } from 'react';
+import { RichTextEditor } from '../../components/ui/RichTextEditor';
 import { Colors } from '../../constants/design';
 import { View, Text, TouchableOpacity, ScrollView, TextInput, StyleSheet, Image } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft, ChevronDown } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { askForCompanyDetails, lacksCompanyDetails } from '../../lib/apply-prompt';
+import { stepRoute } from '../../lib/profile-prompts';
 import { authStore } from '../../constants/authStore';
 import { createOpportunity, updateOpportunity } from '../../lib/api';
 import { useToast } from '../../components/ui/ToastProvider';
 import { DateTimePickerModal } from '../../components/ui/DateTimePickerModal';
+import { CREATE_TYPE, OPPORTUNITY_CATEGORIES, categoryOfApiType } from '../../constants/opportunityCategories';
 
 // Polish Dropdown Selector Component
 const DropdownSelector = ({ 
@@ -155,7 +159,15 @@ export default function CreateOpportunityScreen() {
 
   // Core Form Fields
   const [title, setTitle] = useState('');
-  const [type, setType] = useState<'jobs' | 'internships' | 'events' | 'grants'>('jobs');
+  // jobs, internships, events, grants, or one of the newer categories (volunteer, scholarship, fellowship, training, mentorship)
+  const [type, setType] = useState<string>('jobs');
+  const category = categoryOfApiType(type) ?? OPPORTUNITY_CATEGORIES[3];
+  // Volunteering, scholarships, fellowships, training and mentorship share one set of details: when it closes, where to apply, who can apply, what it offers.
+  const isGeneric = ['volunteer', 'scholarship', 'fellowship', 'training', 'mentorship'].includes(type);
+  const [deadline, setDeadline] = useState('');
+  const [applyUrl, setApplyUrl] = useState('');
+  const [eligibility, setEligibility] = useState('');
+  const [benefits, setBenefits] = useState('');
   const [location, setLocation] = useState('');
   const [description, setDescription] = useState('');
 
@@ -254,6 +266,11 @@ export default function CreateOpportunityScreen() {
           if (opp.grantAppMethod) setGrantAppMethod(opp.grantAppMethod);
           if (opp.grantBudgetRange) setGrantBudgetRange(opp.grantBudgetRange);
           if (opp.grantLogoUri) setGrantLogoUri(opp.grantLogoUri);
+        } else if (['volunteer', 'scholarship', 'fellowship', 'training', 'mentorship'].includes(String(opp.type))) {
+          if (opp.deadline) setDeadline(String(opp.deadline).slice(0, 10));
+          if (opp.applyUrl) setApplyUrl(opp.applyUrl);
+          if (opp.eligibility) setEligibility(opp.eligibility);
+          if (opp.benefits) setBenefits(opp.benefits);
         } else if (opp.type === 'events') {
           if (opp.eventDateTime) setEventDateTime(opp.eventDateTime);
           if (opp.eventRegion) setEventRegion(opp.eventRegion);
@@ -306,6 +323,10 @@ export default function CreateOpportunityScreen() {
     setEventTicketType('Free');
     setEventStyle('In-Person');
     setEventBannerUri('');
+    setDeadline('');
+    setApplyUrl('');
+    setEligibility('');
+    setBenefits('');
   };
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -314,6 +335,16 @@ export default function CreateOpportunityScreen() {
     if (!title.trim() || !location.trim() || !description.trim()) {
       showToast('Please fill out all core fields.', 'info');
       return;
+    }
+
+    // Posting is when the company name matters: a hirer who has not added it yet is asked here, and can still post.
+    if (lacksCompanyDetails()) {
+      const choice = await askForCompanyDetails();
+      if (choice === 'cancel') return;
+      if (choice === 'add') {
+        router.push(stepRoute('company') as never);
+        return;
+      }
     }
 
     if (type === 'jobs' || type === 'internships') {
@@ -334,12 +365,24 @@ export default function CreateOpportunityScreen() {
       }
     }
 
+    if (isGeneric) {
+      if (deadline.trim() && (!/^\d{4}-\d{2}-\d{2}$/.test(deadline.trim()) || Number.isNaN(new Date(`${deadline.trim()}T00:00:00Z`).getTime()))) {
+        showToast('Write the closing date as YYYY-MM-DD, for example 2026-12-31.', 'info');
+        return;
+      }
+      if (applyUrl.trim() && !/^https?:\/\/\S+$/i.test(applyUrl.trim())) {
+        showToast('The application link must start with https:// or http://.', 'info');
+        return;
+      }
+    }
+
     // Choose logo color and initial based on type
     let logoColor = Colors.primary;
     let initial = 'J';
     if (type === 'internships') { logoColor = '#34D399'; initial = 'I'; }
     if (type === 'events') { logoColor = '#F87171'; initial = 'E'; }
     if (type === 'grants') { logoColor = '#FBBF24'; initial = 'G'; }
+    if (isGeneric) { logoColor = '#8B5CF6'; initial = category.title.charAt(0); }
 
     const finalSalary = salaryOption === 'Enter custom salary...' ? customSalary : salaryOption;
 
@@ -372,6 +415,11 @@ export default function CreateOpportunityScreen() {
         eventTicketType,
         eventStyle,
         eventBannerUri: eventBannerUri || undefined,
+      } : isGeneric ? {
+        ...(deadline.trim() ? { deadline: deadline.trim() } : {}),
+        ...(applyUrl.trim() ? { applyUrl: applyUrl.trim() } : {}),
+        ...(eligibility.trim() ? { eligibility: eligibility.trim() } : {}),
+        ...(benefits.trim() ? { benefits: benefits.trim() } : {}),
       } : {})
     };
 
@@ -429,7 +477,8 @@ export default function CreateOpportunityScreen() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
+      {/* "handled": a tap on a toolbar button or a chip works at once while the keyboard is open, instead of only closing the keyboard. */}
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 32 }} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={{
           backgroundColor: '#FFFFFF',
           borderRadius: 20,
@@ -453,32 +502,50 @@ export default function CreateOpportunityScreen() {
             className="font-sans"
           />
 
-          {/* Type Selection */}
-          <Text style={styles.label} className="font-sans">Type</Text>
-          <View style={{ flexDirection: 'row', gap: 6, marginBottom: 18 }}>
-            {(['jobs', 'internships', 'grants', 'events'] as const).map((t) => (
-              <TouchableOpacity
-                key={t}
-                onPress={() => setType(t)}
-                style={{
-                  flex: 1,
-                  paddingVertical: 10,
-                  borderRadius: 8,
-                  alignItems: 'center',
-                  backgroundColor: type === t ? Colors.primary : '#F3F4F6'
-                }}
-              >
-                <Text style={{
-                  fontSize: 12,
-                  fontWeight: 'bold',
-                  color: type === t ? '#FFFFFF' : '#8A8D9F',
-                  textTransform: 'capitalize'
-                }} className="font-sans">
-                  {t}
-                </Text>
-              </TouchableOpacity>
-            ))}
+          {/* Type Selection: the same eight categories as the admin's Opportunities queue */}
+          <Text style={styles.label} className="font-sans">Category</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: category.key === 'jobs' ? 10 : 18 }}>
+            {OPPORTUNITY_CATEGORIES.map((item) => {
+              const active = category.key === item.key;
+              return (
+                <TouchableOpacity
+                  key={item.key}
+                  testID={`category-${item.key}`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                  onPress={() => setType(item.key === 'jobs' && (type === 'jobs' || type === 'internships') ? type : CREATE_TYPE[item.key])}
+                  style={{
+                    paddingVertical: 10,
+                    paddingHorizontal: 12,
+                    borderRadius: 10,
+                    backgroundColor: active ? Colors.primary : '#F3F4F6',
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: 'bold', color: active ? '#FFFFFF' : '#8A8D9F' }} className="font-sans">
+                    {item.title}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
+          {category.key === 'jobs' && (
+            <View style={{ flexDirection: 'row', gap: 6, marginBottom: 18 }}>
+              {(['jobs', 'internships'] as const).map((t) => (
+                <TouchableOpacity
+                  key={t}
+                  testID={`type-${t}`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: type === t }}
+                  onPress={() => setType(t)}
+                  style={{ flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: 'center', backgroundColor: type === t ? Colors.primaryTransparent : '#F3F4F6' }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: 'bold', color: type === t ? Colors.primary : '#8A8D9F' }} className="font-sans">
+                    {t === 'jobs' ? 'Job' : 'Internship'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
 
           {/* Location */}
           <Text style={styles.label} className="font-sans">Location</Text>
@@ -904,30 +971,74 @@ export default function CreateOpportunityScreen() {
             </View>
           )}
 
+          {/* Details of the newer categories */}
+          {isGeneric && (
+            <View>
+              <Text style={styles.label} className="font-sans">Application deadline (optional)</Text>
+              <TextInput
+                testID="listing-deadline"
+                placeholder="YYYY-MM-DD, for example 2026-12-31"
+                placeholderTextColor="#A1A1AA"
+                value={deadline}
+                onChangeText={setDeadline}
+                autoCapitalize="none"
+                keyboardType="numbers-and-punctuation"
+                style={styles.input}
+                className="font-sans"
+              />
+              <Text style={styles.label} className="font-sans">Application link (optional)</Text>
+              <TextInput
+                testID="listing-apply-url"
+                placeholder="https://"
+                placeholderTextColor="#A1A1AA"
+                value={applyUrl}
+                onChangeText={setApplyUrl}
+                autoCapitalize="none"
+                keyboardType="url"
+                style={styles.input}
+                className="font-sans"
+              />
+            </View>
+          )}
+
           {/* Description */}
           <Text style={styles.label} className="font-sans">
             {type === 'grants'
               ? 'Grant Description'
               : type === 'events'
               ? 'Event Description / Details'
+              : isGeneric
+              ? `${category.title}: Description`
               : 'Job Description / Requirements'}
           </Text>
-          <TextInput
-            placeholder={
-              type === 'grants'
-                ? 'Describe the grant details, eligibility requirements, and purpose...'
-                : type === 'events'
-                ? 'Describe the event details, agenda, and speakers...'
-                : 'Describe the opportunity responsibilities, benefits, and requirements...'
-            }
-            placeholderTextColor="#A1A1AA"
-            multiline
-            numberOfLines={6}
-            value={description}
-            onChangeText={setDescription}
-            style={[styles.input, { minHeight: 120, textAlignVertical: 'top', paddingVertical: 12 }]}
-            className="font-sans"
-          />
+          <View style={{ marginBottom: 16 }}>
+            <RichTextEditor
+              testID="listing-description"
+              value={description}
+              onChangeText={setDescription}
+              minHeight={180}
+              placeholder={
+                type === 'grants'
+                  ? 'Describe the grant details, eligibility requirements, and purpose. Use the buttons above for headings, bold, lists and links.'
+                  : type === 'events'
+                  ? 'Describe the event details, agenda, and speakers. Use the buttons above for headings, bold, lists and links.'
+                  : 'Describe the responsibilities, benefits, and requirements. Use the buttons above for headings, bold, lists and links.'
+              }
+            />
+          </View>
+
+          {isGeneric && (
+            <View>
+              <Text style={styles.label} className="font-sans">Who can apply (optional)</Text>
+              <View style={{ marginBottom: 16 }}>
+                <RichTextEditor testID="listing-eligibility" value={eligibility} onChangeText={setEligibility} minHeight={110} placeholder={'Citizens of Ghana\nUnder 30 years old'} />
+              </View>
+              <Text style={styles.label} className="font-sans">What it offers (optional)</Text>
+              <View style={{ marginBottom: 16 }}>
+                <RichTextEditor testID="listing-benefits" value={benefits} onChangeText={setBenefits} minHeight={110} placeholder={'Tuition\nA monthly allowance'} />
+              </View>
+            </View>
+          )}
 
           {/* Submit Button */}
           <TouchableOpacity
