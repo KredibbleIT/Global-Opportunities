@@ -223,9 +223,10 @@ test.describe('Admin Dashboard Functionality', () => {
     await sidebar.getByRole('button', { name: 'People' }).click();
     await expect(sidebar.getByRole('link', { name: 'Seekers' })).toBeVisible();
     await expect(sidebar.getByRole('link', { name: 'Hirers' })).toBeVisible();
-    // Events, Grants and Programs are not in the sidebar, so Opportunities holds one page: it shows as a plain row, not a group.
-    await expect(sidebar.getByRole('button', { name: 'Opportunities', exact: true })).toHaveCount(0);
+    // Events, Grants and Programs are not in the sidebar, so the Opportunities group holds the queue and the insights.
+    await sidebar.getByRole('button', { name: 'Opportunities', exact: true }).click();
     await expect(sidebar.getByRole('link', { name: 'Opportunities queue' })).toBeVisible();
+    await expect(sidebar.getByRole('link', { name: 'Opportunity insights' })).toBeVisible();
     for (const hidden of ['Events', 'Grants', 'Programs']) await expect(sidebar.getByRole('link', { name: hidden, exact: true })).toHaveCount(0);
   });
 });
@@ -13563,17 +13564,15 @@ test.describe('Monthly report: real-API mode says it is sample data', () => {
     await expect(page.getByTestId('download-pdf')).toBeEnabled();
   });
 
-  test('both templates say "Sample report" on the paper, and it stays in print while the notice is hidden (Mock data off)', async ({ page }) => {
+  test('with Mock data off the reports carry no "Sample" label, and the not-connected notice stays out of print (see monthly-report-no-sample.spec.ts)', async ({ page }) => {
     for (const view of ['partner', 'team'] as const) {
       await page.goto(`${BASE_URL}/monthly-report/${view}`, { timeout: 30_000 });
       const paper = page.getByTestId(`${view}-report`);
       await expect(paper).toBeVisible();
-      await expect(paper.getByTestId('sample-report-badge')).toHaveText('Sample report');
-      await expect(paper.getByTestId('report-source')).toHaveText("Sample figures for layout and review. Not the Desk's records.");
+      await expect(paper.getByTestId('sample-report-badge')).toHaveCount(0);
       await page.emulateMedia({ media: 'print' });
       await expect(page.getByTestId('not-connected-notice')).toBeHidden(); // outside the paper: not in the PDF
-      await expect(paper.getByTestId('sample-report-badge')).toBeVisible(); // inside the paper: in the PDF
-      await expect(paper.getByTestId('report-source')).toBeVisible();
+      await expect(paper).toBeVisible();
       await page.emulateMedia({ media: 'screen' });
     }
   });
