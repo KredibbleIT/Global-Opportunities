@@ -104,7 +104,7 @@ export type AuthUser = {
   seeker?: unknown;
   hirer?: unknown;
   staff?: unknown;
-  notificationPreferences?: { push?: boolean };
+  notificationPreferences?: { push?: boolean; alerts?: Record<string, boolean> };
 };
 
 type AuthResponse = {
@@ -583,6 +583,14 @@ export const registerPushToken = async (pushToken: string, platform: PushPlatfor
   }
 };
 
+/** Saves the alert switches of Manage notifications (only the ones sent change); resolves with every switch as saved. */
+export const updateAlertPreferences = async (alerts: Record<string, boolean>): Promise<Record<string, boolean>> => {
+  return request<Record<string, boolean>>('/users/me/alert-preferences', {
+    method: 'PATCH',
+    body: JSON.stringify(alerts),
+  });
+};
+
 /** Turns phone pushes on or off for the signed-in person. The in-app list is not affected. */
 export const updatePushPreference = async (enabled: boolean): Promise<{ push: boolean }> => {
   return request<{ push: boolean }>('/users/me/notification-preferences', {
@@ -633,6 +641,91 @@ export const searchSeekers = async (params: { skills?: string, university?: stri
   
   return request<any[]>(`/seekers/search?${query.toString()}`);
 };
+
+// --- Expert listing ---
+
+/** An approved expert, as the Expert listing and an expert's profile show them. Contact details are only here when the expert chose to show them. */
+export interface PublicExpert {
+  id: string;
+  name: string;
+  image?: string;
+  profession: string;
+  verified: boolean;
+  city: string;
+  country: string;
+  location: string;
+  university?: string;
+  bio: string;
+  experienceLevel?: string;
+  technicalSkills: string[];
+  rating: number;
+  ratingCount: number;
+  contact: { email?: string; phone?: string; website?: string };
+  // Only on a single expert's profile
+  professionalSummary?: string;
+  softSkills?: string[];
+  tools?: string[];
+  certifications?: string[];
+  education?: { degree?: string; institution?: string; duration?: string }[];
+  workExperience?: { role?: string; company?: string; location?: string; duration?: string; bullets?: string[] }[];
+  projects?: { name?: string; bullets?: string[] }[];
+  myRating?: number | null;
+  isMe?: boolean;
+  /** false for an applicant who is not on the Expert listing: they can be read by the hirer they applied to, but not rated. */
+  listed?: boolean;
+}
+
+export type ExpertStatus = 'none' | 'pending' | 'approved' | 'rejected' | 'hidden';
+
+/** Where the signed-in seeker stands with the Expert listing. */
+export interface MyExpertState {
+  status: ExpertStatus;
+  eligible: boolean;
+  /** What the profile still needs before applying: profession, summary, skills. */
+  missing: string[];
+  showEmail: boolean;
+  showPhone: boolean;
+  showWebsite: boolean;
+  website?: string;
+  reviewNote?: string;
+  rating: number;
+  ratingCount: number;
+  profileId?: string;
+}
+
+export interface ExpertContactChoices {
+  showEmail?: boolean;
+  showPhone?: boolean;
+  showWebsite?: boolean;
+  website?: string;
+}
+
+export const getExperts = async (params: { q?: string; city?: string; profession?: string; experience?: string; rating?: string; country?: string; skills?: string } = {}) => {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) if (value) query.append(key, value);
+  return request<PublicExpert[]>(`/experts?${query.toString()}`);
+};
+
+/** The professions and countries of the experts who are listed, most common first: what the filter and the search suggestions offer. */
+export const getExpertFacets = async () => request<{ professions: string[]; countries: string[] }>('/experts/facets');
+
+export const getExpert = async (id: string) => request<PublicExpert>(`/experts/${encodeURIComponent(id)}`);
+
+/** The profile of someone who applied to one of the signed-in hirer's listings, by the id of the application. */
+export const getApplicantProfile = async (applicantId: string) => request<PublicExpert>(`/experts/applicant/${encodeURIComponent(applicantId)}`);
+
+export const getMyExpertState = async () => request<MyExpertState>('/experts/me');
+
+export const applyAsExpert = async (choices: ExpertContactChoices) =>
+  request<MyExpertState>('/experts/me/apply', { method: 'POST', body: JSON.stringify(choices) });
+
+export const updateExpertContactChoices = async (choices: ExpertContactChoices) =>
+  request<MyExpertState>('/experts/me', { method: 'PATCH', body: JSON.stringify(choices) });
+
+export const withdrawAsExpert = async () => request<MyExpertState>('/experts/me/withdraw', { method: 'POST' });
+
+export const rateExpert = async (id: string, stars: number) =>
+  request<{ rating: number; ratingCount: number; myRating: number }>(`/experts/${encodeURIComponent(id)}/rating`, { method: 'POST', body: JSON.stringify({ stars }) });
 
 // --- Community Channels & Posts ---
 
@@ -919,7 +1012,7 @@ export interface UploadResponse {
 
 export const uploadFile = async (
   file: { uri: string; name: string; mimeType?: string },
-  purpose: 'cvs' | 'avatars' | 'company-logos' | 'verification-docs' = 'cvs'
+  purpose: 'cvs' | 'avatars' | 'company-logos' | 'verification-docs' | 'channel-avatars' = 'cvs'
 ): Promise<UploadResponse> => {
   const token = await getMobileToken();
   const formData = new FormData();

@@ -14,7 +14,7 @@
  */
 import {
   BarChart3, Bell, Briefcase, CalendarDays, CalendarRange, Building2, Database, FileText, Flag, GraduationCap, HandCoins, Handshake,
-  Hash, LayoutDashboard, Megaphone, Network, Quote, Settings, Settings2, Share2, ShieldCheck, Star, Target, Trophy, UserCog, Users, type LucideIcon,
+  BadgeCheck, Hash, LayoutDashboard, Megaphone, Network, Quote, Settings, Settings2, Share2, ShieldCheck, Star, Target, Trophy, UserCog, Users, type LucideIcon,
 } from "lucide-react";
 import type { AccessLevel, Screen } from "@/config/permissions";
 
@@ -84,6 +84,7 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: Users,
     children: [
       { label: "Seekers", href: "/seekers", icon: Users, screen: "seekers" },
+      { label: "Experts", href: "/experts", icon: BadgeCheck, screen: "seekers" },
       { label: "Hirers", href: "/hirers", icon: Building2, screen: "hirers" },
       { label: "Channels", href: "/community", icon: Hash, screen: "channels" },
       { label: "Database", href: "/database", icon: Database, screen: "database", countKey: "pendingRecords" },

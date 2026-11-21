@@ -162,7 +162,11 @@ export default function NotificationsScreen() {
         <View style={{ flex: 1 }} />
         {unreadCount > 0 && (
           <TouchableOpacity
-            onPress={() => notificationStore.markAllRead()}
+            onPress={() => {
+              // Tell the server too, so what was read stays read after the app restarts.
+              items.filter(n => !n.read && isServerNotificationId(n.id)).forEach(n => markNotificationRead(n.id).catch(() => {}));
+              notificationStore.markAllRead();
+            }}
             hitSlop={8}
             accessibilityRole="button"
             accessibilityLabel="Mark all as read"

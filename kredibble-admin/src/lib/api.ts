@@ -36,6 +36,10 @@ export type SeekerProfile = {
   savedCount?: number;
   /** "suspended" once an admin suspends the account (SEC-147); anything else is active. */
   status?: string;
+  /** The Expert listing: none, pending, approved, rejected or hidden, and the average of the ratings people gave this seeker. */
+  expertStatus?: string;
+  expertRatingAverage?: number;
+  expertRatingCount?: number;
 };
 
 export type HirerAccount = {
@@ -1927,6 +1931,78 @@ export const revokeAmbassador = async (id: string, note?: string) =>
 export const rejectAmbassadorRequest = async (id: string, note?: string) =>
   request<AmbassadorRequestRecord>(`/admin/ambassador-requests/${id}/reject`, { method: "POST", body: JSON.stringify({ note }) });
 
+// --- Expert listing ------------------------------------------------------------------------------
+// Seekers apply in the app to be shown on the Expert listing; an admin approves, turns down or hides them here.
+
+export type ExpertStatus = "pending" | "approved" | "rejected" | "hidden";
+
+/** What the public profile will show for this expert, exactly as the app builds it. */
+export type ExpertPreview = {
+  name: string;
+  profession: string;
+  location: string;
+  university?: string;
+  experienceLevel?: string;
+  bio: string;
+  professionalSummary: string;
+  technicalSkills: string[];
+  softSkills: string[];
+  tools: string[];
+  certifications: string[];
+  education: { degree?: string; institution?: string; duration?: string }[];
+  workExperience: { role?: string; company?: string; location?: string; duration?: string; bullets?: string[] }[];
+  projects: { name?: string; bullets?: string[] }[];
+  contact: { email?: string; phone?: string; website?: string };
+};
+
+export type ExpertApplicationRecord = {
+  id: string;
+  userId: string;
+  name: string;
+  email: string;
+  avatarUrl?: string;
+  profession?: string;
+  country?: string;
+  city?: string;
+  experienceLevel?: string;
+  verified: boolean;
+  status: ExpertStatus;
+  appliedAt?: string;
+  reviewedAt?: string;
+  reviewNote?: string;
+  rating: number;
+  ratingCount: number;
+  /** Only on the single-record read. */
+  emailVerified?: boolean;
+  joinedAt?: string;
+  missing?: string[];
+  preview?: ExpertPreview;
+  contactShown?: { email: boolean; phone: boolean; website: boolean };
+};
+
+export const getAdminExperts = async (params?: { status?: ExpertStatus; q?: string; page?: number; limit?: number }) => {
+  const query = new URLSearchParams();
+  if (params?.status) query.set("status", params.status);
+  if (params?.q) query.set("q", params.q);
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.limit) query.set("limit", String(params.limit));
+  const queryString = query.toString() ? `?${query.toString()}` : "";
+  return requestPage<ExpertApplicationRecord>(`/admin/experts${queryString}`);
+};
+
+export const getAdminExpertById = async (id: string) => request<ExpertApplicationRecord>(`/admin/experts/${id}`);
+
+const decideBody = (note?: string) => JSON.stringify(note ? { note } : {});
+
+export const approveExpert = async (id: string, note?: string) =>
+  request<ExpertApplicationRecord>(`/admin/experts/${id}/approve`, { method: "POST", body: decideBody(note) });
+export const rejectExpert = async (id: string, note: string) =>
+  request<ExpertApplicationRecord>(`/admin/experts/${id}/reject`, { method: "POST", body: decideBody(note) });
+export const hideExpert = async (id: string, note: string) =>
+  request<ExpertApplicationRecord>(`/admin/experts/${id}/hide`, { method: "POST", body: decideBody(note) });
+export const unhideExpert = async (id: string) =>
+  request<ExpertApplicationRecord>(`/admin/experts/${id}/unhide`, { method: "POST", body: decideBody() });
+
 // --- Admin-managed channels: create, members and group chat -------------------------------------------
 
 export type ChannelMemberRecord = {
@@ -1954,7 +2030,14 @@ export type ChatMessageRecord = {
   createdAt: string;
 };
 
-export const createAdminChannel = async (data: { name: string; bio?: string; visibility: "public" | "private"; segments?: ("general" | "ambassador")[] }) =>
+/** Upload the picture of a channel being created; pass the returned `url` as the channel's `avatar`. */
+export const uploadChannelAvatar = async (file: File) => {
+  const body = new FormData();
+  body.append("file", file);
+  return request<UploadResult>(`/admin/upload?purpose=channel-avatar`, { method: "POST", body });
+};
+
+export const createAdminChannel = async (data: { name: string; bio?: string; avatar?: string; visibility: "public" | "private"; segments?: ("general" | "ambassador")[] }) =>
   request<ChannelRecord>(`/admin/channels`, { method: "POST", body: JSON.stringify(data) });
 
 // BE-023: move a user between stakeholder segments (audited).
@@ -2116,7 +2199,7 @@ export const getPartnerReportApi = async (month?: string) => {
 
 export const getTeamReportApi = async (month?: string) => {
   const queryString = month ? `?month=${encodeURIComponent(month)}` : "";
-  return request<PartnerReportResponse>(`/admin/reports/partner${queryString}`);
+  return request<TeamReportResponse>(`/admin/reports/team${queryString}`);
 };
 
 // BE-014: Overview feed and attention types and API callers

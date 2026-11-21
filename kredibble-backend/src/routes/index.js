@@ -7,16 +7,18 @@ import { newsRouter } from './news.js';
 import { adminApiRouter, getAttentionCounts, requireAdminScreen, showcaseAppRouter } from './admin-api.js';
 import { accountsRouter } from './accounts.js';
 import { ambassadorRouter } from './ambassador.js';
+import { expertsRouter } from './experts.js';
 import { syncRouter } from './sync.js';
 import { asyncHandler, itemResponse, listResponse, notFound, stripSensitive, ApiError, parsePagination } from '../utils/http.js';
 import { requireAuth, optionalAuth, requireEmailVerified } from '../middleware/auth.js';
 import { env } from '../config/env.js';
 import { validate } from '../middleware/validate.js';
 import { staffInviteSchema, grantApplicationDecisionSchema } from '../schemas/admin.js';
-import { pushTokenSchema, notificationPreferencesSchema, avatarSchema, profileUpdateSchema, SEEKER_PROFILE_FIELDS, HIRER_PROFILE_FIELDS } from '../schemas/auth.js';
+import { pushTokenSchema, notificationPreferencesSchema, alertPreferencesSchema, avatarSchema, profileUpdateSchema, SEEKER_PROFILE_FIELDS, HIRER_PROFILE_FIELDS } from '../schemas/auth.js';
 import { checkDateOfBirth } from '../lib/age.js';
 import { syncAppBeneficiary } from '../lib/app-beneficiaries.js';
 import { deleteImage, storedFileExists, storedPathFromUrl } from '../lib/storage.js';
+import { assertChannelImage, channelImageFolder } from '../lib/channel-image.js';
 import {
   RESOURCE_POLICIES,
   ADMIN,
@@ -34,7 +36,7 @@ import {
   GrantApplication, CompanyVerification, VerificationDoc, EventAttendee, opportunityTypes,
 } from '../models/Platform.js';
 import { Channel, ChannelPost, CommunityMembership, Report } from '../models/Community.js';
-import { Article, Notification } from '../models/Content.js';
+import { Article, Notification, NotificationRead } from '../models/Content.js';
 import { Ambassador, OpportunityEngagement, Testimonial } from '../models/AdminPortal.js';
 import { auditReq, AUDIT_ACTIONS, AUDIT_RESOURCE_TYPES } from '../lib/audit.js';
 import { CLEARED_REJECTION, rejectionReasonLabel } from '../lib/opportunity-rejection.js';
@@ -792,7 +794,7 @@ const mountAdminDataRoutes = (router) => {
   // Article banners: images only, stored outside any user's folder.
   router.use('/admin/upload', createUploadRouter({
     authenticate: requireAdminUploadScreen,
-    purposes: ['article-banner', 'ambassador-photo', 'showcase-photo'],
+    purposes: ['article-banner', 'ambassador-photo', 'showcase-photo', 'channel-avatar'],
     folderFor: (req, purpose) => `kredibble/admin/${purpose}`,
     allowedMimeTypes: IMAGE_MIME_TYPES,
   }));
@@ -951,6 +953,7 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
   // Super-Admin guard (or public rate limit for accept-invite).
   router.use('/admin', accountsRouter);
   router.use('/ambassador-requests', ambassadorRouter);
+  router.use('/experts', expertsRouter);
   // BE-026: inbound website sync. The webhook authenticates via HMAC, not a
   // user token (every verification failure answers 401 — see sync.js).
   router.use('/sync', syncRouter);
@@ -1155,7 +1158,8 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
   router.get('/seekers/search', searchLimiter, ...guard('seekers', 'read', 'seeker'), asyncHandler(async (req, res) => {
     const { skills, university, country, q } = req.query;
     const { page, limit, skip } = parsePagination(req.query);
-    const filter = {};
+    // Only approved experts are searchable (admins see everyone).
+    const filter = req.auth?.role === ADMIN ? {} : { expertStatus: 'approved' };
 
     const query = searchPattern(q);
     if (query) filter.profession = query;
@@ -1244,7 +1248,8 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
   }));
 
   router.post('/community/channels', requireAuth, asyncHandler(async (req, res) => {
-    const { visibility = 'public', bio, avatar } = req.body;
+    const { visibility = 'public', bio } = req.body;
+    const avatar = await assertChannelImage(req.body.avatar, channelImageFolder(req.auth.sub));
     const name = String(req.body.name || '').trim();
     const category = String(req.body.category || '').trim();
     if (!name || !category) throw new ApiError(400, 'name and category are required');
@@ -1289,6 +1294,13 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
     if (updates.visibility && !['public', 'private'].includes(updates.visibility)) throw new ApiError(400, 'visibility must be public or private');
     // BE-023: audience segments are validated against the enum (400 on unknown values).
     if (updates.segments !== undefined) updates.segments = normalizeSegments(updates.segments);
+    // A new picture must be one this person uploaded; the old one is deleted from storage once it is replaced.
+    const previousImage = channel.avatar;
+    if (updates.avatar !== undefined) {
+      updates.avatar = await assertChannelImage(updates.avatar, channelImageFolder(req.auth.sub)) ?? undefined;
+      const oldPath = previousImage && previousImage !== updates.avatar ? storedPathFromUrl(previousImage) : null;
+      if (oldPath?.startsWith('kredibble/')) await deleteImage(oldPath.replace(/\.[a-z0-9]+$/i, '')).catch(() => undefined);
+    }
     Object.assign(channel, updates);
     await channel.save();
     itemResponse(res, toClientObject(channel));
@@ -1632,6 +1644,14 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
     itemResponse(res, { push: user.notificationPreferences?.push !== false });
   }));
 
+  // The caller's alert switches (job alerts, application updates, community posts and so on), saved on their account. Only the keys sent change.
+  router.patch('/users/me/alert-preferences', requireAuth, validate(alertPreferencesSchema), asyncHandler(async (req, res) => {
+    const update = Object.fromEntries(Object.entries(req.body).map(([key, value]) => [`notificationPreferences.alerts.${key}`, value]));
+    const user = await User.findByIdAndUpdate(req.auth.sub, { $set: update }, { returnDocument: 'after' }).select('notificationPreferences');
+    if (!user) throw notFound('User');
+    itemResponse(res, user.notificationPreferences?.toObject?.().alerts ?? {});
+  }));
+
   // Collection routes with populate option
   router.use('/users', collectionRoutes({ Model: User, resourceName: 'User', policyKey: 'users', searchFields: ['name', 'email'], enablePopulate }));
   router.use('/staff', collectionRoutes({ Model: StaffMember, resourceName: 'Staff', policyKey: 'staff', searchFields: ['name', 'email'], enablePopulate }));
@@ -1645,6 +1665,8 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
     ownerField: 'userId',
     populate: { path: 'userId', select: 'name avatarUrl' },
     enablePopulate,
+    // Not every seeker is public: other people read only the approved experts (the Expert listing) and their own profile.
+    readScope: (req) => (req.auth?.role === ADMIN ? {} : { $or: [{ expertStatus: 'approved' }, ...(req.auth?.sub ? [{ userId: req.auth.sub }] : [])] }),
   }));
   router.use('/hirers', collectionRoutes({ Model: HirerAccount, resourceName: 'Hirer', policyKey: 'hirers', searchFields: ['companyName', 'industry'], ownerField: 'userId', populate: { path: 'userId', select: 'name avatarUrl' }, enablePopulate }));
   // How many listings each of the eight categories holds, for the app's Opportunities screen. The same listings the app's lists show: approved,
@@ -1717,15 +1739,32 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
   }));
   router.post('/notifications/:id/read', requireAuth, asyncHandler(async (req, res) => {
     if (!mongoose.isValidObjectId(req.params.id)) throw notFound('Notification');
-    const notification = await Notification.findOneAndUpdate(
+    // A notification addressed to this person: its own readAt.
+    const personal = await Notification.findOneAndUpdate(
       { _id: req.params.id, userId: req.auth.sub },
       { $set: { readAt: new Date() } },
       { new: true },
     );
-    if (!notification) throw notFound('Notification');
-    itemResponse(res, toClientObject(notification));
+    if (personal) return itemResponse(res, toClientObject(personal));
+    // An admin broadcast: a read row for this person, only for one they are allowed to see.
+    const broadcast = await Notification.findOne(withScope({ _id: req.params.id, userId: null }, await notificationReadScope(req)));
+    if (!broadcast) throw notFound('Notification');
+    const read = await NotificationRead.findOneAndUpdate(
+      { notificationId: broadcast._id, userId: req.auth.sub },
+      { $setOnInsert: { readAt: new Date() } },
+      { upsert: true, new: true },
+    );
+    itemResponse(res, { ...toClientObject(broadcast), readAt: read.readAt });
   }));
-  router.use('/notifications', collectionRoutes({ Model: Notification, resourceName: 'Notification', policyKey: 'notifications', searchFields: ['title', 'message'], enablePopulate, readScope: notificationReadScope }));
+  // Each person sees their own read state on a broadcast; other people's reads are never exposed.
+  const withReadState = async (items, req) => {
+    const ids = items.filter((item) => !item.userId).map((item) => item.id).filter(Boolean);
+    if (!ids.length || !req.auth?.sub) return items;
+    const reads = await NotificationRead.find({ userId: req.auth.sub, notificationId: { $in: ids } }).select('notificationId readAt').lean();
+    const readAt = new Map(reads.map((row) => [String(row.notificationId), row.readAt]));
+    return items.map((item) => (readAt.has(String(item.id)) ? { ...item, readAt: readAt.get(String(item.id)) } : item));
+  };
+  router.use('/notifications', collectionRoutes({ Model: Notification, resourceName: 'Notification', policyKey: 'notifications', searchFields: ['title', 'message'], enablePopulate, readScope: notificationReadScope, decorate: withReadState }));
   router.use('/verification/companies', collectionRoutes({
     Model: CompanyVerification,
     resourceName: 'Company verification',

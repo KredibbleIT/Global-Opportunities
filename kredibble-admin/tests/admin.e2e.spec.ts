@@ -2794,7 +2794,7 @@ const NAV_ORDER = [
   // Events, Grants and Programs are not in the sidebar, so the Opportunities group is the queue and the insights.
   'Opportunities queue', 'Opportunity insights',
   'Partners', 'Network', 'Ambassadors', 'Leaderboard',
-  'Seekers', 'Hirers', 'Channels', 'Database',
+  'Seekers', 'Experts', 'Hirers', 'Channels', 'Database',
   'Verification queue', 'Reports queue',
   'Career resources', 'Reference data', 'Social', 'Testimonials', 'Showcase',
   'Notifications', 'Team', 'Settings',
@@ -2806,8 +2806,8 @@ const slugOf = (label: string) => label.toLowerCase().replace(/[^a-z0-9]+/g, '-'
 const EXPECTED_NAV: Record<string, string[]> = {
   super_admin: NAV_ORDER,
   desk_lead: NAV_ORDER,
-  moderator: ['Overview', 'Scorecard', 'Seekers', 'Hirers', 'Channels', 'Verification queue', 'Reports queue', 'Opportunities queue', 'Settings'],
-  support: ['Overview', 'Scorecard', 'Seekers', 'Hirers', 'Settings'],
+  moderator: ['Overview', 'Scorecard', 'Seekers', 'Experts', 'Hirers', 'Channels', 'Verification queue', 'Reports queue', 'Opportunities queue', 'Settings'],
+  support: ['Overview', 'Scorecard', 'Seekers', 'Experts', 'Hirers', 'Settings'],
   partnerships_officer: ['Overview', 'Monthly report', 'Scorecard', 'Partners', 'Network', 'Ambassadors', 'Leaderboard', 'Showcase', 'Settings'],
   opportunities_officer: ['Overview', 'Scorecard', 'Opportunities queue', 'Career resources', 'Settings'],
   training_officer: ['Overview', 'Scorecard', 'Network', 'Ambassadors', 'Settings'],
@@ -2816,7 +2816,7 @@ const EXPECTED_NAV: Record<string, string[]> = {
   social_media_manager: ['Overview', 'Scorecard', 'Social', 'Testimonials', 'Settings'],
   country_lead: ['Overview', 'Scorecard', 'Partners', 'Network', 'Ambassadors', 'Leaderboard', 'Database', 'Showcase', 'Settings'],
   admin_support: ['Overview', 'Scorecard', 'Team', 'Settings'],
-  'moderator,communications_officer': ['Overview', 'Monthly report', 'Scorecard', 'Seekers', 'Hirers', 'Channels', 'Verification queue', 'Reports queue', 'Career resources', 'Social', 'Testimonials', 'Showcase', 'Notifications', 'Settings', 'Opportunities queue'],
+  'moderator,communications_officer': ['Overview', 'Monthly report', 'Scorecard', 'Seekers', 'Experts', 'Hirers', 'Channels', 'Verification queue', 'Reports queue', 'Career resources', 'Social', 'Testimonials', 'Showcase', 'Notifications', 'Settings', 'Opportunities queue'],
 };
 
 const setDateTime = async (page: import('@playwright/test').Page, label: string, date: string, time: string) => {
@@ -2872,7 +2872,7 @@ test.describe('Roles: gated navigation (dev role cookie, mock mode)', () => {
     await page.keyboard.press('Escape');
     await page.locator('header button[aria-haspopup="menu"]').first().click();
     const items = await page.locator('[role="menu"] [role="menuitem"]').allInnerTexts(); // (the menu is drawn in a portal on <body>, above the page)
-    expect(items.map((text) => text.trim())).toEqual(['Seekers', 'Hirers']); // People group: no Channels, no Database
+    expect(items.map((text) => text.trim())).toEqual(['Seekers', 'Experts', 'Hirers']); // People group: Seekers, Experts and Hirers, no Channels, no Database
   });
 
   test('a forbidden direct URL shows the no-access state, with the owning role and a link to Overview', async ({ page, context }) => {
@@ -13555,23 +13555,23 @@ test.describe('Monthly report: Download PDF and printing (mock mode)', () => {
   });
 });
 
-test.describe('Monthly report: real-API mode says it is sample data', () => {
+test.describe('Monthly report: real-API mode reads the server', () => {
   test.skip(MOCK_RUN, 'real API only');
-  test('the sample-data notice shows and printing still works', async ({ page }) => {
+  test('the report is read from the server (no not-connected notice) and printing still works', async ({ page }) => {
     await page.goto(`${BASE_URL}/monthly-report/partner`, { timeout: 30_000 });
-    await expect(page.getByTestId('not-connected-notice')).toBeVisible();
+    await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
     await expect(page.getByTestId('partner-report')).toBeVisible();
     await expect(page.getByTestId('download-pdf')).toBeEnabled();
   });
 
-  test('with Mock data off the reports carry no "Sample" label, and the not-connected notice stays out of print (see monthly-report-no-sample.spec.ts)', async ({ page }) => {
+  test('with Mock data off the reports carry no "Sample" label and no not-connected notice, on screen or in print (see monthly-report-no-sample.spec.ts)', async ({ page }) => {
     for (const view of ['partner', 'team'] as const) {
       await page.goto(`${BASE_URL}/monthly-report/${view}`, { timeout: 30_000 });
       const paper = page.getByTestId(`${view}-report`);
       await expect(paper).toBeVisible();
       await expect(paper.getByTestId('sample-report-badge')).toHaveCount(0);
       await page.emulateMedia({ media: 'print' });
-      await expect(page.getByTestId('not-connected-notice')).toBeHidden(); // outside the paper: not in the PDF
+      await expect(page.getByTestId('not-connected-notice')).toHaveCount(0);
       await expect(paper).toBeVisible();
       await page.emulateMedia({ media: 'screen' });
     }

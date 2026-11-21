@@ -20,7 +20,6 @@ import { useCallback, useEffect } from "react";
 import { CalendarRange, Info, Printer } from "lucide-react";
 import { useRoles } from "@/components/access/RoleProvider";
 import { Button } from "@/components/ui/Button";
-import { NotConnectedNotice } from "@/components/ui/NotConnectedNotice";
 import { Select, type SelectOption } from "@/components/ui/form/Select";
 import { StatusBanner } from "@/components/overview/StatusBanner";
 import { Tabs } from "@/components/ui/Tabs";
@@ -29,7 +28,7 @@ import { useToast } from "@/components/ui/Toast";
 import { formatMonth } from "@/lib/format";
 import { useMockStoreVersion } from "@/lib/mock-store";
 import { lastCompleteMonth, reportTitle, type ReportView } from "@/lib/report";
-import { getPartnerReport, getTeamReport, recordReport, reportSource } from "@/lib/services/report";
+import { getPartnerReport, getTeamReport, recordGeneratedReport, reportSource } from "@/lib/services/report";
 import { useAsync } from "@/lib/use-async";
 import { useReportMonth } from "@/lib/use-report-month";
 import { PartnerReport } from "./PartnerReport";
@@ -76,8 +75,8 @@ export function ReportPage({ view }: { view: ReportView }) {
   }, [view, month]);
 
   const download = () => {
-    // The button counts as "generated": record the report first (once per month and view), then print.
-    if (recordReport(month, view)) toast.success(`Report recorded for ${formatMonth(month)}`);
+    // The button counts as "generated": record the report (once per month and view), then print. Saving it on the server never holds up the print.
+    void recordGeneratedReport(month, view).then((added) => added && toast.success(`Report recorded for ${formatMonth(month)}`));
     window.print();
   };
 
@@ -111,7 +110,6 @@ export function ReportPage({ view }: { view: ReportView }) {
         <p data-testid="download-hint" className="caption min-[640px]:text-right">
           In the print dialog choose A4 and untick Headers and footers.
         </p>
-        <NotConnectedNotice message="Monthly figures aren't connected to live data yet, so this report has no figures." />
         <Tabs ariaLabel="Report templates" idPrefix="report" value={view} onChange={() => undefined} tabs={tabs} links={links} />
         {toDate && (
           <p data-testid="to-date-note" className="caption">

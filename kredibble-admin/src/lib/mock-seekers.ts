@@ -17,6 +17,10 @@ export interface SeekerAccount {
   applicationsCount: number;
   savedCount: number;
   status: AccountStatus;
+  /** The Expert listing (real data only): none, pending, approved, rejected or hidden, and the rating people gave this seeker. */
+  expertStatus?: string;
+  expertRating?: number;
+  expertRatingCount?: number;
 }
 
 export const seekerAccounts: SeekerAccount[] = [

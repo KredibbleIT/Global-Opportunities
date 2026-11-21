@@ -1,5 +1,6 @@
 import { Notification } from '../models/Content.js';
 import { pushNotification } from './push.js';
+import { announceBroadcast } from './user-notify.js';
 
 // One run sends at most this many; the rest wait for the next minute.
 const MAX_PER_RUN = 50;
@@ -26,6 +27,7 @@ export async function deliverDueNotifications({ now = new Date(), limit = MAX_PE
     );
     if (!notification) break;
     delivered += 1;
+    announceBroadcast(notification);
     await pushNotification(notification);
   }
   return { delivered };

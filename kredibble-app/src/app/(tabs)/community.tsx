@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Image, Modal, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Search, X, Plus, ChevronRight } from 'lucide-react-native';
+import { Search, X, Plus, ChevronRight, ImagePlus } from 'lucide-react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Colors, FontSize, FontWeight, Radius } from '../../constants/design';
 import { authStore } from '../../constants/authStore';
-import { getChannels, createChannel, joinChannel } from '../../lib/api';
+import { getChannels, createChannel, joinChannel, uploadFile } from '../../lib/api';
+import { pickImage } from '../../lib/file-picker';
 import { useToast } from '../../components/ui/ToastProvider';
 import { useChannelRemoved } from '../../lib/useChannelRemoved';
 
@@ -17,6 +18,26 @@ const LogoSVG = () => (
     resizeMode="contain"
   />
 );
+
+// ─── Channel picture ──────────────────────────────────────────────────────────
+// The picture the channel's creator added; a channel without one shows a coloured circle with its first letter.
+const ChannelAvatar = ({ uri, name, size, marginRight = 12 }: { uri?: string; name?: string; size: number; marginRight?: number }) => {
+  const [failed, setFailed] = useState(false);
+  if (uri && !failed) {
+    return (
+      <Image
+        source={{ uri }}
+        onError={() => setFailed(true)}
+        style={{ width: size, height: size, borderRadius: size / 2, marginRight, backgroundColor: Colors.bgAlt }}
+      />
+    );
+  }
+  return (
+    <View style={{ width: size, height: size, borderRadius: size / 2, marginRight, backgroundColor: Colors.primaryTransparent, alignItems: 'center', justifyContent: 'center' }}>
+      <Text style={{ fontSize: size * 0.4, fontWeight: '700', color: Colors.primary }}>{(name || '?').trim().charAt(0).toUpperCase()}</Text>
+    </View>
+  );
+};
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 export default function CommunityScreen() {
@@ -37,6 +58,8 @@ export default function CommunityScreen() {
   const [newChannelName, setNewChannelName] = useState('');
   const [newChannelCategory, setNewChannelCategory] = useState('');
   const [newChannelBio, setNewChannelBio] = useState('');
+  const [newChannelImage, setNewChannelImage] = useState<{ uri: string; name: string; mimeType?: string } | null>(null);
+  const [creating, setCreating] = useState(false);
 
   // Subscribe to auth store updates & fetch initial data
   useEffect(() => {
@@ -95,20 +118,16 @@ export default function CommunityScreen() {
       return;
     }
     
-    const avatars = [
-      'https://images.unsplash.com/photo-1540575467063-178a50c2df87?w=120&auto=format&fit=crop&q=80',
-      'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=120&auto=format&fit=crop&q=80',
-      'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=120&auto=format&fit=crop&q=80',
-      'https://images.unsplash.com/photo-1561070791-26c113006238?w=120&auto=format&fit=crop&q=80'
-    ];
-    const chosenAvatar = avatars[Math.floor(Math.random() * avatars.length)];
-
+    if (creating) return;
+    setCreating(true);
     try {
+      // The picture is uploaded first; the channel then keeps its address.
+      const avatar = newChannelImage ? (await uploadFile(newChannelImage, 'channel-avatars')).url : undefined;
       const newChannel = await createChannel({
         name: newChannelName,
         category: newChannelCategory,
         bio: newChannelBio,
-        avatar: chosenAvatar,
+        ...(avatar ? { avatar } : {}),
         followers: '1 member',
         owner: authStore.company?.name || 'Public'
       });
@@ -118,11 +137,23 @@ export default function CommunityScreen() {
       setNewChannelName('');
       setNewChannelCategory('');
       setNewChannelBio('');
+      setNewChannelImage(null);
       setCreateModalVisible(false);
 
       alert(`Success: Community Channel "${newChannelName}" created successfully!`);
-    } catch {
-      alert('Failed to create channel.');
+    } catch (err) {
+      alert(err instanceof Error && err.message ? err.message : 'Failed to create channel.');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handlePickChannelImage = async () => {
+    try {
+      const picked = await pickImage();
+      if (picked) setNewChannelImage({ uri: picked.uri, name: picked.name, mimeType: picked.mimeType });
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'We could not open your photos.', 'error');
     }
   };
 
@@ -196,7 +227,7 @@ export default function CommunityScreen() {
                       padding: 16, borderWidth: 1, borderColor: '#E5E6F2',
                     }}
                   >
-                    <Image source={{ uri: group.avatar || 'https://via.placeholder.com/50' }} style={{ width: 50, height: 50, borderRadius: 25, marginRight: 12 }} />
+                    <ChannelAvatar uri={group.avatar} name={group.name} size={50} />
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#1A1A1A' }} className="font-sans">{group.name}</Text>
                       <Text style={{ fontSize: 12, color: '#8A8D9F', marginTop: 2 }} className="font-sans">{group.category} • {group.followers || group.members || '1 member'}</Text>
@@ -243,7 +274,7 @@ export default function CommunityScreen() {
                           padding: 16, borderWidth: 1, borderColor: '#E5E6F2',
                         }}
                       >
-                        <Image source={{ uri: channel.avatar || 'https://via.placeholder.com/50' }} style={{ width: 44, height: 44, borderRadius: 22, marginRight: 12 }} />
+                        <ChannelAvatar uri={channel.avatar} name={channel.name} size={44} />
                         <View style={{ flex: 1 }}>
                           <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#1A1A1A' }} className="font-sans">{channel.name}</Text>
                           <Text style={{ fontSize: 12, color: '#8A8D9F', marginTop: 2 }} className="font-sans">{channel.followers || '850 members'}</Text>
@@ -269,7 +300,7 @@ export default function CommunityScreen() {
                       padding: 16, borderWidth: 1, borderColor: '#E5E6F2',
                     }}
                   >
-                    <Image source={{ uri: channel.avatar || 'https://via.placeholder.com/50' }} style={{ width: 44, height: 44, borderRadius: 22, marginRight: 12 }} />
+                    <ChannelAvatar uri={channel.avatar} name={channel.name} size={44} />
                     <View style={{ flex: 1 }}>
                       <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#1A1A1A' }} className="font-sans">{channel.name}</Text>
                       <Text style={{ fontSize: 12, color: '#8A8D9F', marginTop: 2 }} className="font-sans">{channel.followers || '850 members'}</Text>
@@ -305,6 +336,31 @@ export default function CommunityScreen() {
               </View>
 
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 16, paddingBottom: 24 }}>
+                <View style={{ alignItems: 'center' }}>
+                  <TouchableOpacity
+                    testID="channel-image-picker"
+                    accessibilityRole="button"
+                    accessibilityLabel={newChannelImage ? 'Change channel picture' : 'Add a channel picture'}
+                    onPress={handlePickChannelImage}
+                    activeOpacity={0.85}
+                    style={{ width: 88, height: 88, borderRadius: 44, backgroundColor: Colors.primaryTransparent, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', borderWidth: 1, borderColor: '#E5E6F2' }}
+                  >
+                    {newChannelImage ? (
+                      <Image source={{ uri: newChannelImage.uri }} style={{ width: 88, height: 88 }} />
+                    ) : (
+                      <ImagePlus size={28} color={Colors.primary} />
+                    )}
+                  </TouchableOpacity>
+                  <Text style={{ fontSize: 12, color: '#8A8D9F', marginTop: 8 }} className="font-sans">
+                    {newChannelImage ? 'Tap to change the picture' : 'Add a channel picture (optional)'}
+                  </Text>
+                  {newChannelImage && (
+                    <TouchableOpacity onPress={() => setNewChannelImage(null)} hitSlop={8} accessibilityRole="button" accessibilityLabel="Remove the picture">
+                      <Text style={{ fontSize: 12, color: Colors.primary, fontWeight: '600', marginTop: 4 }} className="font-sans">Remove</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
                 <View>
                   <Text style={{ fontSize: 13, fontWeight: '600', color: '#4A4D5F', marginBottom: 6 }} className="font-sans">Channel Name</Text>
                   <TextInput
@@ -345,12 +401,13 @@ export default function CommunityScreen() {
 
                 <TouchableOpacity
                   onPress={handleCreateChannel}
+                  disabled={creating}
                   style={{
-                    backgroundColor: Colors.primary, borderRadius: 8, height: 48,
+                    backgroundColor: Colors.primary, borderRadius: 8, height: 48, opacity: creating ? 0.6 : 1,
                     justifyContent: 'center', alignItems: 'center', marginTop: 12,
                   }}
                 >
-                  <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: 'bold' }} className="font-sans">Launch Channel</Text>
+                  <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: 'bold' }} className="font-sans">{creating ? 'Creating…' : 'Launch Channel'}</Text>
                 </TouchableOpacity>
               </ScrollView>
             </View>
@@ -440,16 +497,7 @@ export default function CommunityScreen() {
                 borderBottomColor: Colors.divider,
               }}
             >
-              <Image
-                source={{ uri: channel.avatar || 'https://via.placeholder.com/50' }}
-                style={{
-                  width: 50,
-                  height: 50,
-                  borderRadius: 25,
-                  marginRight: 12,
-                  backgroundColor: Colors.bgAlt
-                }}
-              />
+              <ChannelAvatar uri={channel.avatar} name={channel.name} size={50} />
               <View style={{ flex: 1, marginRight: 8 }}>
                 <Text style={{ fontSize: 14, fontWeight: FontWeight.semibold, color: Colors.textHeading }} className="font-sans">
                   {channel.name}
@@ -507,16 +555,7 @@ export default function CommunityScreen() {
                 borderBottomColor: Colors.divider,
               }}
             >
-              <Image
-                source={{ uri: channel.avatar || 'https://via.placeholder.com/50' }}
-                style={{
-                  width: 50,
-                  height: 50,
-                  borderRadius: 25,
-                  marginRight: 12,
-                  backgroundColor: Colors.bgAlt
-                }}
-              />
+              <ChannelAvatar uri={channel.avatar} name={channel.name} size={50} />
               <View style={{ flex: 1, marginRight: 8 }}>
                 <Text style={{ fontSize: 14, fontWeight: FontWeight.semibold, color: Colors.textHeading }} className="font-sans">
                   {channel.name}

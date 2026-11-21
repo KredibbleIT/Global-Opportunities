@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Colors } from '../../constants/design';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Image, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
@@ -18,12 +18,6 @@ interface ApplicationItem {
   status: 'In review' | 'Interview' | 'Rejected';
   appliedDate?: string;
 }
-
-const MOCK_AVATARS = [
-  'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100',
-  'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100',
-  'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100'
-];
 
 export default function ApplicationsStatusScreen() {
   const router = useRouter();
@@ -232,17 +226,7 @@ export default function ApplicationsStatusScreen() {
                 <View style={styles.cardDivider} />
 
                 <View style={styles.cardFooter}>
-                  <View style={styles.avatarStack}>
-                    {MOCK_AVATARS.map((uri, idx) => (
-                      <Image 
-                        key={idx} 
-                        source={{ uri }} 
-                        style={[styles.stackedAvatar, { marginLeft: idx > 0 ? -8 : 0 }]} 
-                      />
-                    ))}
-                    <Text style={styles.appliedCountText} className="font-sans">100+ applied</Text>
-                  </View>
-                  
+                  <View />
                   <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
                     <Text style={[styles.statusBadgeText, { color: statusStyle.text }]} className="font-sans">
                       {app.status}

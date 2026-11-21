@@ -805,6 +805,8 @@ describe('SEC-011: pagination on list endpoints', () => {
     const seekers = Array.from({ length: 25 }, (_, i) => ({
       userId: `64b7f1c2a1b2c3d4e5f607${i.toString().padStart(2, '0')}`,
       profession: `Test ${i}`,
+      // Only approved experts are listed for other people (the Expert listing), so these are approved ones.
+      expertStatus: 'approved',
     }));
     await SeekerProfile.insertMany(seekers);
 
@@ -828,6 +830,7 @@ describe('SEC-011: pagination on list endpoints', () => {
       Array.from({ length: 15 }, (_, i) => ({
         userId: `64b7f1c2a1b2c3d4e5f608${i.toString().padStart(2, '0')}`,
         profession: `Test ${i}`,
+        expertStatus: 'approved',
       })),
     );
 
@@ -874,6 +877,7 @@ describe('SEC-011: pagination on list endpoints', () => {
       await SeekerProfile.create({
         userId: new mongoose.Types.ObjectId(),
         profession: `Test ${i}`,
+        expertStatus: 'approved',
       });
     }
 

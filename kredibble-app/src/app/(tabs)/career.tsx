@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Image, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Search, SlidersHorizontal, Star, Check } from 'lucide-react-native';
+import { Search, SlidersHorizontal, Star, Check, BadgeCheck } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Colors, FontSize, FontWeight, Radius } from '../../constants/design';
-import { mockExperts, Expert } from '../../constants/mockExperts';
 import { authStore } from '../../constants/authStore';
-import { searchSeekers } from '../../lib/api';
+import { getExperts, PublicExpert } from '../../lib/api';
 
 // ─── Logo ─────────────────────────────────────────────────────────────────────
 const LogoSVG = () => (
@@ -42,9 +41,22 @@ const StarRating = ({ rating }: { rating: number }) => {
 };
 
 // ─── Expert Card Component ────────────────────────────────────────────────────
-const ExpertCard = ({ expert, onPress }: { expert: Expert; onPress: () => void }) => {
+const ExpertAvatar = ({ expert, size, radius }: { expert: Pick<PublicExpert, 'name' | 'image'>; size: number; radius: number }) => {
+  const [failed, setFailed] = useState(false);
+  if (expert.image && !failed) {
+    return <Image source={{ uri: expert.image }} onError={() => setFailed(true)} style={{ width: size, height: size, borderRadius: radius, backgroundColor: Colors.bgAlt }} />;
+  }
+  return (
+    <View style={{ width: size, height: size, borderRadius: radius, backgroundColor: Colors.primaryTransparent, alignItems: 'center', justifyContent: 'center' }}>
+      <Text style={{ fontSize: size * 0.4, fontWeight: '700', color: Colors.primary }}>{(expert.name || '?').trim().charAt(0).toUpperCase()}</Text>
+    </View>
+  );
+};
+
+const ExpertCard = ({ expert, onPress }: { expert: PublicExpert; onPress: () => void }) => {
   return (
     <TouchableOpacity
+      testID={`expert-card-${expert.id}`}
       activeOpacity={0.9}
       onPress={onPress}
       style={{
@@ -55,10 +67,9 @@ const ExpertCard = ({ expert, onPress }: { expert: Expert; onPress: () => void }
       }}
     >
       <View style={{ flexDirection: 'row' }}>
-        <Image
-          source={{ uri: expert.image }}
-          style={{ width: 44, height: 44, borderRadius: 12, backgroundColor: Colors.bgAlt, marginRight: 12 }}
-        />
+        <View style={{ marginRight: 12 }}>
+          <ExpertAvatar expert={expert} size={44} radius={12} />
+        </View>
         <View style={{ flex: 1 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingRight: 4 }}>
             <Text style={{ fontSize: 13, color: Colors.textHeading, fontWeight: FontWeight.medium, flexShrink: 1 }} className="font-sans">
@@ -71,19 +82,24 @@ const ExpertCard = ({ expert, onPress }: { expert: Expert; onPress: () => void }
               </View>
             )}
           </View>
-          <Text style={{ fontSize: 13, color: Colors.textMuted, marginTop: 2, fontWeight: '400' }} className="font-sans">
-            {expert.education?.[0]?.institution || (expert as any).university || 'University of Ghana'}
-          </Text>
-          <Text numberOfLines={2} style={{ fontSize: 13, color: Colors.textMuted, marginTop: 8, lineHeight: 18, fontWeight: '400' }} className="font-sans">
-            {expert.bio || expert.professionalSummary}
-          </Text>
+          {!!(expert.university || expert.location) && (
+            <Text style={{ fontSize: 13, color: Colors.textMuted, marginTop: 2, fontWeight: '400' }} className="font-sans">
+              {expert.university || expert.location}
+            </Text>
+          )}
+          {!!expert.bio && (
+            <Text numberOfLines={2} style={{ fontSize: 13, color: Colors.textMuted, marginTop: 8, lineHeight: 18, fontWeight: '400' }} className="font-sans">
+              {expert.bio}
+            </Text>
+          )}
         </View>
       </View>
       <View style={{ height: 1, backgroundColor: Colors.borderDefault, marginVertical: 12 }} />
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-        <StarRating rating={expert.rating || 5} />
+      <View style={{ flexDirection: 'row', justifyContent: expert.ratingCount > 0 ? 'space-between' : 'flex-start', alignItems: 'center' }}>
+        {/* The rating only appears once someone has rated this expert. */}
+        {expert.ratingCount > 0 && <StarRating rating={expert.rating} />}
         <Text style={{ fontSize: 12, color: Colors.textMuted }} className="font-sans">
-          {expert.country || expert.location || 'Ghana'}
+          {expert.country || expert.location}
         </Text>
       </View>
     </TouchableOpacity>
@@ -103,8 +119,12 @@ export default function CareerScreen() {
   }>();
 
   const [role, setRole] = useState(authStore.role);
-  const [liveCandidates, setLiveCandidates] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  // What was last loaded, and for which search: a different search means the list is loading again.
+  const [result, setResult] = useState<{ key: string; experts: PublicExpert[]; failed: boolean } | null>(null);
+  const queryKey = JSON.stringify([params.query, params.city, params.profession, params.experience, params.rating, params.country, params.skills]);
+  const isLoading = result?.key !== queryKey;
+  const experts = result?.experts ?? [];
+  const loadFailed = Boolean(result?.failed);
 
   useEffect(() => {
     // State is initialised from authStore; the subscription keeps it in sync.
@@ -112,48 +132,22 @@ export default function CareerScreen() {
     return unsubscribe;
   }, []);
 
-  // Fetch candidates from API when hirer role is active and filters change
+  // The approved experts, for seekers and hirers alike; the search and filters are applied by the server.
   useEffect(() => {
-    if (role === 'hirer') {
-      const fetchCandidates = async () => {
-        setIsLoading(true);
-        try {
-          const data = await searchSeekers({
-            q: params.query,
-            country: params.country,
-            skills: params.skills, // Custom multi-select skills for hirer
-            university: params.city, // Reusing city for university search for simplicity
-          });
-          setLiveCandidates(data);
-        } catch (error) {
-          console.error("Failed to fetch candidates:", error);
-        } finally {
-          setIsLoading(false);
-        }
-      };
-      fetchCandidates();
-    }
-  }, [role, params.query, params.country, params.skills, params.city]);
-
-  // Local filtering for mock experts (Seeker role)
-  const filteredExperts = mockExperts.filter(expert => {
-    if (params.query) {
-      const q = params.query.toLowerCase();
-      const matchesName = expert.name.toLowerCase().includes(q);
-      const matchesProfession = expert.profession.toLowerCase().includes(q);
-      const matchesBio = expert.bio.toLowerCase().includes(q);
-      if (!matchesName && !matchesProfession && !matchesBio) return false;
-    }
-    if (params.city) {
-      const c = params.city.toLowerCase();
-      if (!expert.city.toLowerCase().includes(c) && !expert.location.toLowerCase().includes(c)) return false;
-    }
-    if (params.profession && !params.profession.split(',').includes(expert.profession)) return false;
-    if (params.experience && !params.experience.split(',').includes(expert.experienceLevel)) return false;
-    if (params.rating && !params.rating.split(',').map(Number).includes(Math.floor(expert.rating))) return false;
-    if (params.country && !params.country.split(',').includes(expert.country)) return false;
-    return true;
-  });
+    let active = true;
+    getExperts({
+      q: params.query,
+      city: params.city,
+      profession: params.profession,
+      experience: params.experience,
+      rating: params.rating,
+      country: params.country,
+      skills: params.skills,
+    })
+      .then((data) => { if (active) setResult({ key: queryKey, experts: Array.isArray(data) ? data : [], failed: false }); })
+      .catch(() => { if (active) setResult({ key: queryKey, experts: [], failed: true }); });
+    return () => { active = false; };
+  }, [queryKey, params.query, params.city, params.profession, params.experience, params.rating, params.country, params.skills]);
 
   const getFilterCount = () => {
     let count = 0;
@@ -214,58 +208,38 @@ export default function CareerScreen() {
           </View>
         )}
 
-        {role === 'hirer' ? (
-          isLoading ? (
-            <ActivityIndicator size="small" color={Colors.primary} style={{ marginTop: 40 }} />
-          ) : liveCandidates.length > 0 ? (
-            liveCandidates.map(seeker => (
-              <ExpertCard
-                key={seeker.id}
-                expert={{
-                  id: seeker.id,
-                  name: seeker.name || 'Anonymous Seeker', // Fallback
-                  profession: seeker.profession || '',
-                  image: 'https://cdn-icons-png.flaticon.com/512/149/149071.png', // Fallback avatar
-                  verified: seeker.verified || false,
-                  email: '',
-                  phone: '',
-                  website: '',
-                  city: seeker.city || '',
-                  education: [{ institution: seeker.university || 'University of Ghana', degree: 'Bachelor', duration: '2020 - 2024' }],
-                  bio: seeker.bio || seeker.professionalSummary || 'Active seeker looking for opportunities.',
-                  professionalSummary: seeker.bio || seeker.professionalSummary || '',
-                  rating: seeker.rating || 5,
-                  country: seeker.country || 'Ghana',
-                  location: seeker.country || '',
-                  experienceLevel: seeker.experienceLevel || 'Entry Level',
-                  technicalSkills: typeof seeker.technicalSkills === 'string' ? JSON.parse(seeker.technicalSkills || '[]') : (seeker.technicalSkills || []),
-                  softSkills: [],
-                  workExperience: [],
-                  projects: [],
-                  certifications: [],
-                  tools: []
-                }}
-                onPress={() => {
-                   // Open candidate profile modal/page
-                   router.push(`/experts/${seeker.id}`);
-                }}
-              />
-            ))
-          ) : (
-            <View style={{ alignItems: 'center', marginTop: 40 }}>
-              <Text style={{ fontSize: 14, color: Colors.textMuted }} className="font-sans">No candidates found matching your criteria.</Text>
+        {role === 'seeker' && (
+          <TouchableOpacity
+            testID="become-expert"
+            accessibilityRole="button"
+            activeOpacity={0.85}
+            onPress={() => router.push('/experts/apply' as never)}
+            style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.primaryChip, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 14, marginBottom: 16, gap: 10 }}
+          >
+            <BadgeCheck size={20} color={Colors.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.primary }} className="font-sans">Be listed as an expert</Text>
+              <Text style={{ fontSize: 12, color: Colors.textMuted, marginTop: 2 }} className="font-sans">Show your profile to other people on Global Opportunity Desk.</Text>
             </View>
-          )
+          </TouchableOpacity>
+        )}
+
+        {isLoading ? (
+          <ActivityIndicator size="small" color={Colors.primary} style={{ marginTop: 40 }} />
+        ) : experts.length > 0 ? (
+          experts.map(expert => (
+            <ExpertCard key={expert.id} expert={expert} onPress={() => router.push(`/experts/${expert.id}`)} />
+          ))
         ) : (
-          filteredExperts.length > 0 ? (
-            filteredExperts.map(expert => (
-              <ExpertCard key={expert.id} expert={expert} onPress={() => router.push(`/experts/${expert.id}`)} />
-            ))
-          ) : (
-            <View style={{ alignItems: 'center', marginTop: 40 }}>
-              <Text style={{ fontSize: 14, color: Colors.textMuted }} className="font-sans">No experts match your filters.</Text>
-            </View>
-          )
+          <View style={{ alignItems: 'center', marginTop: 40, paddingHorizontal: 12 }}>
+            <Text style={{ fontSize: 14, color: Colors.textMuted, textAlign: 'center' }} className="font-sans">
+              {loadFailed
+                ? 'We could not load the experts. Check your connection and try again.'
+                : filterCount > 0
+                  ? 'No experts match your search.'
+                  : 'No experts are listed yet.'}
+            </Text>
+          </View>
         )}
       </ScrollView>
     </SafeAreaView>
