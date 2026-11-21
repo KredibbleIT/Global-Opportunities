@@ -6994,19 +6994,28 @@ test.describe('Network: the maths and the rules (no browser)', () => {
       name: 'Rule Test', email: 'rule.test@students.example.edu', country: 'Ghana', city: 'Accra', memberType: 'student' as const, campus: 'KNUST',
       tier: 'ambassador' as const, status: 'active' as const, trained: false,
     };
-    const created = createAmbassador(fields);
-    expect(created.referralCode).toMatch(/^GOD-[2-9A-HJ-NP-Z]{6}$/);
-    const updated = updateAmbassador(created.id, { ...fields, name: 'Rule Test Renamed', tier: 'lead' });
-    expect(updated?.referralCode).toBe(created.referralCode);
-    expect(updated?.name).toBe('Rule Test Renamed');
-    expect(updated?.joinedAt).toBe(created.joinedAt);
-    const log = logAmplification(created.id, 'whatsapp', '  a note  ');
-    expect(log).toMatchObject({ ambassadorId: created.id, channel: 'whatsapp', note: 'a note', clicks: 0 });
-    const logs = getMockCollection('amplificationLogs');
-    expect(ambassadorStats(created.id, logs, [], monthOf(log.at))).toEqual({ shares: 1, clicks: 0, signups: 0 });
-    // going dormant is dated; coming back clears it
-    expect(updateAmbassador(created.id, { ...fields, status: 'dormant' })?.dormantSince).toBeDefined();
-    expect(updateAmbassador(created.id, { ...fields, status: 'active' })?.dormantSince).toBeUndefined();
+    // This test writes the worker's own mock store. Put it back afterwards: later tests in the same worker compute their
+    // expected figures from that store (the Monthly report's "New ambassadors" counted this extra person this month).
+    const ambassadorsBefore = getMockCollection('ambassadors');
+    const logsBefore = getMockCollection('amplificationLogs');
+    try {
+      const created = createAmbassador(fields);
+      expect(created.referralCode).toMatch(/^GOD-[2-9A-HJ-NP-Z]{6}$/);
+      const updated = updateAmbassador(created.id, { ...fields, name: 'Rule Test Renamed', tier: 'lead' });
+      expect(updated?.referralCode).toBe(created.referralCode);
+      expect(updated?.name).toBe('Rule Test Renamed');
+      expect(updated?.joinedAt).toBe(created.joinedAt);
+      const log = logAmplification(created.id, 'whatsapp', '  a note  ');
+      expect(log).toMatchObject({ ambassadorId: created.id, channel: 'whatsapp', note: 'a note', clicks: 0 });
+      const logs = getMockCollection('amplificationLogs');
+      expect(ambassadorStats(created.id, logs, [], monthOf(log.at))).toEqual({ shares: 1, clicks: 0, signups: 0 });
+      // going dormant is dated; coming back clears it
+      expect(updateAmbassador(created.id, { ...fields, status: 'dormant' })?.dormantSince).toBeDefined();
+      expect(updateAmbassador(created.id, { ...fields, status: 'active' })?.dormantSince).toBeUndefined();
+    } finally {
+      setMockCollection('ambassadors', ambassadorsBefore, { always: true });
+      setMockCollection('amplificationLogs', logsBefore, { always: true });
+    }
   });
 });
 
@@ -13303,8 +13312,14 @@ test.describe('Monthly report: Download PDF and printing (mock mode)', () => {
     // another month of the partner report is another report; pick it with the keyboard: clicking the
     // option flakes (the open list remounts while the report loads after the template navigation).
     await page.getByRole('link', { name: 'Partner report' }).click();
+    // Both templates have a Month control. Wait until the partner report has replaced the team report: a click that
+    // lands before that opens the team page's list, which then unmounts with its page and the keys go nowhere.
+    await expect(page).toHaveURL(/\/monthly-report\/partner(\?|$)/);
+    await expect(page.getByTestId('partner-report')).toBeVisible();
+    await expect(page.getByTestId('team-report')).toHaveCount(0);
     const monthCombo = page.getByRole('combobox', { name: 'Month' });
     await monthCombo.click();
+    await expect(monthCombo).toHaveAttribute('aria-expanded', 'true');
     // Options are newest first with the current month selected: two downs land three entries up (option index 3).
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('ArrowDown');
