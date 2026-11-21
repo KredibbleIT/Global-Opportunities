@@ -140,6 +140,18 @@ export const notificationPreferencesSchema = z.object({
   }).strict(),
 });
 
+// The alerts a seeker or hirer switches on or off in Manage notifications (any of them, at least one).
+export const ALERT_PREFERENCE_KEYS = [
+  'jobAlerts', 'aiRecommendations', 'jobActivity', 'savedJobs', 'statusUpdates', 'interviewInvites', 'newPosts', 'recruiterViews', 'marketingUpdates',
+  // a hirer's
+  'newApplicants', 'candidateMessages', 'channelActivity', 'verificationUpdates',
+];
+export const alertPreferencesSchema = z.object({
+  body: z.object(Object.fromEntries(ALERT_PREFERENCE_KEYS.map((key) => [key, z.boolean({ error: `${key} must be true or false` }).optional()])))
+    .strict()
+    .refine((data) => Object.keys(data).length > 0, { message: 'At least one alert to update must be provided' }),
+});
+
 // A person's own profile picture: the address of a picture they uploaded with POST /upload?purpose=avatars, or null to remove it.
 export const avatarSchema = z.object({
   body: z.object({

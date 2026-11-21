@@ -218,7 +218,8 @@ export default function OpportunitiesScreen() {
   const [recommendedLoading, setRecommendedLoading] = useState(true);
   const [counts, setCounts] = useState<Record<string, number> | undefined>(undefined);
   // The hirer's Active Posts are grouped in the same eight categories as the admin's Opportunities queue.
-  const [recruiterActiveKey, setRecruiterActiveKey] = useState<string>('jobs');
+  const [recruiterActiveKey, setRecruiterActiveKey] = useState<string>('all');
+  const showAllPosts = recruiterActiveKey === 'all';
   const recruiterCategory = getOpportunityCategory(recruiterActiveKey) ?? OPPORTUNITY_CATEGORIES[0];
 
   useEffect(() => {
@@ -280,7 +281,7 @@ export default function OpportunitiesScreen() {
   }, []);
   if (role === 'hirer') {
     if (viewMode !== 'all') {
-      const filteredOpps = opps.filter((opp) => categoryOfApiType(opp.type)?.key === recruiterCategory.key);
+      const filteredOpps = showAllPosts ? opps : opps.filter((opp) => categoryOfApiType(opp.type)?.key === recruiterCategory.key);
 
       // ─── ACTIVE LISTINGS FEED ─────────────────────────────────────────
       return (
@@ -324,9 +325,33 @@ export default function OpportunitiesScreen() {
 
           <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
             {/* Category Tabs Selector */}
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 }} accessibilityRole="tablist">
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              accessibilityRole="tablist"
+              style={{ marginHorizontal: -20, marginBottom: 20, flexGrow: 0 }}
+              contentContainerStyle={{ paddingHorizontal: 20, gap: 8 }}
+            >
+              <TouchableOpacity
+                testID="posts-tab-all"
+                accessibilityRole="tab"
+                accessibilityState={{ selected: showAllPosts }}
+                onPress={() => setRecruiterActiveKey('all')}
+                style={{
+                  paddingVertical: 10,
+                  paddingHorizontal: 14,
+                  borderRadius: 12,
+                  backgroundColor: showAllPosts ? Colors.primary : '#FFFFFF',
+                  borderWidth: 1,
+                  borderColor: showAllPosts ? Colors.primary : '#E5E6F2',
+                }}
+              >
+                <Text style={{ fontSize: 13, fontWeight: showAllPosts ? '600' : '500', color: showAllPosts ? '#FFFFFF' : '#8A8D9F' }} className="font-sans">
+                  {opps.length > 0 ? `All (${opps.length})` : 'All'}
+                </Text>
+              </TouchableOpacity>
               {OPPORTUNITY_CATEGORIES.map((category) => {
-                const isActive = recruiterCategory.key === category.key;
+                const isActive = !showAllPosts && recruiterCategory.key === category.key;
                 const count = opps.filter((opp) => categoryOfApiType(opp.type)?.key === category.key).length;
                 return (
                   <TouchableOpacity
@@ -350,14 +375,14 @@ export default function OpportunitiesScreen() {
                   </TouchableOpacity>
                 );
               })}
-            </View>
+            </ScrollView>
 
             {filteredOpps.length === 0 ? (
               <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 80 }}>
                 <Briefcase size={64} color="#A1A1AA" style={{ marginBottom: 16 }} />
                 <Text style={{ fontSize: 16, fontWeight: 'bold', color: '#1A1A1A' }} className="font-sans">No Listings Yet</Text>
                 <Text style={{ fontSize: 12, color: '#8A8D9F', marginTop: 4, textAlign: 'center' }} className="font-sans">
-                  Click the &quot;+ Post&quot; button above to publish your first listing in {recruiterCategory.title}.
+                  Click the &quot;+ Post&quot; button above to publish your first listing{showAllPosts ? '.' : ` in ${recruiterCategory.title}.`}
                 </Text>
               </View>
             ) : (

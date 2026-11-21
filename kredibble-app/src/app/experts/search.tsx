@@ -4,19 +4,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft, Search } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Colors, FontSize, FontWeight, Radius } from '../../constants/design';
-
-const POPULAR_SUGGESTIONS = [
-  'Software developer',
-  'Enoch',
-  'Frontend developer',
-  'Figma',
-  'Cybersecurity specialist'
-];
+import { useExpertFacets } from '../../lib/useExpertFacets';
 
 export default function SearchExpertsScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<Record<string, string>>();
   const [query, setQuery] = useState(params.query || '');
+  // The suggestions are the professions the listed experts have, the most common first.
+  const suggestions = useExpertFacets().professions.slice(0, 6);
   const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -97,7 +92,7 @@ export default function SearchExpertsScreen() {
 
         {/* Suggestions List */}
         <FlatList
-          data={POPULAR_SUGGESTIONS}
+          data={suggestions}
           keyExtractor={item => item}
           renderItem={({ item }) => (
             <TouchableOpacity

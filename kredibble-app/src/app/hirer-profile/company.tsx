@@ -108,7 +108,11 @@ export default function CompanyProfileScreen() {
         {/* Banner + Logo */}
         <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: '#FFFFFF', marginBottom: 24, borderWidth: 1, borderColor: '#E5E6F2' }}>
           <TouchableOpacity activeOpacity={0.85} onPress={handlePickBanner}>
-            <Image source={{ uri: bannerImage || 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=800' }} style={{ height: 100, width: '100%' }} />
+            {bannerImage ? (
+              <Image source={{ uri: bannerImage }} style={{ height: 100, width: '100%' }} />
+            ) : (
+              <View style={{ height: 100, width: '100%', backgroundColor: '#EDE7F6' }} />
+            )}
             <View style={styles.imageEditBadge}>
               {isUploadingBanner ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
@@ -120,7 +124,13 @@ export default function CompanyProfileScreen() {
 
           <View style={{ padding: 16, alignItems: 'center', marginTop: -40 }}>
             <TouchableOpacity activeOpacity={0.85} onPress={handlePickLogo}>
-              <Image source={{ uri: logo || 'https://via.placeholder.com/80' }} style={{ width: 80, height: 80, borderRadius: 20, borderWidth: 3, borderColor: '#FFFFFF', backgroundColor: '#FFFFFF' }} />
+              {logo ? (
+                <Image source={{ uri: logo }} style={{ width: 80, height: 80, borderRadius: 20, borderWidth: 3, borderColor: '#FFFFFF', backgroundColor: '#FFFFFF' }} />
+              ) : (
+                <View style={{ width: 80, height: 80, borderRadius: 20, borderWidth: 3, borderColor: '#FFFFFF', backgroundColor: '#EDE7F6', alignItems: 'center', justifyContent: 'center' }}>
+                  <Text style={{ fontSize: 30, fontWeight: '700', color: '#7B2FA3' }}>{(name || '?').trim().charAt(0).toUpperCase()}</Text>
+                </View>
+              )}
               <View style={[styles.imageEditBadge, { bottom: 0, right: 0, top: undefined, left: undefined }]}>
                 {isUploadingLogo ? (
                   <ActivityIndicator size="small" color="#FFFFFF" />

@@ -75,8 +75,8 @@ export function ReportCard({ title, subtitle, children, testId, className }: { t
 /** An icon in a soft square, as in the design. */
 function IconTile({ icon: Icon }: { icon: LucideIcon }) {
   return (
-    <span aria-hidden="true" className="flex size-12 shrink-0 items-center justify-center rounded-control bg-surface-2 text-muted">
-      <Icon size={22} strokeWidth={1.5} />
+    <span aria-hidden="true" className="flex size-10 shrink-0 items-center justify-center rounded-control bg-surface-2 text-muted">
+      <Icon size={18} strokeWidth={1.5} />
     </span>
   );
 }
@@ -88,7 +88,7 @@ function Stat({ metric, icon }: { metric: PartnerMetric; icon: LucideIcon }) {
       <IconTile icon={icon} />
       <div className="min-w-0">
         <p className="kpi-label">{metric.label}</p>
-        <p data-testid="metric-value" className="font-display text-3xl font-semibold leading-9 tabular-nums text-ink">
+        <p data-testid="metric-value" className="font-display text-2xl font-semibold leading-8 tabular-nums text-ink">
           {format(metric.value)}
         </p>
         <DeltaText delta={metric.delta} estimated={metric.estimated} />
@@ -106,7 +106,7 @@ function StatRow({ metric, icon }: { metric: PartnerMetric; icon: LucideIcon }) 
         <p className="kpi-label">{metric.label}</p>
         <DeltaText delta={metric.delta} estimated={metric.estimated} />
       </div>
-      <p data-testid="metric-value" className="font-display text-2xl font-semibold tabular-nums text-ink">
+      <p data-testid="metric-value" className="font-display text-xl font-semibold tabular-nums text-ink">
         {format(metric.value)}
       </p>
     </div>

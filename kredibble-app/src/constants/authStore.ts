@@ -102,18 +102,6 @@ export interface VerificationDocs {
   proofOfOrg: DocStatus;
 }
 
-export interface HirerNotificationSettings {
-  newApplicants: boolean;
-  candidateMessages: boolean;
-  channelActivity: boolean;
-  verificationUpdates: boolean;
-  marketingUpdates: boolean;
-}
-
-export interface HirerSecuritySettings {
-  publicCompanyProfile: boolean;
-}
-
 export interface BackendUser {
   id: string;
   name: string;
@@ -132,18 +120,6 @@ export interface BackendUser {
 }
 
 // ─── Initial Data ─────────────────────────────────────────────────────────────
-
-const initialHirerNotifications: HirerNotificationSettings = {
-  newApplicants: true,
-  candidateMessages: true,
-  channelActivity: true,
-  verificationUpdates: true,
-  marketingUpdates: false,
-};
-
-const initialHirerSecurity: HirerSecuritySettings = {
-  publicCompanyProfile: true,
-};
 
 export interface ManagedGroup {
   id: string;
@@ -170,8 +146,6 @@ class AuthStateStore {
     companyLogo: 'idle',
     proofOfOrg: 'idle',
   };
-  hirerNotifications: HirerNotificationSettings = { ...initialHirerNotifications };
-  hirerSecurity: HirerSecuritySettings = { ...initialHirerSecurity };
 
   private listeners: (() => void)[] = [];
 
@@ -268,16 +242,6 @@ class AuthStateStore {
     if (this.company && allDone !== this.company.verified) {
       this.company = { ...this.company, verified: allDone } as RecruiterCompany;
     }
-    this.notify();
-  }
-
-  updateHirerNotifications(settings: Partial<HirerNotificationSettings>) {
-    this.hirerNotifications = { ...this.hirerNotifications, ...settings };
-    this.notify();
-  }
-
-  updateHirerSecurity(settings: Partial<HirerSecuritySettings>) {
-    this.hirerSecurity = { ...this.hirerSecurity, ...settings };
     this.notify();
   }
 

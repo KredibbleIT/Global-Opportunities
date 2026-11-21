@@ -37,9 +37,7 @@ export default function MyChannelsScreen() {
           category: c.category || 'General',
           members: `${c.membersCount || (Array.isArray(c.memberIds) ? c.memberIds.length : 1)} members`,
           bio: c.bio || '',
-          avatar:
-            c.avatar ||
-            'https://images.unsplash.com/photo-1504384308090-c894fdcc538d?w=120&auto=format&fit=crop&q=80',
+          avatar: c.avatar || '',
         }));
 
         if (isMounted) {
@@ -144,7 +142,13 @@ export default function MyChannelsScreen() {
                       activeOpacity={0.8}
                       style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
                     >
-                      <Image source={{ uri: group.avatar }} style={styles.avatar} />
+                      {group.avatar ? (
+                        <Image source={{ uri: group.avatar }} style={styles.avatar} />
+                      ) : (
+                        <View style={[styles.avatar, { backgroundColor: Colors.primaryTransparent, alignItems: 'center', justifyContent: 'center' }]}>
+                          <Text style={{ fontSize: 20, fontWeight: '700', color: Colors.primary }}>{(group.name || '?').trim().charAt(0).toUpperCase()}</Text>
+                        </View>
+                      )}
                       <View style={{ flex: 1 }}>
                         <Text style={styles.cardTitle} numberOfLines={1} className="font-sans">
                           {group.name}
