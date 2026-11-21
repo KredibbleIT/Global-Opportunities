@@ -2,6 +2,8 @@ import crypto from 'node:crypto';
 import { IntegrationConfig } from '../models/AdminPortal.js';
 import { env } from '../config/env.js';
 import { ApiError } from '../utils/http.js';
+import { fetchWithTimeout } from './fetch.js';
+import { isWordpressSettingSet, wordpressAdminBaseUrl } from './wordpress-sync.js';
 
 const ALGORITHM = 'aes-256-gcm';
 
@@ -156,60 +158,51 @@ export const saveIntegrationSettings = async ({ kind, identifier, secret, userId
 };
 
 /**
+ * "Test connection" for WordPress: asks the plugin's status route exactly as publishing does, with the server's
+ * WORDPRESS_SYNC_BASE_URL and WORDPRESS_API_KEY (lib/wordpress-sync.js), and passes only when WordPress accepts the key.
+ * Until 21 Nov 2026 it fetched `/wp-json` with the address and password saved on the Integrations screen, which
+ * publishing never uses, and counted a 401 or 403 as success, so it said "Connected" with a wrong key.
+ * Never returns or logs the key.
+ * @returns {Promise<{ success: boolean, message: string }>}
+ */
+const testWordpressPublishing = async () => {
+  if (!isWordpressSettingSet(env.wordpressSyncBaseUrl)) {
+    return { success: false, message: 'Publishing to the website is not configured on the server (WORDPRESS_SYNC_BASE_URL).' };
+  }
+  if (!isWordpressSettingSet(env.wordpressApiKey)) {
+    return { success: false, message: "The website's key is not configured on the server (WORDPRESS_API_KEY)." };
+  }
+  let url;
+  try {
+    url = `${wordpressAdminBaseUrl(env.wordpressSyncBaseUrl)}/status`;
+  } catch (error) {
+    return { success: false, message: `WORDPRESS_SYNC_BASE_URL on the server is not a valid address: ${error.message}` };
+  }
+  let response;
+  try {
+    response = await fetchWithTimeout(url, { headers: { Accept: 'application/json', Authorization: `Bearer ${env.wordpressApiKey}` } }, 'The website');
+  } catch (error) {
+    return { success: false, message: `Could not reach the website at ${url}: ${error.message}` };
+  }
+  if (response.ok) return { success: true, message: `The website accepted the server's key (${url}).` };
+  const payload = await response.json().catch(() => ({}));
+  if (response.status === 401 || response.status === 403) {
+    return { success: false, message: `The website refused the server's key (HTTP ${response.status}). Check WORDPRESS_API_KEY.` };
+  }
+  if (response.status === 404 || payload.code === 'rest_no_route') {
+    return { success: false, message: `The website has no publishing route at ${url}. Check WORDPRESS_SYNC_BASE_URL.` };
+  }
+  return { success: false, message: `The website answered HTTP ${response.status} at ${url}.` };
+};
+
+/**
  * Performs a live connection test without logging or returning secrets.
  */
 export const testIntegrationConnection = async (kind) => {
   const key = normalizeIntegrationKind(kind);
   const doc = await IntegrationConfig.findOne({ key }).lean();
 
-  if (key === 'wordpress') {
-    const identifier = doc?.identifier || env.wordpressSyncBaseUrl || '';
-    let rawSecret;
-    if (doc?.encryptedSecret) {
-      try {
-        rawSecret = decryptSecret(doc.encryptedSecret) || '';
-      } catch {
-        return { success: false, message: 'Could not decrypt stored WordPress credentials' };
-      }
-    } else {
-      rawSecret = env.wordpressApiKey || '';
-    }
-
-    if (!identifier) {
-      return { success: false, message: 'WordPress site address is not configured' };
-    }
-    if (!rawSecret) {
-      return { success: false, message: 'WordPress application password is not configured' };
-    }
-
-    try {
-      const url = identifier.replace(/\/+$/, '') + '/wp-json';
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 3000);
-
-      try {
-        const response = await fetch(url, {
-          method: 'GET',
-          headers: {
-            'User-Agent': 'Kredibble-Admin-Integration-Test/1.0',
-            Authorization: `Basic ${Buffer.from(`admin:${rawSecret}`).toString('base64')}`,
-          },
-          signal: controller.signal,
-        });
-        clearTimeout(timer);
-
-        if (response.ok || response.status === 401 || response.status === 403) {
-          return { success: true, message: `Connected to WordPress endpoint successfully (HTTP ${response.status})` };
-        }
-        return { success: false, message: `WordPress endpoint returned HTTP ${response.status}` };
-      } catch (err) {
-        clearTimeout(timer);
-        return { success: false, message: `Failed to connect to WordPress site: ${err.message}` };
-      }
-    } catch (err) {
-      return { success: false, message: `Invalid WordPress site address: ${err.message}` };
-    }
-  }
+  if (key === 'wordpress') return testWordpressPublishing();
 
   if (key === 'analytics') {
     const identifier = doc?.identifier || process.env.GA4_PROPERTY_ID || env.ga4PropertyId || '';

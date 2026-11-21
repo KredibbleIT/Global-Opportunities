@@ -22,6 +22,21 @@ export const wordpressAdminBaseUrl = (rawBaseUrl) => {
   return baseUrl;
 };
 
+/**
+ * The site's REST root (`…/wp-json`), from WORDPRESS_SYNC_BASE_URL: where the plugin's public routes
+ * (`/god/v1/opportunities`) and the WordPress taxonomy routes live. A custom plugin base falls back to the site's `/wp-json`.
+ * @param {string} rawBaseUrl the configured WORDPRESS_SYNC_BASE_URL
+ * @returns {string} the REST root without a trailing slash
+ */
+export const wordpressRestRootUrl = (rawBaseUrl) => {
+  const adminBase = wordpressAdminBaseUrl(rawBaseUrl);
+  if (adminBase.endsWith(PLUGIN_ADMIN_PATH)) return adminBase.slice(0, -PLUGIN_ADMIN_PATH.length);
+  return `${new URL(adminBase).origin}/wp-json`;
+};
+
+/** True when the WordPress setting is filled in with a real value (the .env.example placeholders don't count). */
+export const isWordpressSettingSet = (value) => Boolean(value) && !String(value).includes('placeholder');
+
 const syncUrl = (resource, wordpressId) => {
   const baseUrl = wordpressAdminBaseUrl(env.wordpressSyncBaseUrl);
   return wordpressId ? `${baseUrl}/${resource}/${wordpressId}` : `${baseUrl}/${resource}`;

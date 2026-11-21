@@ -32,7 +32,9 @@ const CARDS: CardSpec[] = [
   {
     kind: "wordpress",
     title: "WordPress",
-    description: "Lets the desk publish to the website.",
+    // Publishing reads the server's WORDPRESS_SYNC_BASE_URL and WORDPRESS_API_KEY, never the values saved here; the server's
+    // test checks those (lib/integrations.js testWordpressPublishing). Until 21 Nov 2026 this card implied the opposite.
+    description: "Publishing to the website uses the address and key set on the server, and Test connection checks those. What you save here is kept for reference.",
     identifierLabel: "Site address",
     identifierPlaceholder: "https://www.example.org",
     secretTitle: "Application password",

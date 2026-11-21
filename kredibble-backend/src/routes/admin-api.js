@@ -762,6 +762,9 @@ adminApiRouter.post('/opportunities/:id/unpublish', requireAdminOrStaffAuth, req
   record.moderationStatus = 'pending';
   record.publishedAt = undefined;
   await record.save();
+  // The website shows a listing while WordPress has it as published, so it must hear about the draft too: before this,
+  // an unpublished listing stayed on the website. A failed push is saved on the record (as for any edit) and reported.
+  const sync = await syncManagedRecord('opportunities', record);
   await logActivity(req.auth.sub, 'unpublished', 'opportunities', record);
 
   await auditReq(req, {
@@ -772,7 +775,7 @@ adminApiRouter.post('/opportunities/:id/unpublish', requireAdminOrStaffAuth, req
     metadata: { title: record.title },
   });
 
-  itemResponse(res, toOpportunityAdminObject(record));
+  itemResponse(res, { ...toOpportunityAdminObject(record), sync });
 }));
 
 adminApiRouter.get('/opportunities/:id/metrics', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'view'), asyncHandler(async (req, res) => {
