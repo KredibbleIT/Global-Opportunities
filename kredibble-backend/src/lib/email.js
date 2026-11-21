@@ -41,7 +41,7 @@ export const sendVerificationEmail = async (email, code) => {
     // Resend v6 reports a rejected email (e.g. an unverified sending domain) in
     // `error` instead of throwing, so check it.
     const result = await resend.emails.send({
-      from: env.resendFromEmail || 'noreply@kredibble.app',
+      from: env.resendFromEmail || 'Global Opportunity Desk <noreply@kredibble.app>',
       to: email,
       subject: 'Your Kredibble verification code',
       html: `
@@ -85,7 +85,7 @@ export const sendPasswordResetEmail = async (email, code, ttlMinutes) => {
   }
 
   const result = await resend.emails.send({
-    from: env.resendFromEmail || 'noreply@kredibble.app',
+    from: env.resendFromEmail || 'Global Opportunity Desk <noreply@kredibble.app>',
     to: email,
     subject: 'Reset your Kredibble password',
     html: `
@@ -116,7 +116,7 @@ export const sendInviteEmail = async (email, name, inviteUrl, expiresAt) => {
 
   try {
     const result = await resend.emails.send({
-      from: env.resendFromEmail || 'noreply@kredibble.app',
+      from: env.resendFromEmail || 'Global Opportunity Desk <noreply@kredibble.app>',
       to: email,
       subject: 'You are invited to the Kredibble team',
       html: `

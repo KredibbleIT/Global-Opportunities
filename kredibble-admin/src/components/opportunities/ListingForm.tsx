@@ -23,11 +23,13 @@
  *
  * Props: listing? (the listing being edited; omit for a new one)
  */
-import { useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { LISTING_COUNTRIES } from "@/config/countries";
-import { LISTING_FORMATS, type Listing, type ListingFormat, type ListingType } from "@/lib/mock-entities";
+import { LISTING_FORMATS, type Listing, type ListingFormat, type ListingType, type StaffMember } from "@/lib/mock-entities";
 import { CATEGORY_DETAILS, FUNDING_LABELS, OPPORTUNITY_CATEGORIES } from "@/lib/opportunity-types";
 import { createListing, currentStaffMember, listingStaff, todayIsoDate, updateListing, type ListingFields } from "@/lib/services/listings";
+import { loadStaffRows, subscribeStaff } from "@/lib/services/staff";
+import { isMockMode } from "@/lib/services/mock-mode";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/form/Field";
@@ -199,8 +201,34 @@ export function validateListing(form: FormState, publishing: boolean, today = to
 }
 
 export function ListingForm({ listing }: { listing?: Listing }) {
-  const staff = useMemo(() => listingStaff(), []);
-  const me = useMemo(() => currentStaffMember(), []);
+  const [staff, setStaff] = useState<StaffMember[]>(() => listingStaff());
+  const [me, setMe] = useState<StaffMember | undefined>(() => currentStaffMember());
+
+  // T99: in real mode the reviewer/writer lists come from the team accounts API, not the
+  // sample staff seed, so Dorcas and the rest of the team actually appear.
+  useEffect(() => {
+    if (isMockMode()) return;
+    let cancelled = false;
+    loadStaffRows()
+      .then((rows) => {
+        if (cancelled) return;
+        const active = rows.filter((person) => person.status === "active");
+        setStaff(active.length ? active : rows);
+        setMe(rows.find((person) => person.isCurrentUser) ?? active[0]);
+      })
+      .catch(() => {
+        // keep the (possibly empty) current list; the page surfaces the error elsewhere
+      });
+    const unsubscribe = subscribeStaff(() => {
+      if (cancelled) return;
+      const rows = listingStaff();
+      setStaff(rows.filter((person) => person.status === "active"));
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, []);
   const initial = useMemo<FormState>(() => (listing ? fromListing(listing) : EMPTY), [listing]);
   const [form, setForm] = useState<FormState>(initial);
   const [saving, setSaving] = useState<"draft" | "publish" | null>(null);

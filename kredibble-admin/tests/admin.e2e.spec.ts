@@ -38,6 +38,8 @@ import { recordReport } from '../src/lib/services/report';
 import { buildKpiCards } from '../src/lib/services/dashboard';
 import { highlightLabels } from '../src/lib/scorecard';
 import { niceAxis } from '../src/components/ui/chart-axis';
+import { COUNTRIES, COUNTRIES_AND_WORLDWIDE, LISTING_COUNTRIES, LISTING_SCOPES } from '../src/config/countries';
+import { foldForSearch, typeaheadMatch } from '../src/lib/typeahead';
 import { SCORE_FROM_DAY } from '../src/config/scorecard';
 import { eventDayEndsAt, eventStatus } from '../src/lib/event-status';
 import { formatAttainment, isTooEarly, metricResult, compositeSeries, composite, compositeStatus, highlightOf, metricAttainment, ownedMetrics, scorecardFor, strengths, teamScorecards, teamSummary } from '../src/lib/scorecard';
@@ -218,7 +220,6 @@ test.describe('Admin Dashboard Functionality', () => {
     // "Dashboard" is labelled "Overview"; Seekers / Hirers / Opportunities queue sit inside groups.
     await expect(sidebar.getByRole('button', { name: 'Dashboard' })).toHaveAttribute('aria-expanded', 'true'); // group was "Overview"
     await expect(sidebar.getByRole('link', { name: 'Overview' })).toBeVisible(); // its child keeps the name
-    await expect(sidebar.getByRole('link', { name: 'Insights' })).toBeVisible();
     await sidebar.getByRole('button', { name: 'People' }).click();
     await expect(sidebar.getByRole('link', { name: 'Seekers' })).toBeVisible();
     await expect(sidebar.getByRole('link', { name: 'Hirers' })).toBeVisible();
@@ -581,10 +582,10 @@ test.describe('Sidebar: the active group is always open', () => {
     await expect(dashboard).toHaveAttribute('aria-expanded', 'false');
     await page.waitForTimeout(500); // nothing re-opens it on its own
 
-    await page.keyboard.press('Control+k'); // navigate within the same group (Overview -> Insights)
-    await page.keyboard.type('insights');
+    await page.keyboard.press('Control+k'); // navigate within the same group (Overview -> Monthly report)
+    await page.keyboard.type('monthly');
     await page.keyboard.press('Enter');
-    await expect(page).toHaveURL(`${BASE_URL}/analytics`);
+    await expect(page).toHaveURL(`${BASE_URL}/monthly-report`);
     await expect(dashboard).toHaveAttribute('aria-expanded', 'true'); // re-opened by the navigation
   });
 });
@@ -1957,8 +1958,8 @@ test.describe('Insights', () => {
   test('the charts follow decisions made elsewhere (shared mock store)', async ({ page }) => {
     await page.goto(`${BASE_URL}/verification/comp-2`, { timeout: 30_000 });
     await page.getByRole('button', { name: 'Approve Proof of Organization' }).click();
-    await page.locator('aside').getByRole('button', { name: 'Dashboard', exact: true }).click();
-    await page.locator('aside').getByRole('link', { name: 'Insights' }).click();
+    await page.locator('aside').getByRole('button', { name: 'Opportunities', exact: true }).click();
+    await page.locator('aside').getByRole('link', { name: 'Opportunity insights' }).click();
     const approved = page.getByRole('region', { name: 'Verification status' }).getByRole('listitem').filter({ hasText: 'Approved' });
     await expect(approved).toContainText('2'); // comp-3 was approved already; comp-2 just joined it
   });
@@ -2788,14 +2789,14 @@ test.describe('Month selector', () => {
 // Roles, permissions, gated navigation and placeholder routes
 // ---------------------------------------------------------------------------
 const NAV_ORDER = [
-  'Overview', 'Insights', 'Monthly report', 'Scorecard',
+  'Overview', 'Monthly report', 'Scorecard',
+  // Events, Grants and Programs are not in the sidebar, so the Opportunities group is the queue and the insights.
+  'Opportunities queue', 'Opportunity insights',
   'Partners', 'Network', 'Ambassadors', 'Leaderboard',
   'Seekers', 'Hirers', 'Channels', 'Database',
   'Verification queue', 'Reports queue',
   'Career resources', 'Reference data', 'Social', 'Testimonials', 'Showcase',
   'Notifications', 'Team', 'Settings',
-  // Events, Grants and Programs are not in the sidebar, so the Opportunities group has one page: a direct row, after the groups.
-  'Opportunities queue',
 ];
 const slugOf = (label: string) => label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 
@@ -4382,6 +4383,78 @@ test.describe('Opportunities queue: one list for both sources', () => {
     await expect(page.getByText('No opportunities yet')).toBeVisible();
     await page.goto(`${BASE_URL}/opportunities?state=error`);
     await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
+  });
+});
+
+test.describe('Countries (GOD-T98): every country, with the listing scopes first', () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+  const ORIGINAL_NAMES = ['Botswana', 'Cameroon', "Côte d'Ivoire", 'Egypt', 'Ethiopia', 'Ghana', 'Kenya', 'Malawi', 'Morocco', 'Mozambique', 'Namibia', 'Nigeria', 'Rwanda', 'Senegal', 'Sierra Leone', 'South Africa', 'Tanzania', 'Tunisia', 'Uganda', 'Zambia', 'Zimbabwe'];
+
+  test('the list has every country once, A to Z, keeping the spellings already stored on records', () => {
+    expect(COUNTRIES).toHaveLength(199); // 193 UN members, 2 observer states, Hong Kong, Kosovo, Macao, Taiwan
+    expect(new Set(COUNTRIES).size).toBe(COUNTRIES.length);
+    expect([...COUNTRIES].sort((a, b) => a.localeCompare(b, 'en'))).toEqual([...COUNTRIES]);
+    for (const name of [...ORIGINAL_NAMES, 'United Kingdom', 'United States', 'China', 'India', 'Brazil', 'Hong Kong', 'Türkiye']) expect(COUNTRIES).toContain(name);
+  });
+
+  test('listings and programs put the scopes first; partners and ambassadors get Worldwide only; countries carry no scope', () => {
+    expect([...LISTING_SCOPES]).toEqual(['Worldwide', 'Online Global', 'Multiple countries']);
+    expect([...LISTING_COUNTRIES]).toEqual([...LISTING_SCOPES, ...COUNTRIES]);
+    expect([...COUNTRIES_AND_WORLDWIDE]).toEqual(['Worldwide', ...COUNTRIES]);
+    for (const scope of LISTING_SCOPES) expect(COUNTRIES).not.toContain(scope);
+  });
+
+  test('type-ahead: several letters find one option, accents are ignored, the same letter steps on and wraps round', () => {
+    const labels: string[] = [...LISTING_COUNTRIES];
+    const at = (name: string) => labels.indexOf(name);
+    expect(typeaheadMatch(labels, 'united k', 0)).toBe(at('United Kingdom'));
+    expect(typeaheadMatch(labels, 'cote', 0)).toBe(at("Côte d'Ivoire"));
+    expect(typeaheadMatch(labels, foldForSearch('SÃO'), 0)).toBe(at('São Tomé and Príncipe'));
+    expect(typeaheadMatch(labels, 'tur', 0)).toBe(at('Türkiye'));
+    expect(typeaheadMatch(labels, 's', 0)).toBe(at('Saint Kitts and Nevis'));
+    expect(typeaheadMatch(labels, 'ss', at('Saint Kitts and Nevis'))).toBe(at('Saint Lucia'));
+    expect(typeaheadMatch(labels, 'z', at('Zimbabwe'))).toBe(at('Zambia'));
+    expect(typeaheadMatch(labels, 'sou', at('South Africa'))).toBe(at('South Africa')); // a longer search stays put while it matches
+    expect(typeaheadMatch(labels, 'xyz', 0)).toBeUndefined();
+    expect(typeaheadMatch(labels, '', 0)).toBeUndefined();
+  });
+
+  /** The text of the option the Country combobox highlights. */
+  const highlighted = async (page: import('@playwright/test').Page) => {
+    const id = await page.getByRole('combobox', { name: 'Country' }).getAttribute('aria-activedescendant');
+    return id ? page.locator(`[id="${id}"]`) : null;
+  };
+
+  test('the listing form: the scopes come first, then every country; typing "united k" then Enter chooses United Kingdom', async ({ page }) => {
+    await page.goto(`${BASE_URL}/opportunities/new`, { timeout: 30_000 });
+    const country = page.getByRole('combobox', { name: 'Country' });
+    await country.click();
+    const options = page.getByRole('listbox').getByRole('option');
+    await expect(options).toHaveCount(LISTING_COUNTRIES.length);
+    await expect(options.nth(0)).toHaveText('Worldwide');
+    await expect(options.nth(1)).toHaveText('Online Global');
+    await expect(options.nth(2)).toHaveText('Multiple countries');
+    await expect(options.nth(3)).toHaveText('Afghanistan');
+
+    await page.keyboard.type('united k');
+    await expect.poll(async () => (await highlighted(page))?.innerText()).toBe('United Kingdom');
+    await expect((await highlighted(page))!).toBeInViewport(); // the long list scrolled to it
+    await page.keyboard.press('Enter');
+    await expect(country).toHaveText('United Kingdom');
+
+    // Reopening lands on the chosen country, in view.
+    await country.click();
+    await expect((await highlighted(page))!).toHaveText('United Kingdom');
+    await expect((await highlighted(page))!).toBeInViewport();
+  });
+
+  test('a person record offers countries only: no Worldwide, Online Global or Multiple countries', async ({ page }) => {
+    await page.goto(`${BASE_URL}/database/new`, { timeout: 30_000 });
+    await page.getByRole('combobox', { name: 'Country' }).click();
+    const options = page.getByRole('listbox').getByRole('option');
+    await expect(options).toHaveCount(COUNTRIES.length);
+    await expect(options.first()).toHaveText('Afghanistan');
+    for (const scope of LISTING_SCOPES) await expect(page.getByRole('option', { name: scope, exact: true })).toHaveCount(0);
   });
 });
 
@@ -6999,19 +7072,28 @@ test.describe('Network: the maths and the rules (no browser)', () => {
       name: 'Rule Test', email: 'rule.test@students.example.edu', country: 'Ghana', city: 'Accra', memberType: 'student' as const, campus: 'KNUST',
       tier: 'ambassador' as const, status: 'active' as const, trained: false,
     };
-    const created = createAmbassador(fields);
-    expect(created.referralCode).toMatch(/^GOD-[2-9A-HJ-NP-Z]{6}$/);
-    const updated = updateAmbassador(created.id, { ...fields, name: 'Rule Test Renamed', tier: 'lead' });
-    expect(updated?.referralCode).toBe(created.referralCode);
-    expect(updated?.name).toBe('Rule Test Renamed');
-    expect(updated?.joinedAt).toBe(created.joinedAt);
-    const log = logAmplification(created.id, 'whatsapp', '  a note  ');
-    expect(log).toMatchObject({ ambassadorId: created.id, channel: 'whatsapp', note: 'a note', clicks: 0 });
-    const logs = getMockCollection('amplificationLogs');
-    expect(ambassadorStats(created.id, logs, [], monthOf(log.at))).toEqual({ shares: 1, clicks: 0, signups: 0 });
-    // going dormant is dated; coming back clears it
-    expect(updateAmbassador(created.id, { ...fields, status: 'dormant' })?.dormantSince).toBeDefined();
-    expect(updateAmbassador(created.id, { ...fields, status: 'active' })?.dormantSince).toBeUndefined();
+    // This test writes the worker's own mock store. Put it back afterwards: later tests in the same worker compute their
+    // expected figures from that store (the Monthly report's "New ambassadors" counted this extra person this month).
+    const ambassadorsBefore = getMockCollection('ambassadors');
+    const logsBefore = getMockCollection('amplificationLogs');
+    try {
+      const created = createAmbassador(fields);
+      expect(created.referralCode).toMatch(/^GOD-[2-9A-HJ-NP-Z]{6}$/);
+      const updated = updateAmbassador(created.id, { ...fields, name: 'Rule Test Renamed', tier: 'lead' });
+      expect(updated?.referralCode).toBe(created.referralCode);
+      expect(updated?.name).toBe('Rule Test Renamed');
+      expect(updated?.joinedAt).toBe(created.joinedAt);
+      const log = logAmplification(created.id, 'whatsapp', '  a note  ');
+      expect(log).toMatchObject({ ambassadorId: created.id, channel: 'whatsapp', note: 'a note', clicks: 0 });
+      const logs = getMockCollection('amplificationLogs');
+      expect(ambassadorStats(created.id, logs, [], monthOf(log.at))).toEqual({ shares: 1, clicks: 0, signups: 0 });
+      // going dormant is dated; coming back clears it
+      expect(updateAmbassador(created.id, { ...fields, status: 'dormant' })?.dormantSince).toBeDefined();
+      expect(updateAmbassador(created.id, { ...fields, status: 'active' })?.dormantSince).toBeUndefined();
+    } finally {
+      setMockCollection('ambassadors', ambassadorsBefore, { always: true });
+      setMockCollection('amplificationLogs', logsBefore, { always: true });
+    }
   });
 });
 
@@ -13336,8 +13418,14 @@ test.describe('Monthly report: Download PDF and printing (mock mode)', () => {
     // another month of the partner report is another report; pick it with the keyboard: clicking the
     // option flakes (the open list remounts while the report loads after the template navigation).
     await page.getByRole('link', { name: 'Partner report' }).click();
+    // Both templates have a Month control. Wait until the partner report has replaced the team report: a click that
+    // lands before that opens the team page's list, which then unmounts with its page and the keys go nowhere.
+    await expect(page).toHaveURL(/\/monthly-report\/partner(\?|$)/);
+    await expect(page.getByTestId('partner-report')).toBeVisible();
+    await expect(page.getByTestId('team-report')).toHaveCount(0);
     const monthCombo = page.getByRole('combobox', { name: 'Month' });
     await monthCombo.click();
+    await expect(monthCombo).toHaveAttribute('aria-expanded', 'true');
     // Options are newest first with the current month selected: two downs land three entries up (option index 3).
     await page.keyboard.press('ArrowDown');
     await page.keyboard.press('ArrowDown');

@@ -52,7 +52,6 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: LayoutDashboard,
     children: [
       { label: "Overview", href: "/", icon: LayoutDashboard, screen: "overview" },
-      { label: "Insights", href: "/analytics", icon: BarChart3, screen: "insights" },
       { label: "Monthly report", href: "/monthly-report", icon: CalendarRange, screen: "monthly_report" },
       // "My scorecard" for most roles; the same screen has a "Team" tab for the desk lead and the super admin.
       { label: "Scorecard", href: "/scorecard", icon: Target, screen: "my_scorecard" },
@@ -63,6 +62,7 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: Briefcase,
     children: [
       { label: "Opportunities queue", href: "/opportunities", icon: Briefcase, screen: "opportunities_queue", accent: "orange" },
+      { label: "Opportunity insights", href: "/analytics", icon: BarChart3, screen: "insights" },
       // Not in the sidebar: events and grants that people post are in the queue, under its "Events & Competitions" and "Awards, Grants & Funding" tabs.
       { label: "Events", href: "/events", icon: CalendarDays, screen: "events", hidden: true },
       { label: "Grants", href: "/grants", icon: HandCoins, screen: "grants", hidden: true },

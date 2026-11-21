@@ -17,7 +17,7 @@
  * Props: partner? (the partner being edited; omit for a new one)
  */
 import { useMemo, useRef, useState, type FormEvent } from "react";
-import { LISTING_COUNTRIES } from "@/config/countries";
+import { COUNTRIES_AND_WORLDWIDE } from "@/config/countries";
 import { PARTNER_TYPES, PARTNER_TYPE_LABELS, type Partner, type PartnerType } from "@/lib/mock-entities";
 import { defaultOwnerId, loadPartnerOwnerOptions, savePartner, type PartnerFields } from "@/lib/services/partners";
 import { isMockMode } from "@/lib/services/mock-mode";
@@ -37,7 +37,7 @@ import { useToast } from "@/components/ui/Toast";
 const LIST_HREF = "/partners";
 
 const TYPE_OPTIONS: SelectOption<PartnerType>[] = PARTNER_TYPES.map((value) => ({ value, label: PARTNER_TYPE_LABELS[value] }));
-const COUNTRY_OPTIONS: SelectOption<string>[] = LISTING_COUNTRIES.map((country) => ({ value: country, label: country }));
+const COUNTRY_OPTIONS: SelectOption<string>[] = COUNTRIES_AND_WORLDWIDE.map((country) => ({ value: country, label: country }));
 
 interface FormState {
   name: string;
