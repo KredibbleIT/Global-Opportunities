@@ -21,7 +21,10 @@
  * - focus moves into the sheet and is trapped there (Tab cycles between the close button and the list)
  *
  * Keyboard (both): Arrow Up / Down, Home, End move the highlight; Enter / Space choose it; Esc closes and returns
- * focus to the trigger; typing a letter jumps to the next option that starts with it. A click outside closes
+ * focus to the trigger. Typing jumps to the option that starts with the typed letters ("united k" finds United Kingdom,
+ * accents ignored, so "cote" finds Côte d'Ivoire); the same letter again steps to the next option starting with it, and a
+ * pause of a second starts a new search. While a search is going, Space is part of it rather than choosing. The
+ * highlighted option is kept scrolled into view (the list opens on the chosen one). A click outside closes
  * the dropdown. The chosen option has purple text, semibold weight and a check mark on the right.
  *
  * Props: options [{ value, label, description?, badge? }], value, onChange(value), placeholder?, onBlur?,
@@ -33,6 +36,7 @@ import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } f
 import { createPortal } from "react-dom";
 import { Check, ChevronDown, X, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { foldForSearch, typeaheadMatch } from "@/lib/typeahead";
 import { useMediaQuery } from "@/lib/use-media-query";
 import { FLOATING_Z, useFloatingPanel } from "../use-floating-panel";
 import { CONTROL_CLASSES, useFieldControlProps } from "./Field";
@@ -58,6 +62,8 @@ export interface SelectProps<T extends string> {
 }
 
 const PANEL_MAX_HEIGHT_PX = 320;
+/** Typed letters within this long of each other make one search ("uni" then "ted"); a longer pause starts over. */
+const TYPEAHEAD_RESET_MS = 1000;
 
 /** Stops the page behind from scrolling while `locked` (keeps the layout width, so nothing jumps). */
 function useScrollLock(locked: boolean) {
@@ -95,6 +101,7 @@ export function Select<T extends string>({
   const sheetCloseRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  const typeahead = useRef({ query: "", at: 0 });
 
   const isPhone = useMediaQuery("(max-width: 639px)");
   const asSheet = isPhone && !!sheetTitle;
@@ -107,10 +114,39 @@ export function Select<T extends string>({
 
   useScrollLock(open);
 
+  // The highlighted option is kept in view, so the list opens on the chosen one and arrows and type-ahead never move
+  // the highlight out of sight. The dropdown waits until it has been placed; the sheet is placed at once. A highlight
+  // that follows the pointer does not scroll: resting on a half-hidden row at the edge would otherwise keep scrolling.
+  const placed = asSheet || position !== null;
+  const scrollToActive = useRef(true);
+  useEffect(() => {
+    if (!open || !placed || !scrollToActive.current) return;
+    document.getElementById(`${listId}-option-${active}`)?.scrollIntoView({ block: "nearest" });
+  }, [open, placed, active, listId]);
+
   const openList = () => {
+    scrollToActive.current = true;
+    typeahead.current = { query: "", at: 0 };
     setActive(selectedIndex >= 0 ? selectedIndex : 0);
     setOpen(true);
   };
+
+  /** Adds `key` to the type-ahead search (a fresh one after a pause) and moves the highlight to the match. */
+  const typeToFind = (key: string) => {
+    const now = Date.now();
+    const previous = now - typeahead.current.at < TYPEAHEAD_RESET_MS ? typeahead.current.query : "";
+    const query = previous + foldForSearch(key);
+    typeahead.current = { query, at: now };
+    const next = typeaheadMatch(
+      options.map((option) => option.label),
+      query,
+      active,
+    );
+    if (next !== undefined) setActive(next);
+  };
+
+  /** True while a type-ahead search is going: Space then belongs to it ("united k") instead of choosing. */
+  const searching = () => typeahead.current.query !== "" && Date.now() - typeahead.current.at < TYPEAHEAD_RESET_MS;
 
   /** Close and hand focus back to the trigger. */
   const close = useCallback(() => {
@@ -141,6 +177,7 @@ export function Select<T extends string>({
 
   /** The keys shared by the dropdown and the sheet. Returns true when the key was handled. */
   const handleListKey = (event: KeyboardEvent): boolean => {
+    scrollToActive.current = true;
     switch (event.key) {
       case "ArrowDown":
         setActive((index) => Math.min(options.length - 1, index + 1));
@@ -154,8 +191,11 @@ export function Select<T extends string>({
       case "End":
         setActive(options.length - 1);
         return true;
-      case "Enter":
       case " ":
+        if (searching()) typeToFind(" ");
+        else choose(active);
+        return true;
+      case "Enter":
         choose(active);
         return true;
       case "Escape":
@@ -163,13 +203,8 @@ export function Select<T extends string>({
         close();
         return true;
       default:
-        if (event.key.length === 1 && !event.ctrlKey && !event.metaKey) {
-          const letter = event.key.toLowerCase();
-          const ordered = [...options.keys()];
-          const next = [...ordered.slice(active + 1), ...ordered.slice(0, active + 1)].find((index) =>
-            options[index].label.toLowerCase().startsWith(letter),
-          );
-          if (next !== undefined) setActive(next);
+        if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+          typeToFind(event.key);
           return true;
         }
         return false;
@@ -213,7 +248,10 @@ export function Select<T extends string>({
           id={optionId(index)}
           role="option"
           aria-selected={isSelected}
-          onPointerEnter={() => setActive(index)}
+          onPointerEnter={() => {
+            scrollToActive.current = false;
+            setActive(index);
+          }}
           // Dropdown: mousedown (not click) so the trigger keeps focus and blur does not fire first.
           onMouseDown={
             asSheet

@@ -17,7 +17,7 @@
  */
 import Link from "next/link";
 import { useMemo, useRef, useState, type FormEvent } from "react";
-import { LISTING_COUNTRIES } from "@/config/countries";
+import { COUNTRIES } from "@/config/countries";
 import { Card } from "@/components/ui/Card";
 import { Field } from "@/components/ui/form/Field";
 import { FormSection } from "@/components/ui/form/FormSection";
@@ -39,7 +39,7 @@ import { useAsync } from "@/lib/use-async";
 const LIST_HREF = "/database";
 const NONE = "none";
 
-const COUNTRY_OPTIONS: SelectOption<string>[] = LISTING_COUNTRIES.filter((country) => country !== "Worldwide").map((country) => ({ value: country, label: country }));
+const COUNTRY_OPTIONS: SelectOption<string>[] = COUNTRIES.map((country) => ({ value: country, label: country }));
 const SOURCE_OPTIONS: SelectOption<RecordSource>[] = RECORD_SOURCES.map((value) => ({ value, label: RECORD_SOURCE_LABELS[value] }));
 
 export interface RecordFormState {

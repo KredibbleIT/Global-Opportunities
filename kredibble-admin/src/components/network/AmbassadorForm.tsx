@@ -19,7 +19,7 @@
  * Props: ambassador? (the ambassador being edited; omit for a new one)
  */
 import { useMemo, useRef, useState, type FormEvent } from "react";
-import { LISTING_COUNTRIES } from "@/config/countries";
+import { COUNTRIES_AND_WORLDWIDE } from "@/config/countries";
 import {
   AMBASSADOR_STATUSES,
   AMBASSADOR_TIERS,
@@ -52,7 +52,7 @@ import { getStatusMeta } from "@/lib/status-map";
 const LIST_HREF = "/network";
 const NONE = "none";
 
-const COUNTRY_OPTIONS: SelectOption<string>[] = LISTING_COUNTRIES.map((country) => ({ value: country, label: country }));
+const COUNTRY_OPTIONS: SelectOption<string>[] = COUNTRIES_AND_WORLDWIDE.map((country) => ({ value: country, label: country }));
 const MEMBER_OPTIONS: SelectOption<MemberType>[] = MEMBER_TYPES.map((value) => ({ value, label: MEMBER_TYPE_LABELS[value] }));
 const TIER_OPTIONS: SelectOption<AmbassadorTier>[] = AMBASSADOR_TIERS.map((value) => ({ value, label: AMBASSADOR_TIER_LABELS[value] }));
 const STATUS_OPTIONS: SelectOption<AmbassadorStatus>[] = AMBASSADOR_STATUSES.map((value) => ({ value, label: getStatusMeta(value).label }));

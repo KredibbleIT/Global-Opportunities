@@ -38,6 +38,8 @@ import { recordReport } from '../src/lib/services/report';
 import { buildKpiCards } from '../src/lib/services/dashboard';
 import { highlightLabels } from '../src/lib/scorecard';
 import { niceAxis } from '../src/components/ui/chart-axis';
+import { COUNTRIES, COUNTRIES_AND_WORLDWIDE, LISTING_COUNTRIES, LISTING_SCOPES } from '../src/config/countries';
+import { foldForSearch, typeaheadMatch } from '../src/lib/typeahead';
 import { SCORE_FROM_DAY } from '../src/config/scorecard';
 import { eventDayEndsAt, eventStatus } from '../src/lib/event-status';
 import { formatAttainment, isTooEarly, metricResult, compositeSeries, composite, compositeStatus, highlightOf, metricAttainment, ownedMetrics, scorecardFor, strengths, teamScorecards, teamSummary } from '../src/lib/scorecard';
@@ -4378,6 +4380,78 @@ test.describe('Opportunities queue: one list for both sources', () => {
     await expect(page.getByText('No opportunities yet')).toBeVisible();
     await page.goto(`${BASE_URL}/opportunities?state=error`);
     await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
+  });
+});
+
+test.describe('Countries (GOD-T98): every country, with the listing scopes first', () => {
+  test.use({ viewport: { width: 1440, height: 900 } });
+  const ORIGINAL_NAMES = ['Botswana', 'Cameroon', "Côte d'Ivoire", 'Egypt', 'Ethiopia', 'Ghana', 'Kenya', 'Malawi', 'Morocco', 'Mozambique', 'Namibia', 'Nigeria', 'Rwanda', 'Senegal', 'Sierra Leone', 'South Africa', 'Tanzania', 'Tunisia', 'Uganda', 'Zambia', 'Zimbabwe'];
+
+  test('the list has every country once, A to Z, keeping the spellings already stored on records', () => {
+    expect(COUNTRIES).toHaveLength(199); // 193 UN members, 2 observer states, Hong Kong, Kosovo, Macao, Taiwan
+    expect(new Set(COUNTRIES).size).toBe(COUNTRIES.length);
+    expect([...COUNTRIES].sort((a, b) => a.localeCompare(b, 'en'))).toEqual([...COUNTRIES]);
+    for (const name of [...ORIGINAL_NAMES, 'United Kingdom', 'United States', 'China', 'India', 'Brazil', 'Hong Kong', 'Türkiye']) expect(COUNTRIES).toContain(name);
+  });
+
+  test('listings and programs put the scopes first; partners and ambassadors get Worldwide only; countries carry no scope', () => {
+    expect([...LISTING_SCOPES]).toEqual(['Worldwide', 'Online Global', 'Multiple countries']);
+    expect([...LISTING_COUNTRIES]).toEqual([...LISTING_SCOPES, ...COUNTRIES]);
+    expect([...COUNTRIES_AND_WORLDWIDE]).toEqual(['Worldwide', ...COUNTRIES]);
+    for (const scope of LISTING_SCOPES) expect(COUNTRIES).not.toContain(scope);
+  });
+
+  test('type-ahead: several letters find one option, accents are ignored, the same letter steps on and wraps round', () => {
+    const labels: string[] = [...LISTING_COUNTRIES];
+    const at = (name: string) => labels.indexOf(name);
+    expect(typeaheadMatch(labels, 'united k', 0)).toBe(at('United Kingdom'));
+    expect(typeaheadMatch(labels, 'cote', 0)).toBe(at("Côte d'Ivoire"));
+    expect(typeaheadMatch(labels, foldForSearch('SÃO'), 0)).toBe(at('São Tomé and Príncipe'));
+    expect(typeaheadMatch(labels, 'tur', 0)).toBe(at('Türkiye'));
+    expect(typeaheadMatch(labels, 's', 0)).toBe(at('Saint Kitts and Nevis'));
+    expect(typeaheadMatch(labels, 'ss', at('Saint Kitts and Nevis'))).toBe(at('Saint Lucia'));
+    expect(typeaheadMatch(labels, 'z', at('Zimbabwe'))).toBe(at('Zambia'));
+    expect(typeaheadMatch(labels, 'sou', at('South Africa'))).toBe(at('South Africa')); // a longer search stays put while it matches
+    expect(typeaheadMatch(labels, 'xyz', 0)).toBeUndefined();
+    expect(typeaheadMatch(labels, '', 0)).toBeUndefined();
+  });
+
+  /** The text of the option the Country combobox highlights. */
+  const highlighted = async (page: import('@playwright/test').Page) => {
+    const id = await page.getByRole('combobox', { name: 'Country' }).getAttribute('aria-activedescendant');
+    return id ? page.locator(`[id="${id}"]`) : null;
+  };
+
+  test('the listing form: the scopes come first, then every country; typing "united k" then Enter chooses United Kingdom', async ({ page }) => {
+    await page.goto(`${BASE_URL}/opportunities/new`, { timeout: 30_000 });
+    const country = page.getByRole('combobox', { name: 'Country' });
+    await country.click();
+    const options = page.getByRole('listbox').getByRole('option');
+    await expect(options).toHaveCount(LISTING_COUNTRIES.length);
+    await expect(options.nth(0)).toHaveText('Worldwide');
+    await expect(options.nth(1)).toHaveText('Online Global');
+    await expect(options.nth(2)).toHaveText('Multiple countries');
+    await expect(options.nth(3)).toHaveText('Afghanistan');
+
+    await page.keyboard.type('united k');
+    await expect.poll(async () => (await highlighted(page))?.innerText()).toBe('United Kingdom');
+    await expect((await highlighted(page))!).toBeInViewport(); // the long list scrolled to it
+    await page.keyboard.press('Enter');
+    await expect(country).toHaveText('United Kingdom');
+
+    // Reopening lands on the chosen country, in view.
+    await country.click();
+    await expect((await highlighted(page))!).toHaveText('United Kingdom');
+    await expect((await highlighted(page))!).toBeInViewport();
+  });
+
+  test('a person record offers countries only: no Worldwide, Online Global or Multiple countries', async ({ page }) => {
+    await page.goto(`${BASE_URL}/database/new`, { timeout: 30_000 });
+    await page.getByRole('combobox', { name: 'Country' }).click();
+    const options = page.getByRole('listbox').getByRole('option');
+    await expect(options).toHaveCount(COUNTRIES.length);
+    await expect(options.first()).toHaveText('Afghanistan');
+    for (const scope of LISTING_SCOPES) await expect(page.getByRole('option', { name: scope, exact: true })).toHaveCount(0);
   });
 });
 
