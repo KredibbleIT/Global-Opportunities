@@ -3,9 +3,40 @@ import { fetchWithTimeout } from './fetch.js';
 
 const configured = (value) => value && !value.includes('placeholder');
 
+/** Where the website's G.O.D plugin serves its admin routes, under the site's REST root. */
+const PLUGIN_ADMIN_PATH = '/god/v1/admin';
+
+/**
+ * The base URL of the plugin's admin routes (`…/wp-json/god/v1/admin`), from WORDPRESS_SYNC_BASE_URL.
+ * GOD-T95: production held the site's REST root (`https://globalopportunitydesk.com/wp-json`), so every push went to
+ * `/wp-json/opportunities` and WordPress answered "No route was found". The REST root and the bare site address now
+ * get the plugin path added; the full plugin base, or any other path, is used as written.
+ * @param {string} rawBaseUrl the configured WORDPRESS_SYNC_BASE_URL
+ * @returns {string} the base without a trailing slash
+ */
+export const wordpressAdminBaseUrl = (rawBaseUrl) => {
+  const baseUrl = String(rawBaseUrl).trim().replace(/\/+$/, '');
+  if (baseUrl.endsWith(PLUGIN_ADMIN_PATH)) return baseUrl;
+  if (baseUrl.endsWith('/wp-json')) return `${baseUrl}${PLUGIN_ADMIN_PATH}`;
+  if (new URL(baseUrl).pathname === '/') return `${baseUrl}/wp-json${PLUGIN_ADMIN_PATH}`;
+  return baseUrl;
+};
+
 const syncUrl = (resource, wordpressId) => {
-  const baseUrl = env.wordpressSyncBaseUrl.replace(/\/$/, '');
+  const baseUrl = wordpressAdminBaseUrl(env.wordpressSyncBaseUrl);
   return wordpressId ? `${baseUrl}/${resource}/${wordpressId}` : `${baseUrl}/${resource}`;
+};
+
+/**
+ * The error saved on a record when WordPress refuses a push. A missing route means the URL is wrong rather than the
+ * record, so it names the URL and the setting to check instead of only WordPress's generic text.
+ */
+const wordpressErrorMessage = (url, response, payload) => {
+  const message = payload.message || `WordPress returned ${response.status}`;
+  if (payload.code === 'rest_no_route') {
+    return `${message} (${url}). Check WORDPRESS_SYNC_BASE_URL: it should be the plugin base, such as https://globalopportunitydesk.com/wp-json${PLUGIN_ADMIN_PATH}.`;
+  }
+  return message;
 };
 
 const recordPayload = (document) => {
@@ -26,7 +57,8 @@ export const syncToWordpress = async (resource, document) => {
   }
 
   try {
-    const response = await fetchWithTimeout(syncUrl(resource, document.wordpressSync?.wordpressId), {
+    const url = syncUrl(resource, document.wordpressSync?.wordpressId);
+    const response = await fetchWithTimeout(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${env.wordpressApiKey}`,
@@ -36,7 +68,7 @@ export const syncToWordpress = async (resource, document) => {
       body: JSON.stringify(recordPayload(document)),
     }, 'WordPress sync');
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(payload.message || `WordPress returned ${response.status}`);
+    if (!response.ok) throw new Error(wordpressErrorMessage(url, response, payload));
     const wordpressId = payload.wordpressId || payload.id || payload.data?.wordpressId || payload.data?.id || document.wordpressSync?.wordpressId;
     if (!wordpressId) throw new Error('WordPress sync response did not include a WordPress ID');
     await saveSyncState(document, {
