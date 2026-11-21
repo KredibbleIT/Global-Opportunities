@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { previewText } from '../../lib/rich-text';
 import { Colors } from '../../constants/design';
 import { View, Text, TouchableOpacity, ScrollView, TextInput, KeyboardAvoidingView, Platform, StyleSheet, Keyboard, Image } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -238,7 +239,7 @@ export default function AssistantScreen() {
                               {job.company}
                             </Text>
                             <Text numberOfLines={2} style={styles.jobDesc} className="font-sans">
-                              {job.description}
+                              {previewText(job.description)}
                             </Text>
                           </View>
                         </View>

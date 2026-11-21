@@ -34,6 +34,7 @@ import { InfoCard } from "@/components/detail/InfoCard";
 import { Button, buttonClasses } from "@/components/ui/Button";
 import { useConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { KeyValueList } from "@/components/ui/KeyValueList";
+import { RichText } from "@/components/ui/RichText";
 import { StatusBadge } from "@/components/ui/StatusBadge";
 import { TagPill } from "@/components/ui/TagPill";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -143,17 +144,17 @@ export function CuratedListingDetail({ id }: { id: string }) {
         main={
           <>
             <InfoCard title="Description">
-              <p className="input-text whitespace-pre-line text-ink">{listing.description}</p>
+              <RichText text={listing.description} testId="listing-description" />
             </InfoCard>
 
             {listing.eligibility && (
               <InfoCard title="Who can apply">
-                <p className="input-text whitespace-pre-line text-ink">{listing.eligibility}</p>
+                <RichText text={listing.eligibility} testId="listing-eligibility" />
               </InfoCard>
             )}
             {listing.benefits && (
               <InfoCard title="What it offers">
-                <p className="input-text whitespace-pre-line text-ink">{listing.benefits}</p>
+                <RichText text={listing.benefits} testId="listing-benefits" />
               </InfoCard>
             )}
 

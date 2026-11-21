@@ -4,8 +4,15 @@ import { ROLE_IDS, normalizeLegacyRole } from '../lib/permissions.js';
 
 const normalizeEmail = (email) => String(email).trim().toLowerCase();
 
+export const GENDERS = ['female', 'male', 'other', 'prefer_not_to_say'];
+
 const userSchema = new mongoose.Schema({
   name: { type: String, required: true },
+  // Collected at sign-up. Private: only the person and admins ever see them, and they are cleared when the account is deleted.
+  firstName: { type: String, trim: true },
+  lastName: { type: String, trim: true },
+  dateOfBirth: { type: Date },
+  gender: { type: String, enum: GENDERS },
   email: { type: String, required: true, unique: true, index: true },
   emailNormalized: { 
     type: String, 

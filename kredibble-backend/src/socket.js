@@ -137,6 +137,11 @@ export const emitToRoom = (room, event, payload) => {
   if (io) io.to(room).emit(event, payload);
 };
 
+/** Emit to every connected (signed-in) socket if realtime is running. Only for payloads that are safe for anyone signed in to read (an id, never content). */
+export const emitToAll = (event, payload) => {
+  if (io) io.emit(event, payload);
+};
+
 /** Remove every socket of a user from a channel room (used when a member is removed or banned). */
 export const evictFromChannelRoom = (channelId, userId) => {
   if (io && channelId && userId) io.in(`user_${userId}`).socketsLeave(`channel_${channelId}`);

@@ -140,7 +140,7 @@ import { notifyUser } from '../lib/user-notify.js';
 import { pushInBackground, pushNotification } from '../lib/push.js';
 import { rejectionNotice, rejectionReasonLabel } from '../lib/opportunity-rejection.js';
 import logger from '../lib/logger.js';
-import { evictFromChannelRoom } from '../socket.js';
+import { emitToAll, evictFromChannelRoom } from '../socket.js';
 import { toRequestResponse } from './ambassador.js';
 import { moveUserSegment, normalizeSegments, GENERAL_SEGMENT } from '../lib/segments.js';
 import { retrySyncEvent } from '../lib/website-sync.js';
@@ -2014,8 +2014,8 @@ adminApiRouter.post('/ambassador-requests/:id/approve', requireAdminScreen('netw
   await notifyUser(user._id, {
     title: 'Ambassador request approved',
     message: channel
-      ? `Congratulations! Your request to become a Global Opportunity Desk ambassador has been approved. Welcome to the team! You have been added to "${channel.name}" in Community, where our team will share next steps.`
-      : 'Congratulations! Your request to become a Global Opportunity Desk ambassador has been approved. Welcome to the team! Our team will be in touch shortly with next steps.',
+      ? `Congratulations! Your request to become a Global Opportunity Desk’s ambassador has been approved. Welcome to the team! You have been added to "${channel.name}" in Community, where our team will share next steps.`
+      : 'Congratulations! Your request to become a Global Opportunity Desk’s ambassador has been approved. Welcome to the team! Our team will be in touch shortly with next steps.',
     type: 'ambassador',
     priority: 'high',
   });
@@ -2042,7 +2042,7 @@ adminApiRouter.post('/ambassador-requests/:id/reject', requireAdminScreen('netwo
 
   await notifyUser(request.userId, {
     title: 'Ambassador request update',
-    message: 'Thank you for your interest in becoming a Global Opportunity Desk ambassador. We have carefully reviewed your request and are unable to approve it at this time. You are welcome to apply again in a few days, and we encourage you to keep contributing to the Kredibble community.',
+    message: 'Thank you for your interest in becoming a Global Opportunity Desk’s ambassador. We have carefully reviewed your request and are unable to approve it at this time. You are welcome to apply again in a few days, and we encourage you to keep contributing to the Global Opportunity Desk community.',
     type: 'ambassador',
   });
   await auditReq(req, {
@@ -2093,7 +2093,7 @@ adminApiRouter.post('/ambassador-requests/:id/revoke', requireAdminScreen('netwo
 
   await notifyUser(request.userId, {
     title: 'Ambassador status update',
-    message: 'Thank you for your time as a Global Opportunity Desk ambassador. Your ambassador status has now ended, and your access to the ambassador group has been removed. We appreciate your contribution and you are welcome to apply again in future.',
+    message: 'Thank you for your time as a Global Opportunity Desk’s ambassador. Your ambassador status has now ended, and your access to the ambassador group has been removed. We appreciate your contribution and you are welcome to apply again in future.',
     type: 'ambassador',
   });
   await auditReq(req, {
@@ -5083,12 +5083,20 @@ adminApiRouter.delete('/community/channels/:id', requireAdminOrStaffAuth, requir
   channel.status = 'removed';
   await channel.save();
 
+  // The channel is gone for everyone in the app (lists and direct links answer "not found"). People who have its live chat open are taken out
+  // of it now, so nothing more is delivered to them.
+  const members = await CommunityMembership.find({ channelId: channel._id, status: 'active' }).select('userId').lean();
+  // Tell every connected app now, so the channel leaves their lists and anyone inside it is taken out at once (only the id is sent). This goes
+  // first: the eviction below takes the members out of the channel's room.
+  emitToAll('channel_removed', { channelId: String(channel._id) });
+  for (const member of members) evictFromChannelRoom(channel._id, member.userId);
+
   await auditReq(req, {
     action: 'channel.remove',
     resourceType: 'Channel',
     resourceId: channel._id,
     outcome: 'success',
-    metadata: { name: channel.name },
+    metadata: { name: channel.name, createdBy: channel.createdBy ? String(channel.createdBy) : undefined, members: members.length },
   });
 
   res.json({ data: { id: String(channel._id), status: 'removed' } });

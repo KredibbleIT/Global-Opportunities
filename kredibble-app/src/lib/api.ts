@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import { File } from 'expo-file-system';
 
 export type AuthRole = 'seeker' | 'hirer' | 'admin';
 
@@ -73,9 +74,30 @@ export type Grant = {
   datePosted?: string;
 };
 
+/** One step of "Complete your profile". The server decides which steps exist and which are done. */
+export type ProfileStep = { id: string; label: string; done: boolean };
+
+/** How much of their profile a person has filled in (null for accounts with no profile, such as admins). */
+export type ProfileCompletion = {
+  percent: number;
+  complete: boolean;
+  steps: ProfileStep[];
+  /** Ids of the steps still to do. */
+  missing: string[];
+};
+
+export type Gender = 'female' | 'male' | 'other' | 'prefer_not_to_say';
+
 export type AuthUser = {
   id: string;
   name: string;
+  firstName?: string;
+  lastName?: string;
+  /** ISO date (the time part is always midnight UTC). */
+  dateOfBirth?: string;
+  gender?: Gender;
+  avatarUrl?: string | null;
+  profileCompletion?: ProfileCompletion | null;
   email: string;
   role: AuthRole | string;
   emailVerified?: boolean;
@@ -445,6 +467,20 @@ export const getMe = async () => {
 };
 
 /**
+ * "Complete your profile": saves some details about the signed-in person (a seeker's education or skills, a hirer's company details) and
+ * returns the refreshed account, with the new profile completion. The copy saved on this phone is updated too.
+ * A CV or logo must be uploaded first (uploadFile) and passed as its address.
+ */
+export const updateMyProfile = async (changes: Record<string, unknown>): Promise<AuthUser> => {
+  const user = await request<AuthUser>('/users/me/profile', {
+    method: 'PATCH',
+    body: JSON.stringify(changes),
+  });
+  await saveMobileUser(user);
+  return user;
+};
+
+/**
  * Signs in and saves the session on this phone.
  * @param remember SEC-160: "Remember me" was ticked, so the next launch keeps this session.
  */
@@ -459,7 +495,13 @@ export const loginMobile = async (email: string, password: string, remember = fa
 };
 
 export const signupMobile = async (values: {
-  name: string;
+  /** The new sign-up sends first and last name. A single `name` is what older app versions sent. */
+  name?: string;
+  firstName?: string;
+  lastName?: string;
+  /** YYYY-MM-DD */
+  dateOfBirth?: string;
+  gender?: Gender;
   email: string;
   password: string;
   role: 'seeker' | 'hirer';
@@ -882,11 +924,9 @@ export const uploadFile = async (
   const token = await getMobileToken();
   const formData = new FormData();
 
-  formData.append('file', {
-    uri: file.uri,
-    name: file.name,
-    type: file.mimeType || 'application/octet-stream',
-  } as any);
+  // Expo's fetch (SDK 57) no longer accepts React Native's { uri, name, type } parts ("Unsupported FormDataPart implementation");
+  // a File from expo-file-system is read from disk and sent as the file part. Its name and type come from the file's own name.
+  formData.append('file', new File(file.uri) as unknown as Blob);
 
   const response = await fetch(`${API_BASE_URL}/upload?purpose=${encodeURIComponent(purpose)}`, {
     method: 'POST',
@@ -903,6 +943,20 @@ export const uploadFile = async (
   }
 
   return payload.data;
+};
+
+/**
+ * Sets (or, with null, removes) the signed-in person's profile picture. The picture must already be uploaded with
+ * uploadFile(..., 'avatars'); the server replaces and deletes the previous one. Also updates the profile saved on this phone.
+ */
+export const updateMyAvatar = async (avatarUrl: string | null): Promise<string | null> => {
+  const result = await request<{ avatarUrl: string | null }>('/users/me/avatar', {
+    method: 'PATCH',
+    body: JSON.stringify({ avatarUrl }),
+  });
+  const saved = await getMobileUser();
+  if (saved) await saveMobileUser({ ...saved, avatarUrl: result.avatarUrl ?? undefined });
+  return result.avatarUrl;
 };
 
 export const requestEmailVerification = async (

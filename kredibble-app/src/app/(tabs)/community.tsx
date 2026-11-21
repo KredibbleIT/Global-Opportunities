@@ -7,6 +7,7 @@ import { Colors, FontSize, FontWeight, Radius } from '../../constants/design';
 import { authStore } from '../../constants/authStore';
 import { getChannels, createChannel, joinChannel } from '../../lib/api';
 import { useToast } from '../../components/ui/ToastProvider';
+import { useChannelRemoved } from '../../lib/useChannelRemoved';
 
 // ─── Logo ─────────────────────────────────────────────────────────────────────
 const LogoSVG = () => (
@@ -55,6 +56,9 @@ export default function CommunityScreen() {
       .catch((e) => console.error('Failed to fetch channels:', e))
       .finally(() => setIsLoading(false));
   }, []);
+
+  // An admin deleted a channel: it leaves the list now, without waiting for a refresh.
+  useChannelRemoved((removedId) => setChannels((previous) => previous.filter((channel) => String(channel.id) !== removedId)));
 
   // Reload whenever the tab comes into view, so a channel an admin just added you to shows up straight away.
   useFocusEffect(

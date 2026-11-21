@@ -13,7 +13,11 @@ class SocketService {
   // has to be supplied here. connect() is now async because reading it means
   // awaiting expo-secure-store.
   async connect() {
-    if (this.socket) return;
+    // A socket the server turned away (an old or expired token, e.g. after logging out and back in as someone else) stops retrying by itself,
+    // so only a live or still-retrying one is reused; otherwise it is replaced with a fresh one that carries the current token.
+    if (this.socket?.active) return;
+    this.socket?.disconnect();
+    this.socket = null;
 
     const token = await getMobileToken();
     if (!token) {

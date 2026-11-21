@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { previewText } from '../../lib/rich-text';
+import { RichText } from '../../components/ui/RichText';
 import { Colors } from '../../constants/design';
 import { View, Text, TouchableOpacity, ScrollView, Image, Alert, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -172,14 +174,18 @@ export default function OpportunityDetailScreen() {
           </View>
 
           {/* Description */}
-          <Text style={{ fontSize: 13, color: '#5E6175', lineHeight: 18 }} className="font-sans">
-            {isDescriptionExpanded ? opp.description : `${opp.description.slice(0, 150)}...`}
-            {!isDescriptionExpanded && opp.description.length > 150 && (
-              <Text onPress={() => setIsDescriptionExpanded(true)} style={{ color: Colors.primary, fontWeight: '500' }}>
-                See More
-              </Text>
-            )}
-          </Text>
+          {isDescriptionExpanded ? (
+            <RichText text={opp.description} textStyle={{ fontSize: 13, color: '#5E6175', lineHeight: 18 }} />
+          ) : (
+            <Text style={{ fontSize: 13, color: '#5E6175', lineHeight: 18 }} className="font-sans">
+              {previewText(opp.description).length > 150 ? `${previewText(opp.description).slice(0, 150)}...` : previewText(opp.description)}
+              {previewText(opp.description).length > 150 && (
+                <Text onPress={() => setIsDescriptionExpanded(true)} style={{ color: Colors.primary, fontWeight: '500' }}>
+                  {' '}See More
+                </Text>
+              )}
+            </Text>
+          )}
 
           {(opp.type === 'jobs' || opp.type === 'internships') && (opp.workType || opp.salary || opp.experienceLevels || opp.organizationType) && (
             <>

@@ -2,8 +2,8 @@
  * Monthly report data service (/monthly-report): what the two report templates show, and the one write they make (recording that a report was generated).
  *
  * - getPartnerReport(month) and getTeamReport(month) work the figures out from the shared in-memory store with the same functions as the other screens
- *   (see lib/report.ts). The first load takes a moment (a skeleton shows); later ones are instant. In real-API mode the page shows the sample-data notice and
- *   the report is built from the same sample store (printing still works).
+ *   (see lib/report.ts). The first load takes a moment (a skeleton shows); later ones are instant. Mock mode builds them from the sample store. In real-API
+ *   mode no API serves the monthly figures yet, so the report is built from NO records (emptyReportData): zeros and "No data", never sample figures.
  * - Dev only: ?state=loading|error|empty on the page URL forces that state (mock mode, never in production). "empty" is a month with no figures at all.
  * - recordReport(month, view) is what "Download PDF" does BEFORE it prints: it adds ONE record {reportMonth, view, generatedAt: now} to the store, at most
  *   once per reportMonth and view in each calendar month, so the Monthly reports KPI counts it. TODO(backend): persist this change.
@@ -11,7 +11,7 @@
 import { shouldRecordReport } from "@/lib/kpi";
 import type { MonthKey, MonthlyReport } from "@/lib/mock-entities";
 import { getMockCollection, setMockCollection } from "@/lib/mock-store";
-import { partnerMetrics, storeReportData, teamReport, type PartnerMetric, type ReportView, type TeamReportData } from "@/lib/report";
+import { emptyReportData, partnerMetrics, storeReportData, teamReport, type PartnerMetric, type ReportView, type TeamReportData } from "@/lib/report";
 import { platformRows, type PlatformRow } from "@/lib/services/social";
 import { buildTrend } from "@/lib/services/dashboard";
 import { earliestMonth, isMonthToDate } from "@/lib/report";
@@ -53,13 +53,16 @@ export interface TeamReportResult {
 export type ReportSource = "sample" | "live";
 
 /**
- * The source of the report's figures. Always "sample" today: no API serves the monthly figures yet, so BOTH modes build the report from the sample store
- * (the Overview says so in real-API mode with "Monthly figures aren't connected to live data yet"). The paper then shows a "Sample report" badge and a
- * sample footer, on screen and in the PDF. TODO(backend): return "live" once the report reads the API, and only then.
+ * The source of the report's figures: "sample" in mock mode (the paper then shows a "Sample report" badge and a sample footer, on screen and in the PDF),
+ * "live" otherwise. No API serves the monthly figures yet, so in real-API mode the report holds no figures at all (see getPartnerReport); the page says so
+ * with a notice. TODO(backend): read the figures from the API here.
  */
 export function reportSource(): ReportSource {
-  return "sample";
+  return isMockMode() ? "sample" : "live";
 }
+
+/** The records the report is worked out from: the sample store in mock mode, nothing in real-API mode. */
+const reportRecords = () => (isMockMode() ? storeReportData() : emptyReportData());
 
 const FORCED = ["loading", "error", "empty"] as const;
 type Forced = (typeof FORCED)[number];
@@ -91,7 +94,7 @@ export function getPartnerReport(month: MonthKey): Promise<PartnerReportResult> 
   if (forced === "loading") return new Promise<PartnerReportResult>(() => {});
   if (forced === "error") return afterDelay(() => ({ data: null, issue: failed() }));
   return afterDelay(() => {
-    const data = storeReportData();
+    const data = reportRecords();
     const metrics = partnerMetrics(month, new Date(), data);
     const empty = forced === "empty";
     const websiteByMonth = new Map(data.websiteMonths.map((row) => [row.month, row]));
@@ -122,7 +125,7 @@ export function getTeamReport(month: MonthKey): Promise<TeamReportResult> {
   if (forced === "loading") return new Promise<TeamReportResult>(() => {});
   if (forced === "error") return afterDelay(() => ({ data: null, issue: failed() }));
   return afterDelay(() => {
-    const report = teamReport(month);
+    const report = teamReport(month, new Date(), reportRecords());
     // "empty": the month recorded nothing: every KPI is 0 (the paper stays, with its neutral note)
     return { data: forced === "empty" ? { ...report, kpis: report.kpis.map((card) => ({ ...card, value: 0, status: card.target ? ("red" as const) : null, attainment: card.target ? 0 : null })) } : report, issue: null };
   });

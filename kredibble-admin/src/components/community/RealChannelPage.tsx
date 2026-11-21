@@ -7,15 +7,17 @@
  * Data: GET /admin/community/channels/:id (real API). Moderation of feed posts stays on the Reports queue.
  */
 import { useCallback, useState } from "react";
-import { useParams } from "next/navigation";
-import { Pencil } from "lucide-react";
+import { useParams, useRouter } from "next/navigation";
+import { Pencil, Trash2 } from "lucide-react";
 import { getCommunityChannelById, type ChannelRecord } from "@/lib/api";
 import { useBreadcrumbLabel } from "@/lib/breadcrumb-label";
 import { formatDate, formatFollowers } from "@/lib/format";
-import { saveChannelEdit } from "@/lib/services/channels";
+import { deleteChannel, saveChannelEdit } from "@/lib/services/channels";
 import { useRoles } from "@/components/access/RoleProvider";
 import { EditChannelDialog } from "@/components/community/EditChannelDialog";
 import { Button } from "@/components/ui/Button";
+import { useConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { DangerZone } from "@/components/detail/DangerZone";
 import { useToast } from "@/components/ui/Toast";
 import { useDetailData } from "@/lib/use-detail-data";
 import { ChannelChat } from "@/components/community/ChannelChat";
@@ -38,6 +40,8 @@ export function RealChannelPage() {
   const [editing, setEditing] = useState(false);
   const { can } = useRoles();
   const toast = useToast();
+  const router = useRouter();
+  const { confirm, dialog } = useConfirmDialog();
 
   useBreadcrumbLabel(status === "loading" ? undefined : channel ? channel.name : "Not found");
 
@@ -46,6 +50,29 @@ export function RealChannelPage() {
   if (!channel) return <DetailNotFound noun="Channel" listLabel="Community channels" listHref="/community" />;
 
   const isPrivate = channel.visibility === "private";
+
+  // Takes the channel off the platform: it disappears for everyone in the app. Asks first, then returns to the list.
+  const removeChannel = () =>
+    confirm({
+      title: "Delete this channel?",
+      description: (
+        <>
+          <strong className="text-ink">{channel.name}</strong> (owned by {channel.owner}) will be deleted. It disappears for everyone in the app, with its posts and group chat, and people in
+          its live chat are disconnected. The server keeps a record of it for the audit trail.
+        </>
+      ),
+      confirmLabel: "Delete channel",
+      tone: "danger",
+      onConfirm: async () => {
+        const result = await deleteChannel(channel.id);
+        if (result.ok) {
+          toast.success(`${channel.name} was deleted.`);
+          router.push("/community");
+        } else {
+          toast.error(result.reason);
+        }
+      },
+    });
 
   return (
     <div className="space-y-4">
@@ -96,6 +123,14 @@ export function RealChannelPage() {
           </InfoCard>
         </div>
       </div>
+      {can("channels", "edit") && channel.status !== "removed" && (
+        <DangerZone explanation="Deletes this channel for everyone in the app, for example when it does not fit what the app is about. This is not undone from the dashboard.">
+          <Button variant="danger" icon={Trash2} onClick={removeChannel} data-testid="delete-channel">
+            Delete channel
+          </Button>
+        </DangerZone>
+      )}
+      {dialog}
       {editing && (
         <EditChannelDialog
           channel={channel}

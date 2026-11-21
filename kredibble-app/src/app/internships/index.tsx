@@ -1,4 +1,5 @@
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import { previewText } from '../../lib/rich-text';
 import { Colors } from '../../constants/design';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft, SlidersHorizontal, Search, Bookmark, Sparkles } from 'lucide-react-native';
@@ -112,7 +113,7 @@ export const InternshipCard = ({ item, onPress }: { item: Internship; onPress: (
       numberOfLines={2}
       className="font-sans"
     >
-      {item.description}
+      {previewText(item.description)}
     </Text>
 
     <View style={{ height: 1, backgroundColor: '#E5E6F2', marginTop: 10 }} />

@@ -47,7 +47,7 @@ export function RecordCard({ record, access, canEdit, onVerify }: RecordCardProp
         </div>
         <StatusBadge status={record.verified ? "verified" : "pending"} />
       </div>
-      <TruncatedText text={`${record.country} · ${record.institution}`} className="caption text-ink" />
+      <TruncatedText text={[record.country, record.institution].filter(Boolean).join(" · ") || "Not added yet"} className="caption text-ink" />
       <div className="flex items-center gap-2">
         <TagPill className="whitespace-nowrap">{RECORD_SOURCE_LABELS[record.source]}</TagPill>
         <div className="min-w-0 flex-1">

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
-import { authRouter } from './auth.js';
+import { authRouter, sessionUser } from './auth.js';
 import { uploadRouter, createUploadRouter, IMAGE_MIME_TYPES, requireAdminUploadScreen } from './upload.js';
 import { assistantRouter } from './assistant.js';
 import { newsRouter } from './news.js';
@@ -13,7 +13,10 @@ import { requireAuth, optionalAuth, requireEmailVerified } from '../middleware/a
 import { env } from '../config/env.js';
 import { validate } from '../middleware/validate.js';
 import { staffInviteSchema, grantApplicationDecisionSchema } from '../schemas/admin.js';
-import { pushTokenSchema, notificationPreferencesSchema } from '../schemas/auth.js';
+import { pushTokenSchema, notificationPreferencesSchema, avatarSchema, profileUpdateSchema, SEEKER_PROFILE_FIELDS, HIRER_PROFILE_FIELDS } from '../schemas/auth.js';
+import { checkDateOfBirth } from '../lib/age.js';
+import { syncAppBeneficiary } from '../lib/app-beneficiaries.js';
+import { deleteImage, storedFileExists, storedPathFromUrl } from '../lib/storage.js';
 import {
   RESOURCE_POLICIES,
   ADMIN,
@@ -1506,6 +1509,118 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
     itemResponse(res, { success: true });
   }));
 
+  // A person's own profile picture. It must be one they uploaded to their own avatar folder (POST /upload?purpose=avatars), never a link to
+  // another site or to someone else's file, and it must be an image. `null` removes it. The picture it replaces is deleted from storage.
+  router.patch('/users/me/avatar', requireAuth, validate(avatarSchema), asyncHandler(async (req, res) => {
+    const { avatarUrl } = req.body;
+    if (avatarUrl !== null) {
+      const stored = storedPathFromUrl(avatarUrl);
+      if (!stored || !stored.startsWith(`kredibble/${req.auth.sub}/avatars/`) || /\.pdf$/i.test(stored) || !(await storedFileExists(stored))) {
+        throw new ApiError(400, 'Upload the picture with the app first; other addresses are not accepted.');
+      }
+    }
+    const user = await User.findById(req.auth.sub).select('avatarUrl');
+    if (!user) throw notFound('User');
+    const previous = user.avatarUrl;
+    await User.updateOne({ _id: user._id }, avatarUrl === null ? { $unset: { avatarUrl: '' } } : { $set: { avatarUrl } });
+
+    // Best effort: a failed clean-up never fails the change.
+    const previousPath = previous && previous !== avatarUrl ? storedPathFromUrl(previous) : null;
+    if (previousPath) await deleteImage(previousPath.replace(/\.[a-z0-9]+$/i, '')).catch(() => undefined);
+
+    itemResponse(res, { avatarUrl: avatarUrl ?? null });
+  }));
+
+  // "Complete your profile": a seeker or hirer fills in or changes their own details after sign-up. Only the fields in profileUpdateSchema are
+  // accepted, seeker-only fields are refused for a hirer (and the other way round), a date of birth can be given once and not changed, and a
+  // CV or logo must be a file the person uploaded to their own folder. The reply is the same account object sign-in returns, with the new
+  // profile completion.
+  router.patch('/users/me/profile', requireAuth, validate(profileUpdateSchema), asyncHandler(async (req, res) => {
+    const body = req.body;
+    const user = await User.findById(req.auth.sub);
+    if (!user) throw notFound('User');
+    if (user.role !== 'seeker' && user.role !== 'hirer') throw new ApiError(403, 'Only seekers and hirers have a profile to update');
+    const isSeeker = user.role === 'seeker';
+    const Profile = isSeeker ? SeekerProfile : HirerAccount;
+    const allowed = new Set(isSeeker ? SEEKER_PROFILE_FIELDS : HIRER_PROFILE_FIELDS);
+    const person = new Set(['firstName', 'lastName', 'gender', 'dateOfBirth']);
+    const refused = Object.keys(body).filter((key) => !allowed.has(key) && !person.has(key));
+    if (refused.length) throw new ApiError(400, `Not available for your account type: ${refused.join(', ')}`);
+
+    const profile = await Profile.findOne({ userId: user._id });
+    if (!profile) throw notFound('Profile');
+
+    // The person
+    const userSet = {};
+    const userUnset = {};
+    if (body.firstName !== undefined || body.lastName !== undefined) {
+      const firstName = body.firstName ?? user.firstName;
+      const lastName = body.lastName ?? user.lastName;
+      const name = [firstName, lastName].filter(Boolean).join(' ');
+      if (name.length < 2 || name.length > 50) throw new ApiError(400, 'Your name must be between 2 and 50 characters');
+      Object.assign(userSet, { firstName, lastName, name });
+    }
+    if (body.gender === null) userUnset.gender = '';
+    else if (body.gender !== undefined) userSet.gender = body.gender;
+    if (body.dateOfBirth !== undefined) {
+      if (user.dateOfBirth) throw new ApiError(400, 'Your date of birth cannot be changed here. Contact the Global Opportunity Desk if it is wrong.');
+      const checked = checkDateOfBirth(body.dateOfBirth);
+      if (!checked.ok) throw new ApiError(400, checked.message);
+      userSet.dateOfBirth = checked.date;
+    }
+
+    // Files: a CV or logo must be one this person uploaded for that purpose.
+    const fileFields = isSeeker ? { resumeUrl: 'cvs' } : { logo: 'company-logos' };
+    const replacedFiles = [];
+    for (const [field, folder] of Object.entries(fileFields)) {
+      const address = body[field];
+      if (address === undefined) continue;
+      if (address !== null) {
+        const stored = storedPathFromUrl(address);
+        if (!stored || !stored.startsWith(`kredibble/${req.auth.sub}/${folder}/`) || !(await storedFileExists(stored))) {
+          throw new ApiError(400, 'Upload the file with the app first; other addresses are not accepted.');
+        }
+      }
+      const previous = profile[field] && profile[field] !== address ? storedPathFromUrl(profile[field]) : null;
+      if (previous) replacedFiles.push(previous);
+    }
+
+    // The profile. Lists are kept as JSON text, like the skill lists registration writes.
+    const jsonFields = new Set(['technicalSkills', 'softSkills', 'tools', 'certifications', 'preferredCountries', 'education', 'workExperience', 'projects']);
+    const profileSet = {};
+    const profileUnset = {};
+    for (const key of allowed) {
+      if (body[key] === undefined) continue;
+      if (body[key] === null) profileUnset[key] = '';
+      else profileSet[key] = jsonFields.has(key) ? JSON.stringify(body[key]) : body[key];
+    }
+
+    const userUpdate = {};
+    if (Object.keys(userSet).length) userUpdate.$set = userSet;
+    if (Object.keys(userUnset).length) userUpdate.$unset = userUnset;
+    if (Object.keys(userUpdate).length) await User.updateOne({ _id: user._id }, userUpdate);
+    const update = {};
+    if (Object.keys(profileSet).length) update.$set = profileSet;
+    if (Object.keys(profileUnset).length) update.$unset = profileUnset;
+    if (Object.keys(update).length) await Profile.updateOne({ _id: profile._id }, update);
+
+    // Best effort: a failed clean-up or sync never fails the change.
+    for (const stored of replacedFiles) await deleteImage(stored.replace(/\.[a-z0-9]+$/i, '')).catch(() => undefined);
+    const [freshUser, freshProfile] = await Promise.all([User.findById(user._id), Profile.findOne({ _id: profile._id })]);
+    if (isSeeker) await syncAppBeneficiary(freshUser, freshProfile).catch(() => undefined);
+
+    await auditReq(req, {
+      action: 'profile.update',
+      resourceType: AUDIT_RESOURCE_TYPES.USER,
+      resourceId: user._id,
+      outcome: 'success',
+      // Which fields changed, never their values.
+      metadata: { fields: Object.keys(body) },
+    });
+
+    itemResponse(res, sessionUser(freshUser, freshProfile));
+  }));
+
   // SEC-138: the caller's push switch. Off stops phone pushes; the in-app list is unchanged.
   router.patch('/users/me/notification-preferences', requireAuth, validate(notificationPreferencesSchema), asyncHandler(async (req, res) => {
     const user = await User.findByIdAndUpdate(
@@ -1639,6 +1754,11 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
     );
     applicant.set('opportunityId', opportunity._id);
     applicant.set('seekerId', req.auth.sub);
+    // The CV the applicant saved on their profile goes with the application, so it does not have to be sent again.
+    if (!applicant.resumeUrl) {
+      const saved = await SeekerProfile.findOne({ userId: req.auth.sub }).select('resumeUrl').lean();
+      if (saved?.resumeUrl) applicant.set('resumeUrl', saved.resumeUrl);
+    }
     
     if (ambassador) {
       applicant.set('referralCode', referralCode);

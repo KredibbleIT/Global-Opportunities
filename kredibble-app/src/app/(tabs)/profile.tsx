@@ -7,6 +7,8 @@ import { profileStore } from '../../constants/mockProfile';
 import { authStore } from '../../constants/authStore';
 import { getMe } from '../../lib/api';
 import { AmbassadorCta } from '../../components/ui/AmbassadorCta';
+import { ProfileCompletionCard } from '../../components/profile/ProfileCompletionCard';
+import { ProfilePicture } from '../../components/ui/ProfilePicture';
 
 // Reuse LogoSVG from index
 const LogoSVG = () => (
@@ -97,7 +99,8 @@ export default function ProfileScreen() {
             </View>
           )}
 
-          <AmbassadorCta />
+          <ProfileCompletionCard />
+        <AmbassadorCta />
 
           {/* Quick Info Menu Card */}
           <View style={styles.menuCard}>
@@ -175,7 +178,7 @@ export default function ProfileScreen() {
               <TouchableOpacity
               style={styles.menuItem}
               activeOpacity={0.7}
-              onPress={() => router.push('./people')}
+              onPress={() => router.push('/profile/people')}
               accessibilityRole="button"
             >
               <View style={styles.menuItemLeft}>
@@ -278,7 +281,7 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* User Card */}
         <View style={styles.userContainer}>
-          <Image source={{ uri: (authUser as any)?.avatarUrl || 'https://via.placeholder.com/150' }} style={styles.avatar} />
+          <ProfilePicture name={authUser?.name} avatarUrl={authUser?.avatarUrl} onChanged={(url) => authStore.setAvatar(url)} style={styles.avatar} />
           
           {(authUser?.seeker as any)?.verified && (
             <View style={styles.verifiedBadge}>
@@ -291,6 +294,7 @@ export default function ProfileScreen() {
           <Text style={styles.userProfession} className="font-sans">{(authUser?.seeker as any)?.profession || 'Opportunity Seeker'}</Text>
         </View>
 
+        <ProfileCompletionCard />
         <AmbassadorCta />
 
         {/* Menu Card 1 */}
@@ -340,7 +344,7 @@ export default function ProfileScreen() {
           <TouchableOpacity
             style={styles.menuItem}
             activeOpacity={0.7}
-            onPress={() => router.push('./people')}
+            onPress={() => router.push('/profile/people')}
             accessibilityRole="button"
           >
             <View style={styles.menuItemLeft}>

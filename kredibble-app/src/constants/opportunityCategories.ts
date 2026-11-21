@@ -36,3 +36,25 @@ export const OPPORTUNITY_CATEGORIES: OpportunityCategory[] = [
 
 export const getOpportunityCategory = (key: string | undefined): OpportunityCategory | undefined =>
   OPPORTUNITY_CATEGORIES.find((category) => category.key === key);
+
+/**
+ * The type a new listing of each category is saved with. Jobs, internships, events and grants keep the spelling the app has always used; the API matches
+ * the singular and the plural of a type, so both read the same.
+ */
+export const CREATE_TYPE: Record<string, string> = {
+  events: 'events',
+  volunteer: 'volunteer',
+  funding: 'grants',
+  jobs: 'jobs',
+  scholarships: 'scholarship',
+  fellowships: 'fellowship',
+  training: 'training',
+  mentorship: 'mentorship',
+};
+
+/** The category a stored type belongs to, whatever its spelling ("grant", "grants", "training-workshop"), or undefined for a type that is in none. */
+export const categoryOfApiType = (type: string | undefined): OpportunityCategory | undefined => {
+  const value = String(type ?? '').toLowerCase();
+  const singular = (name: string) => name.replace(/s$/, '');
+  return OPPORTUNITY_CATEGORIES.find((category) => category.apiTypes.some((known) => known === value || singular(known) === singular(value)));
+};

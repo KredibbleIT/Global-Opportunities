@@ -16,6 +16,13 @@ const seekerProfileSchema = new mongoose.Schema({
   softSkills: { type: String, default: '[]' },
   tools: { type: String, default: '[]' },
   certifications: { type: String, default: '[]' },
+  // Filled in after sign-up ("Complete your profile"). Lists are stored as JSON text, like the skill lists above.
+  resumeUrl: String,
+  currentStatus: String,
+  preferredCountries: { type: String, default: '[]' },
+  education: { type: String, default: '[]' },
+  workExperience: { type: String, default: '[]' },
+  projects: { type: String, default: '[]' },
   status: { type: String, default: 'active' },
   joinedDate: String,
   applicationsCount: { type: Number, default: 0 },
