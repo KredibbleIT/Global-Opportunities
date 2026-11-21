@@ -28,7 +28,7 @@ import { useToast } from "@/components/ui/Toast";
 import { formatMonth } from "@/lib/format";
 import { useMockStoreVersion } from "@/lib/mock-store";
 import { lastCompleteMonth, reportTitle, type ReportView } from "@/lib/report";
-import { getPartnerReport, getTeamReport, recordReport, reportSource } from "@/lib/services/report";
+import { getPartnerReport, getTeamReport, recordGeneratedReport, reportSource } from "@/lib/services/report";
 import { useAsync } from "@/lib/use-async";
 import { useReportMonth } from "@/lib/use-report-month";
 import { PartnerReport } from "./PartnerReport";
@@ -76,10 +76,7 @@ export function ReportPage({ view }: { view: ReportView }) {
 
   const download = () => {
     // The button counts as "generated": record the report (once per month and view), then print. Saving it on the server never holds up the print.
-    const recorded = recordReport(month, view);
-    const announce = (added: boolean) => added && toast.success(`Report recorded for ${formatMonth(month)}`);
-    if (typeof recorded === "boolean") announce(recorded);
-    else void recorded.then(announce);
+    void recordGeneratedReport(month, view).then((added) => added && toast.success(`Report recorded for ${formatMonth(month)}`));
     window.print();
   };
 

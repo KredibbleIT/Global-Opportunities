@@ -148,13 +148,17 @@ export function getTeamReport(month: MonthKey): Promise<TeamReportResult> {
  * reports by the calendar month of generatedAt. At most one record for each reportMonth and view in each calendar month (shouldRecordReport decides), so
  * printing the same report again adds nothing. Returns true when a record was added (the caller then shows the toast, once).
  */
-export function recordReport(month: MonthKey, view: ReportView, now: Date = new Date()): boolean | Promise<boolean> {
-  if (!isMockMode()) return recordReportOnServer(month, view, now);
+export function recordReport(month: MonthKey, view: ReportView, now: Date = new Date()): boolean {
   const reports = getMockCollection("monthlyReports");
   if (!shouldRecordReport(reports, month, now, view)) return false;
   const record: MonthlyReport = { id: `rpt-${view}-${month}-${now.getTime()}`, reportMonth: month, view, generatedAt: now.toISOString().slice(0, 10) };
   setMockCollection("monthlyReports", [...reports, record], { always: true });
   return true;
+}
+
+/** What "Download PDF" calls: the sample store in mock mode, the server in real mode. Resolves with whether a record was added (the page then shows its toast). */
+export async function recordGeneratedReport(month: MonthKey, view: ReportView, now: Date = new Date()): Promise<boolean> {
+  return isMockMode() ? recordReport(month, view, now) : recordReportOnServer(month, view, now);
 }
 
 /** Real mode: asks the server which reports were generated this calendar month and saves this one only when it is the first of its month and view. */
