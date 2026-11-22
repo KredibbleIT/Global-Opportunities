@@ -41,3 +41,8 @@ example
 # generated native folders
 /ios
 /android
+
+# Firebase (GOD-T77): google-services.json reaches EAS builds as the file variable GOOGLE_SERVICES_JSON; the FCM V1
+# service account key goes to EAS credentials. Neither is committed.
+google-services.json
+*firebase-adminsdk*.json

@@ -9,7 +9,7 @@
 
 import { BRAND } from '@/config/brand';
 import { isMockMode } from '@/lib/services/mock-mode';
-import { getAdminNotifications, sendAdminNotification, type SentNotificationRecord } from '@/lib/api';
+import { getAdminNotifications, sendAdminNotification, type BroadcastPushReach, type SentNotificationRecord } from '@/lib/api';
 
 export type Audience = 'seekers' | 'hirers' | 'both';
 
@@ -46,6 +46,18 @@ const initialHistory: SentNotification[] = [
     sentAt: '2026-07-10T14:30:00',
   },
 ];
+
+/**
+ * The sentence after "The notification was sent to …" about phone pushes (GOD-T77): a broadcast always shows in the app, and the
+ * push only reaches phones that registered. Until 22 Nov 2026 no phone could (the Android app had no Firebase setup), and the
+ * composer never said so. Empty when the answer has no push figure (mock mode, or an older server).
+ */
+export function pushReachSentence(push: BroadcastPushReach | undefined): string {
+  if (!push) return '';
+  if (!push.enabled) return ' Phone pushes are turned off on the server, so it shows in the app only.';
+  if (push.phones === 0) return ' No phones are set up for push notifications yet, so it shows in the app only.';
+  return push.phones === 1 ? ' 1 phone also gets a push.' : ` ${push.phones} phones also get a push.`;
+}
 
 const fromServer = (item: SentNotificationRecord): SentNotification => ({
   id: item.id,
@@ -108,14 +120,19 @@ class NotificationBroadcastStore {
 
   /**
    * Sends a broadcast. Mock mode: adds it to the in-memory history. Live mode: waits for POST /admin/notifications and adds what the
-   * server saved; a failure rejects (nothing is added), so the caller can say it was not sent.
+   * server saved; a failure rejects (nothing is added), so the caller can say it was not sent. Live mode also resolves with `push`,
+   * how many phones the server's push reaches (GOD-T77), so the caller can say when that is none.
    */
-  async send(title: string, message: string, audience: Audience, scheduledFor?: string): Promise<SentNotification> {
-    const entry: SentNotification = isMockMode()
-      ? { id: `sent-${Date.now()}`, title, message, audience, sentAt: scheduledFor || new Date().toISOString() }
-      : fromServer(await sendAdminNotification({ title, message, audience, scheduledFor }));
+  async send(title: string, message: string, audience: Audience, scheduledFor?: string): Promise<SentNotification & { push?: BroadcastPushReach }> {
+    if (isMockMode()) {
+      const entry: SentNotification = { id: `sent-${Date.now()}`, title, message, audience, sentAt: scheduledFor || new Date().toISOString() };
+      this.set({ history: [entry, ...this.snapshot.history] });
+      return entry;
+    }
+    const saved = await sendAdminNotification({ title, message, audience, scheduledFor });
+    const entry = fromServer(saved);
     this.set({ history: [entry, ...this.snapshot.history] });
-    return entry;
+    return { ...entry, push: saved.push };
   }
 }
 

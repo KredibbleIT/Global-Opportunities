@@ -42,6 +42,7 @@ import { COUNTRIES, COUNTRIES_AND_WORLDWIDE, LISTING_COUNTRIES, LISTING_SCOPES }
 import { foldForSearch, typeaheadMatch } from '../src/lib/typeahead';
 import { SCORE_FROM_DAY } from '../src/config/scorecard';
 import { eventDayEndsAt, eventStatus } from '../src/lib/event-status';
+import { pushReachSentence } from '../src/lib/notification-store';
 import { formatAttainment, isTooEarly, metricResult, compositeSeries, composite, compositeStatus, highlightOf, metricAttainment, ownedMetrics, scorecardFor, strengths, teamScorecards, teamSummary } from '../src/lib/scorecard';
 
 const BASE_URL = defaultBaseUrl();
@@ -1515,6 +1516,14 @@ test.describe('Notifications', () => {
     await expect(page.getByRole('heading', { name: 'Compose' })).toBeHidden();
   });
 
+  test('GOD-T77: the sent toast says how far the phone push reached, including "none" and "turned off"', () => {
+    expect(pushReachSentence(undefined)).toBe(''); // mock mode: no figure, no sentence
+    expect(pushReachSentence({ enabled: true, phones: 0 })).toBe(' No phones are set up for push notifications yet, so it shows in the app only.');
+    expect(pushReachSentence({ enabled: true, phones: 1 })).toBe(' 1 phone also gets a push.');
+    expect(pushReachSentence({ enabled: true, phones: 42 })).toBe(' 42 phones also get a push.');
+    expect(pushReachSentence({ enabled: false, phones: 0 })).toBe(' Phone pushes are turned off on the server, so it shows in the app only.');
+  });
+
   test('GOD-T45 (real API): a broadcast is saved on the server (it is in the history after a reload), and a failed send says so and keeps the text', async ({ page }) => {
     test.skip(MOCK_RUN, 'real API only');
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -1528,6 +1537,8 @@ test.describe('Notifications', () => {
     await page.getByRole('alertdialog').getByRole('button', { name: 'Send notification' }).click();
     expect((await saved).status()).toBe(201);
     await expect(page.getByText('The notification was sent to Everyone.')).toBeVisible();
+    // GOD-T77: the e2e API has push on and no phone registered, so the sender is told the push reached nobody.
+    await expect(page.getByText('No phones are set up for push notifications yet, so it shows in the app only.')).toBeVisible();
     await page.reload();
     await expect(page.getByRole('region', { name: 'History' }).getByText(title)).toBeVisible();
     // a failed send
