@@ -13,12 +13,12 @@
  * names (e.g. a siren) are removed from the title so the marker is never an emoji.
  */
 import { useCallback, useState } from "react";
-import { Flag, Hash, Pencil, Plus } from "lucide-react";
+import { Flag, Hash, Pencil, Plus, Trash2 } from "lucide-react";
 import { getCommunityChannels } from "@/lib/api";
 import { formatFollowers, stripEmoji } from "@/lib/format";
 import { channels, type Channel } from "@/lib/mock-channels";
 import { overlayRows, subscribeMockStore } from "@/lib/mock-store";
-import { saveChannelEdit } from "@/lib/services/channels";
+import { deleteChannel, saveChannelEdit } from "@/lib/services/channels";
 import { isMockMode } from "@/lib/services/mock-mode";
 import { useToast } from "@/components/ui/Toast";
 import { useRoles } from "@/components/access/RoleProvider";
@@ -30,11 +30,13 @@ import { DataTable } from "@/components/list/DataTable";
 import { ListPage } from "@/components/list/ListPage";
 import type { Column } from "@/components/list/types";
 import { Button } from "@/components/ui/Button";
+import { useConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 const loadChannels = async (): Promise<Channel[]> => {
   if (isMockMode()) return overlayRows("channels", channels);
   const page = await getCommunityChannels({ limit: 100 });
-  return page.data.map((c) => ({
+  // A deleted channel is gone for good as far as the dashboard is concerned (the server keeps the record for the audit trail).
+  return page.data.filter((c) => c.status !== "removed").map((c) => ({
     id: c.id,
     name: c.name,
     owner: c.visibility === "private" ? `${c.owner ?? "Admin"} (private)` : c.owner ?? "Public",
@@ -48,8 +50,8 @@ const loadChannels = async (): Promise<Channel[]> => {
   }));
 };
 
-/** The columns. `edit` (when the viewer may edit channels) adds the row menu with "Edit channel". */
-const columns = (edit?: (row: Channel) => void): Column<Channel>[] => [
+/** The columns. `edit` and `remove` (when the viewer may edit channels) add the row menu with "Edit channel" and "Delete channel". */
+const columns = (edit?: (row: Channel) => void, remove?: (row: Channel) => void): Column<Channel>[] => [
   // The profile image when the channel has one, otherwise an initials avatar in the brand colours.
   { key: "channel", header: "Channel", type: "primary", width: "30%", title: (r) => stripEmoji(r.name), leading: (r) => ({ avatarName: stripEmoji(r.name), imageSrc: r.avatar }) },
   { key: "owner", header: "Owner", type: "text", width: "20%", value: (r) => r.owner },
@@ -57,7 +59,7 @@ const columns = (edit?: (row: Channel) => void): Column<Channel>[] => [
   { key: "followers", header: "Followers", type: "text", width: "14%", value: (r) => formatFollowers(r.followers) },
   { key: "posts", header: "Posts", type: "number", width: "10%", value: (r) => r.postsCount },
   { key: "status", header: "Status", type: "status", width: "18%", status: (r) => r.status, icon: (r) => (r.status === "flagged" ? Flag : undefined) },
-  ...(edit
+  ...(edit || remove
     ? [
         {
           key: "actions",
@@ -69,7 +71,13 @@ const columns = (edit?: (row: Channel) => void): Column<Channel>[] => [
               <span className="sr-only" aria-hidden="true">
                 Channel actions
               </span>
-              <Kebab label={`Channel actions for ${stripEmoji(r.name)}`} items={[{ label: "Edit channel", icon: Pencil, onSelect: () => edit(r) }]} />
+              <Kebab
+                label={`Channel actions for ${stripEmoji(r.name)}`}
+                items={[
+                  ...(edit ? [{ label: "Edit channel", icon: Pencil, onSelect: () => edit(r) }] : []),
+                  ...(remove && r.status !== "removed" ? [{ label: "Delete channel", icon: Trash2, danger: true, onSelect: () => remove(r) }] : []),
+                ]}
+              />
             </div>
           ),
         },
@@ -82,9 +90,32 @@ export default function CommunityChannelsPage() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState<Channel | null>(null);
   const toast = useToast();
+  const { confirm, dialog } = useConfirmDialog();
   const { can } = useRoles();
   const canEdit = can("channels", "edit");
   const closeDialog = useCallback(() => setCreating(false), []);
+  // Takes a channel off the platform: it disappears for everyone in the app. Asks first.
+  const removeChannel = (row: Channel) =>
+    confirm({
+      title: "Delete this channel?",
+      description: (
+        <>
+          <strong className="text-ink">{stripEmoji(row.name)}</strong> (owned by {row.owner}) will be deleted. It disappears for everyone in the app, with its posts and group chat. The
+          server keeps a record of it for the audit trail.
+        </>
+      ),
+      confirmLabel: "Delete channel",
+      tone: "danger",
+      onConfirm: async () => {
+        const result = await deleteChannel(row.id);
+        if (result.ok) {
+          if (!isMockMode()) retry();
+          toast.success(`${stripEmoji(row.name)} was deleted.`);
+        } else {
+          toast.error(result.reason);
+        }
+      },
+    });
   const flaggedCount = (rows ?? []).filter((c) => c.status === "flagged").length;
 
   return (
@@ -102,7 +133,7 @@ export default function CommunityChannelsPage() {
       >
         <DataTable
           label="Channels"
-          columns={columns(canEdit ? setEditing : undefined)}
+          columns={columns(canEdit ? setEditing : undefined, canEdit ? removeChannel : undefined)}
           rows={rows ?? []}
           getRowKey={(r) => r.id}
           getRowHref={(r) => `/community/${r.id}`}
@@ -113,6 +144,7 @@ export default function CommunityChannelsPage() {
           emptyNoResults={{ icon: Hash, title: "No channels match" }}
         />
       </ListPage>
+      {dialog}
       <CreateChannelDialog open={creating} onClose={closeDialog} onCreated={retry} />
       {editing && (
         <EditChannelDialog

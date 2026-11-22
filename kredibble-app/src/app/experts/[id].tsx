@@ -1,19 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Image, Modal, Clipboard, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Image, Modal, Clipboard, StyleSheet, Alert, ActivityIndicator, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft, Star, Check, Copy, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Colors, FontWeight, Radius } from '../../constants/design';
-import { mockExperts } from '../../constants/mockExperts';
-import { authStore } from '../../constants/authStore';
-import { BottomSafeBar } from '../../components/ui/BottomSafeBar';
+import { getApplicantProfile, getExpert, rateExpert, PublicExpert } from '../../lib/api';
 
 export default function ExpertProfileDetailScreen() {
   const router = useRouter();
-  const { id } = useLocalSearchParams<{ id: string }>();
+  // `applicant` is set when a hirer opens the profile of someone who applied to their listing (the id is then the application's).
+  const { id, applicant } = useLocalSearchParams<{ id: string; applicant?: string }>();
 
-  // Fetch expert by ID
-  const expert = mockExperts.find(e => e.id === id);
+  // The expert is loaded from the server: only an approved expert (or you, on your own profile) can be opened.
+  const [loaded, setLoaded] = useState<{ id: string; expert: PublicExpert | null } | null>(null);
+  const expert = loaded?.id === String(id) ? loaded.expert : null;
+  const loading = loaded?.id !== String(id);
 
   // States for rating modal and toast banner
   const [isRateModalVisible, setIsRateModalVisible] = useState(false);
@@ -21,15 +22,15 @@ export default function ExpertProfileDetailScreen() {
   const [showToast, setShowToast] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<'email' | 'phone' | null>(null);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
-  const [role, setRole] = useState(authStore.role);
+  const [rating, setRating] = useState(false);
 
   useEffect(() => {
-    // State is initialised from authStore; the subscription keeps it in sync.
-    const unsubscribe = authStore.subscribe(() => {
-      setRole(authStore.role);
-    });
-    return unsubscribe;
-  }, []);
+    let active = true;
+    (applicant ? getApplicantProfile(String(id)) : getExpert(String(id)))
+      .then((data) => { if (active) setLoaded({ id: String(id), expert: data }); })
+      .catch(() => { if (active) setLoaded({ id: String(id), expert: null }); });
+    return () => { active = false; };
+  }, [id, applicant]);
 
   // Auto-hide toast banner
   useEffect(() => {
@@ -51,6 +52,14 @@ export default function ExpertProfileDetailScreen() {
     }
   }, [copyFeedback]);
 
+  if (loading) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="small" color={Colors.primary} />
+      </SafeAreaView>
+    );
+  }
+
   if (!expert) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen, justifyContent: 'center', alignItems: 'center' }}>
@@ -71,10 +80,30 @@ export default function ExpertProfileDetailScreen() {
     Alert.alert('Copied', `${type === 'email' ? 'Email' : 'Phone number'} copied to clipboard!`);
   };
 
-  const handleRatingSubmit = () => {
-    setIsRateModalVisible(false);
-    setShowToast(true);
+  const openRateModal = () => {
+    setSelectedStars(expert.myRating ?? 0);
+    setIsRateModalVisible(true);
   };
+
+  const handleRatingSubmit = async () => {
+    if (selectedStars < 1 || rating) return;
+    setRating(true);
+    try {
+      const result = await rateExpert(expert.id, selectedStars);
+      setLoaded({ id: String(id), expert: { ...expert, rating: result.rating, ratingCount: result.ratingCount, myRating: result.myRating } });
+      setIsRateModalVisible(false);
+      setShowToast(true);
+    } catch (error) {
+      Alert.alert('Could not save your rating', error instanceof Error ? error.message : 'Please try again.');
+    } finally {
+      setRating(false);
+    }
+  };
+
+  const contactColumns = [
+    expert.contact?.email ? { key: 'email' as const, label: 'Email', value: expert.contact.email } : null,
+    expert.contact?.phone ? { key: 'phone' as const, label: 'Phone', value: expert.contact.phone } : null,
+  ].filter(Boolean) as { key: 'email' | 'phone'; label: string; value: string }[];
 
   // Render stars inside rating modal
   const renderInteractiveStars = () => {
@@ -113,8 +142,10 @@ export default function ExpertProfileDetailScreen() {
           <ChevronLeft size={20} color={Colors.textHeading} />
         </TouchableOpacity>
 
+        {expert.isMe || expert.listed === false ? <View /> : (
         <TouchableOpacity
-          onPress={() => setIsRateModalVisible(true)}
+          testID="rate-expert"
+          onPress={openRateModal}
           style={styles.rateButton}
         >
           <Text style={styles.rateButtonText} className="font-sans">
@@ -122,19 +153,23 @@ export default function ExpertProfileDetailScreen() {
           </Text>
           <Star size={14} color="#F6B612" fill="#F6B612" style={{ marginLeft: 4 }} />
         </TouchableOpacity>
+        )}
       </View>
 
       <ScrollView
         style={{ backgroundColor: Colors.bgScreen }}
-        contentContainerStyle={[styles.scrollContent, role === 'hirer' && { paddingBottom: 100 }]}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
         {/* Profile Card Header Info */}
         <View style={styles.profileHeaderContainer}>
-          <Image
-            source={{ uri: expert.image }}
-            style={styles.avatarImage}
-          />
+          {expert.image ? (
+            <Image source={{ uri: expert.image }} style={styles.avatarImage} />
+          ) : (
+            <View style={[styles.avatarImage, { backgroundColor: Colors.primaryTransparent, alignItems: 'center', justifyContent: 'center' }]}>
+              <Text style={{ fontSize: 36, fontWeight: '700', color: Colors.primary }}>{(expert.name || '?').trim().charAt(0).toUpperCase()}</Text>
+            </View>
+          )}
 
           {expert.verified && (
             <View style={styles.verifiedBadge}>
@@ -150,71 +185,75 @@ export default function ExpertProfileDetailScreen() {
           <Text style={styles.expertName} className="font-sans">
             {expert.name}
           </Text>
-          
+
           <Text style={styles.expertProfession} className="font-sans">
             {expert.profession}
           </Text>
 
-          <TouchableOpacity onPress={() => {}} style={{ marginTop: 4 }}>
-            <Text style={styles.websiteLink} className="font-sans">
-              {expert.website}
-            </Text>
-          </TouchableOpacity>
+          {!!expert.contact?.website && (
+            <TouchableOpacity onPress={() => Linking.openURL(expert.contact.website!).catch(() => {})} style={{ marginTop: 4 }}>
+              <Text style={styles.websiteLink} className="font-sans">
+                {expert.contact.website!.replace(/^https?:\/\//i, '')}
+              </Text>
+            </TouchableOpacity>
+          )}
 
           <Text style={styles.expertLocation} className="font-sans">
             {expert.location}
           </Text>
         </View>
 
-        {/* Statistics container */}
-        <View style={styles.statsCard}>
-          {/* Email Col */}
-          <TouchableOpacity 
-            onPress={() => handleCopy(expert.email, 'email')} 
-            style={styles.statsCol}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Text style={styles.statsLabel} className="font-sans">Email</Text>
-              <Copy size={11} color={copyFeedback === 'email' ? '#16A34A' : Colors.textPlaceholder} />
-            </View>
-            <Text numberOfLines={1} style={styles.statsValue} className="font-sans">
-              {copyFeedback === 'email' ? 'Copied!' : expert.email}
-            </Text>
-          </TouchableOpacity>
-
-          {/* Divider */}
-          <View style={styles.statsDivider} />
-
-          {/* Rating Col */}
-          <View style={styles.statsCol}>
-            <Text style={styles.statsLabel} className="font-sans">Rating</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 2 }}>
-              <Text style={styles.ratingNumber} className="font-sans">
-                {expert.rating.toFixed(1)}
+        {/* The contact details the expert chose to show, and the rating once someone has rated them (nothing shows for an unrated expert) */}
+        {(() => {
+          const cells: React.ReactNode[] = contactColumns.slice(0, 1).map((column) => (
+            <TouchableOpacity key={column.key} onPress={() => handleCopy(column.value, column.key)} style={styles.statsCol}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Text style={styles.statsLabel} className="font-sans">{column.label}</Text>
+                <Copy size={11} color={copyFeedback === column.key ? '#16A34A' : Colors.textPlaceholder} />
+              </View>
+              <Text numberOfLines={1} style={styles.statsValue} className="font-sans">
+                {copyFeedback === column.key ? 'Copied!' : column.value}
               </Text>
-              <Star size={10} color="#F6B612" fill="#F6B612" />
+            </TouchableOpacity>
+          ));
+          if (expert.ratingCount > 0) {
+            cells.push(
+              <View key="rating" style={styles.statsCol}>
+                <Text style={styles.statsLabel} className="font-sans">Rating</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 2 }}>
+                  <Text style={styles.ratingNumber} className="font-sans">{expert.rating.toFixed(1)}</Text>
+                  <Star size={10} color="#F6B612" fill="#F6B612" />
+                  <Text style={{ fontSize: 10, color: Colors.textMuted, marginLeft: 2 }} className="font-sans">({expert.ratingCount})</Text>
+                </View>
+              </View>,
+            );
+          }
+          contactColumns.slice(1).forEach((column) => cells.push(
+            <TouchableOpacity key={column.key} onPress={() => handleCopy(column.value, column.key)} style={styles.statsCol}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                <Text style={styles.statsLabel} className="font-sans">{column.label}</Text>
+                <Copy size={11} color={copyFeedback === column.key ? '#16A34A' : Colors.textPlaceholder} />
+              </View>
+              <Text numberOfLines={1} style={styles.statsValue} className="font-sans">
+                {copyFeedback === column.key ? 'Copied!' : column.value}
+              </Text>
+            </TouchableOpacity>,
+          ));
+          if (cells.length === 0) return null;
+          return (
+            <View style={styles.statsCard}>
+              {cells.map((cell, index) => (
+                <React.Fragment key={index}>
+                  {index > 0 && <View style={styles.statsDivider} />}
+                  {cell}
+                </React.Fragment>
+              ))}
             </View>
-          </View>
-
-          {/* Divider */}
-          <View style={styles.statsDivider} />
-
-          {/* Phone Number Col */}
-          <TouchableOpacity 
-            onPress={() => handleCopy(expert.phone, 'phone')} 
-            style={styles.statsCol}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <Text style={styles.statsLabel} className="font-sans">Phone</Text>
-              <Copy size={11} color={copyFeedback === 'phone' ? '#16A34A' : Colors.textPlaceholder} />
-            </View>
-            <Text numberOfLines={1} style={styles.statsValue} className="font-sans">
-              {copyFeedback === 'phone' ? 'Copied!' : expert.phone}
-            </Text>
-          </TouchableOpacity>
-        </View>
+          );
+        })()}
 
         {/* Panel 1: Professional Summary */}
+        {!!(expert.professionalSummary || expert.bio) && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle} className="font-sans">Professional Summary</Text>
           <Text
@@ -222,56 +261,52 @@ export default function ExpertProfileDetailScreen() {
             numberOfLines={summaryExpanded ? undefined : 3}
             className="font-sans"
           >
-            {expert.professionalSummary}
+            {expert.professionalSummary || expert.bio}
           </Text>
-          <TouchableOpacity
-            style={styles.readMoreButton}
-            onPress={() => setSummaryExpanded(!summaryExpanded)}
-          >
-            <Text style={styles.readMoreText} className="font-sans">
-              {summaryExpanded ? 'Read less' : 'Read more'}
-            </Text>
-            {summaryExpanded ? <ChevronUp size={14} color={Colors.primary} /> : <ChevronDown size={14} color={Colors.primary} />}
-          </TouchableOpacity>
+          {(expert.professionalSummary || expert.bio || '').length > 160 && (
+            <TouchableOpacity
+              style={styles.readMoreButton}
+              onPress={() => setSummaryExpanded(!summaryExpanded)}
+            >
+              <Text style={styles.readMoreText} className="font-sans">
+                {summaryExpanded ? 'Read less' : 'Read more'}
+              </Text>
+              {summaryExpanded ? <ChevronUp size={14} color={Colors.primary} /> : <ChevronDown size={14} color={Colors.primary} />}
+            </TouchableOpacity>
+          )}
         </View>
+        )}
 
         {/* Panel 2: Skills & Tools */}
+        {(expert.technicalSkills.length > 0 || (expert.softSkills?.length ?? 0) > 0 || (expert.tools?.length ?? 0) > 0) && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle} className="font-sans">Skills & Tools</Text>
-          
-          <Text style={styles.subSectionTitle} className="font-sans">Technical Skills</Text>
-          <View style={styles.pillContainer}>
-            {expert.technicalSkills.map(skill => (
-              <View key={skill} style={styles.pillBadge}>
-                <Text style={styles.pillText} className="font-sans">{skill}</Text>
-              </View>
-            ))}
-          </View>
 
-          <Text style={[styles.subSectionTitle, { marginTop: 16 }]} className="font-sans">Soft Skills</Text>
-          <View style={styles.pillContainer}>
-            {expert.softSkills.map(skill => (
-              <View key={skill} style={styles.pillBadge}>
-                <Text style={styles.pillText} className="font-sans">{skill}</Text>
+          {([
+            ['Technical Skills', expert.technicalSkills],
+            ['Soft Skills', expert.softSkills ?? []],
+            ['Tools & Technologies', expert.tools ?? []],
+          ] as [string, string[]][]).filter(([, list]) => list.length > 0).map(([title, list], index) => (
+            <View key={title}>
+              <Text style={[styles.subSectionTitle, index > 0 && { marginTop: 16 }]} className="font-sans">{title}</Text>
+              <View style={styles.pillContainer}>
+                {list.map(item => (
+                  <View key={item} style={styles.pillBadge}>
+                    <Text style={styles.pillText} className="font-sans">{item}</Text>
+                  </View>
+                ))}
               </View>
-            ))}
-          </View>
-
-          <Text style={[styles.subSectionTitle, { marginTop: 16 }]} className="font-sans">Tools & Technologies</Text>
-          <View style={styles.pillContainer}>
-            {expert.tools.map(tool => (
-              <View key={tool} style={styles.pillBadge}>
-                <Text style={styles.pillText} className="font-sans">{tool}</Text>
-              </View>
-            ))}
-          </View>
+            </View>
+          ))}
         </View>
+        )}
 
         {/* Panel 3: Work Experience */}
+        {(expert.workExperience?.length ?? 0) > 0 && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle} className="font-sans">Work Experience</Text>
-          {expert.workExperience.map((exp, idx) => (
-            <View key={idx} style={{ marginBottom: idx === expert.workExperience.length - 1 ? 0 : 20 }}>
+          {expert.workExperience!.map((exp, idx) => (
+            <View key={idx} style={{ marginBottom: idx === expert.workExperience!.length - 1 ? 0 : 20 }}>
               <Text style={styles.experienceTitle} className="font-sans">
                 {exp.role}
               </Text>
@@ -282,7 +317,7 @@ export default function ExpertProfileDetailScreen() {
                 {exp.duration}
               </Text>
               <View style={{ marginTop: 8 }}>
-                {exp.bullets.map((bullet, bulletIdx) => (
+                {(exp.bullets ?? []).map((bullet, bulletIdx) => (
                   <View key={bulletIdx} style={styles.bulletRow}>
                     <Text style={styles.bulletDot}>•</Text>
                     <Text style={styles.bulletText} className="font-sans">
@@ -294,13 +329,15 @@ export default function ExpertProfileDetailScreen() {
             </View>
           ))}
         </View>
+        )}
 
         {/* Panel 4: Education & Certifications */}
+        {((expert.education?.length ?? 0) > 0 || (expert.certifications?.length ?? 0) > 0) && (
         <View style={styles.section}>
           <Text style={styles.sectionTitle} className="font-sans">Education & Certifications</Text>
-          
-          <Text style={styles.subSectionTitle} className="font-sans">Education</Text>
-          {expert.education.map((edu, idx) => (
+
+          {(expert.education?.length ?? 0) > 0 && <Text style={styles.subSectionTitle} className="font-sans">Education</Text>}
+          {(expert.education ?? []).map((edu, idx) => (
             <View key={idx} style={{ marginBottom: 12 }}>
               <Text style={{ fontSize: 13, fontWeight: FontWeight.semibold, color: Colors.textHeading }} className="font-sans">
                 {edu.degree}
@@ -325,16 +362,18 @@ export default function ExpertProfileDetailScreen() {
             </>
           )}
         </View>
+        )}
 
         {/* Panel 5: Projects */}
+        {(expert.projects?.length ?? 0) > 0 && (
         <View style={[styles.section, { borderBottomWidth: 0 }]}>
           <Text style={styles.sectionTitle} className="font-sans">Projects</Text>
-          {expert.projects.map((proj, idx) => (
-            <View key={idx} style={{ marginBottom: idx === expert.projects.length - 1 ? 0 : 16 }}>
+          {expert.projects!.map((proj, idx) => (
+            <View key={idx} style={{ marginBottom: idx === expert.projects!.length - 1 ? 0 : 16 }}>
               <Text style={{ fontSize: 13, fontWeight: FontWeight.semibold, color: Colors.textHeading, marginBottom: 6 }} className="font-sans">
                 {proj.name}
               </Text>
-              {proj.bullets.map((bullet, bulletIdx) => (
+              {(proj.bullets ?? []).map((bullet, bulletIdx) => (
                 <View key={bulletIdx} style={styles.bulletRow}>
                   <Text style={styles.bulletDot}>•</Text>
                   <Text style={styles.bulletText} className="font-sans">
@@ -345,20 +384,8 @@ export default function ExpertProfileDetailScreen() {
             </View>
           ))}
         </View>
+        )}
       </ScrollView>
-
-      {role === 'hirer' && (
-        <BottomSafeBar style={styles.footer}>
-          <TouchableOpacity
-            style={styles.connectButton}
-            onPress={() => Alert.alert('Success', `Downloading CV/Resume for ${expert.name}...`)}
-          >
-            <Text style={styles.connectButtonText} className="font-sans">
-              Download Resume
-            </Text>
-          </TouchableOpacity>
-        </BottomSafeBar>
-      )}
 
       {/* Rating Modal */}
       <Modal
@@ -385,12 +412,14 @@ export default function ExpertProfileDetailScreen() {
               >
                 <Text style={[styles.modalButtonText, { color: '#F6B612' }]} className="font-sans">Cancel</Text>
               </TouchableOpacity>
-              
+
               <TouchableOpacity
+                testID="submit-rating"
                 onPress={handleRatingSubmit}
-                style={[styles.modalButton, { backgroundColor: '#F6B612', flex: 2 }]}
+                disabled={selectedStars < 1 || rating}
+                style={[styles.modalButton, { backgroundColor: '#F6B612', flex: 2, opacity: selectedStars < 1 || rating ? 0.5 : 1 }]}
               >
-                <Text style={[styles.modalButtonText, { color: Colors.white, fontWeight: '600' }]} className="font-sans">Submit</Text>
+                <Text style={[styles.modalButtonText, { color: Colors.white, fontWeight: '600' }]} className="font-sans">{rating ? 'Saving…' : 'Submit'}</Text>
               </TouchableOpacity>
             </View>
           </View>

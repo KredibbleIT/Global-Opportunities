@@ -61,10 +61,10 @@ export function PartnerReportSkeleton() {
   );
 }
 
-/** A card of the report: a title and what is inside it. Never split across two printed pages. */
-function ReportCard({ title, subtitle, children, testId }: { title: string; subtitle?: string; children: ReactNode; testId?: string }) {
+/** A card of the report: a title and what is inside it. Never split across two printed pages. `className` is for layout (a card that spans both columns). */
+export function ReportCard({ title, subtitle, children, testId, className }: { title: string; subtitle?: string; children: ReactNode; testId?: string; className?: string }) {
   return (
-    <section data-testid={testId} aria-label={title} className="report-section card-surface min-w-0 p-5">
+    <section data-testid={testId} aria-label={title} className={cn("report-section card-surface min-w-0 p-5", className)}>
       <h3 className="font-display text-xl font-semibold leading-7 text-ink">{title}</h3>
       {subtitle && <p className="caption mt-1">{subtitle}</p>}
       <div className="mt-4">{children}</div>
@@ -75,8 +75,8 @@ function ReportCard({ title, subtitle, children, testId }: { title: string; subt
 /** An icon in a soft square, as in the design. */
 function IconTile({ icon: Icon }: { icon: LucideIcon }) {
   return (
-    <span aria-hidden="true" className="flex size-12 shrink-0 items-center justify-center rounded-control bg-surface-2 text-muted">
-      <Icon size={22} strokeWidth={1.5} />
+    <span aria-hidden="true" className="flex size-10 shrink-0 items-center justify-center rounded-control bg-surface-2 text-muted">
+      <Icon size={18} strokeWidth={1.5} />
     </span>
   );
 }
@@ -88,7 +88,7 @@ function Stat({ metric, icon }: { metric: PartnerMetric; icon: LucideIcon }) {
       <IconTile icon={icon} />
       <div className="min-w-0">
         <p className="kpi-label">{metric.label}</p>
-        <p data-testid="metric-value" className="font-display text-3xl font-semibold leading-9 tabular-nums text-ink">
+        <p data-testid="metric-value" className="font-display text-2xl font-semibold leading-8 tabular-nums text-ink">
           {format(metric.value)}
         </p>
         <DeltaText delta={metric.delta} estimated={metric.estimated} />
@@ -106,7 +106,7 @@ function StatRow({ metric, icon }: { metric: PartnerMetric; icon: LucideIcon }) 
         <p className="kpi-label">{metric.label}</p>
         <DeltaText delta={metric.delta} estimated={metric.estimated} />
       </div>
-      <p data-testid="metric-value" className="font-display text-2xl font-semibold tabular-nums text-ink">
+      <p data-testid="metric-value" className="font-display text-xl font-semibold tabular-nums text-ink">
         {format(metric.value)}
       </p>
     </div>
@@ -114,7 +114,7 @@ function StatRow({ metric, icon }: { metric: PartnerMetric; icon: LucideIcon }) 
 }
 
 /** A table that scrolls sideways inside its card on a narrow phone, and never in print. */
-function TableScroll({ children }: { children: ReactNode }) {
+export function TableScroll({ children }: { children: ReactNode }) {
   return <div className="overflow-x-auto print:overflow-visible">{children}</div>;
 }
 

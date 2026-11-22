@@ -75,7 +75,7 @@ export function RecordDetail({ id }: { id: string }) {
             eyebrow={<TagPill>{RECORD_SOURCE_LABELS[record.source]}</TagPill>}
             title={record.name}
             badges={<StatusBadge status={record.verified ? "verified" : "pending"} />}
-            meta={`${record.institution} · ${record.country}`}
+            meta={[record.institution, record.country].filter(Boolean).join(" · ") || "Not added yet"}
             actions={actions}
           />
         }
@@ -85,8 +85,8 @@ export function RecordDetail({ id }: { id: string }) {
               items={[
                 { label: "Email", value: record.email },
                 { label: "Phone", value: record.phone },
-                { label: "Country", value: record.country },
-                { label: "Institution", value: record.institution },
+                { label: "Country", value: record.country || "Not added yet" },
+                { label: "Institution", value: record.institution || "Not added yet" },
                 { label: "Source", value: RECORD_SOURCE_LABELS[record.source] },
                 // GOD-T3: an app registration has no staff member behind it
                 { label: "Entry", value: RECORD_ORIGIN_LABELS[recordOrigin(record)] },

@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import { File } from 'expo-file-system';
 
 export type AuthRole = 'seeker' | 'hirer' | 'admin';
 
@@ -73,16 +74,37 @@ export type Grant = {
   datePosted?: string;
 };
 
+/** One step of "Complete your profile". The server decides which steps exist and which are done. */
+export type ProfileStep = { id: string; label: string; done: boolean };
+
+/** How much of their profile a person has filled in (null for accounts with no profile, such as admins). */
+export type ProfileCompletion = {
+  percent: number;
+  complete: boolean;
+  steps: ProfileStep[];
+  /** Ids of the steps still to do. */
+  missing: string[];
+};
+
+export type Gender = 'female' | 'male' | 'other' | 'prefer_not_to_say';
+
 export type AuthUser = {
   id: string;
   name: string;
+  firstName?: string;
+  lastName?: string;
+  /** ISO date (the time part is always midnight UTC). */
+  dateOfBirth?: string;
+  gender?: Gender;
+  avatarUrl?: string | null;
+  profileCompletion?: ProfileCompletion | null;
   email: string;
   role: AuthRole | string;
   emailVerified?: boolean;
   seeker?: unknown;
   hirer?: unknown;
   staff?: unknown;
-  notificationPreferences?: { push?: boolean };
+  notificationPreferences?: { push?: boolean; alerts?: Record<string, boolean> };
 };
 
 type AuthResponse = {
@@ -445,6 +467,20 @@ export const getMe = async () => {
 };
 
 /**
+ * "Complete your profile": saves some details about the signed-in person (a seeker's education or skills, a hirer's company details) and
+ * returns the refreshed account, with the new profile completion. The copy saved on this phone is updated too.
+ * A CV or logo must be uploaded first (uploadFile) and passed as its address.
+ */
+export const updateMyProfile = async (changes: Record<string, unknown>): Promise<AuthUser> => {
+  const user = await request<AuthUser>('/users/me/profile', {
+    method: 'PATCH',
+    body: JSON.stringify(changes),
+  });
+  await saveMobileUser(user);
+  return user;
+};
+
+/**
  * Signs in and saves the session on this phone.
  * @param remember SEC-160: "Remember me" was ticked, so the next launch keeps this session.
  */
@@ -459,7 +495,13 @@ export const loginMobile = async (email: string, password: string, remember = fa
 };
 
 export const signupMobile = async (values: {
-  name: string;
+  /** The new sign-up sends first and last name. A single `name` is what older app versions sent. */
+  name?: string;
+  firstName?: string;
+  lastName?: string;
+  /** YYYY-MM-DD */
+  dateOfBirth?: string;
+  gender?: Gender;
   email: string;
   password: string;
   role: 'seeker' | 'hirer';
@@ -541,6 +583,14 @@ export const registerPushToken = async (pushToken: string, platform: PushPlatfor
   }
 };
 
+/** Saves the alert switches of Manage notifications (only the ones sent change); resolves with every switch as saved. */
+export const updateAlertPreferences = async (alerts: Record<string, boolean>): Promise<Record<string, boolean>> => {
+  return request<Record<string, boolean>>('/users/me/alert-preferences', {
+    method: 'PATCH',
+    body: JSON.stringify(alerts),
+  });
+};
+
 /** Turns phone pushes on or off for the signed-in person. The in-app list is not affected. */
 export const updatePushPreference = async (enabled: boolean): Promise<{ push: boolean }> => {
   return request<{ push: boolean }>('/users/me/notification-preferences', {
@@ -591,6 +641,91 @@ export const searchSeekers = async (params: { skills?: string, university?: stri
   
   return request<any[]>(`/seekers/search?${query.toString()}`);
 };
+
+// --- Expert listing ---
+
+/** An approved expert, as the Expert listing and an expert's profile show them. Contact details are only here when the expert chose to show them. */
+export interface PublicExpert {
+  id: string;
+  name: string;
+  image?: string;
+  profession: string;
+  verified: boolean;
+  city: string;
+  country: string;
+  location: string;
+  university?: string;
+  bio: string;
+  experienceLevel?: string;
+  technicalSkills: string[];
+  rating: number;
+  ratingCount: number;
+  contact: { email?: string; phone?: string; website?: string };
+  // Only on a single expert's profile
+  professionalSummary?: string;
+  softSkills?: string[];
+  tools?: string[];
+  certifications?: string[];
+  education?: { degree?: string; institution?: string; duration?: string }[];
+  workExperience?: { role?: string; company?: string; location?: string; duration?: string; bullets?: string[] }[];
+  projects?: { name?: string; bullets?: string[] }[];
+  myRating?: number | null;
+  isMe?: boolean;
+  /** false for an applicant who is not on the Expert listing: they can be read by the hirer they applied to, but not rated. */
+  listed?: boolean;
+}
+
+export type ExpertStatus = 'none' | 'pending' | 'approved' | 'rejected' | 'hidden';
+
+/** Where the signed-in seeker stands with the Expert listing. */
+export interface MyExpertState {
+  status: ExpertStatus;
+  eligible: boolean;
+  /** What the profile still needs before applying: profession, summary, skills. */
+  missing: string[];
+  showEmail: boolean;
+  showPhone: boolean;
+  showWebsite: boolean;
+  website?: string;
+  reviewNote?: string;
+  rating: number;
+  ratingCount: number;
+  profileId?: string;
+}
+
+export interface ExpertContactChoices {
+  showEmail?: boolean;
+  showPhone?: boolean;
+  showWebsite?: boolean;
+  website?: string;
+}
+
+export const getExperts = async (params: { q?: string; city?: string; profession?: string; experience?: string; rating?: string; country?: string; skills?: string } = {}) => {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) if (value) query.append(key, value);
+  return request<PublicExpert[]>(`/experts?${query.toString()}`);
+};
+
+/** The professions and countries of the experts who are listed, most common first: what the filter and the search suggestions offer. */
+export const getExpertFacets = async () => request<{ professions: string[]; countries: string[] }>('/experts/facets');
+
+export const getExpert = async (id: string) => request<PublicExpert>(`/experts/${encodeURIComponent(id)}`);
+
+/** The profile of someone who applied to one of the signed-in hirer's listings, by the id of the application. */
+export const getApplicantProfile = async (applicantId: string) => request<PublicExpert>(`/experts/applicant/${encodeURIComponent(applicantId)}`);
+
+export const getMyExpertState = async () => request<MyExpertState>('/experts/me');
+
+export const applyAsExpert = async (choices: ExpertContactChoices) =>
+  request<MyExpertState>('/experts/me/apply', { method: 'POST', body: JSON.stringify(choices) });
+
+export const updateExpertContactChoices = async (choices: ExpertContactChoices) =>
+  request<MyExpertState>('/experts/me', { method: 'PATCH', body: JSON.stringify(choices) });
+
+export const withdrawAsExpert = async () => request<MyExpertState>('/experts/me/withdraw', { method: 'POST' });
+
+export const rateExpert = async (id: string, stars: number) =>
+  request<{ rating: number; ratingCount: number; myRating: number }>(`/experts/${encodeURIComponent(id)}/rating`, { method: 'POST', body: JSON.stringify({ stars }) });
 
 // --- Community Channels & Posts ---
 
@@ -877,16 +1012,14 @@ export interface UploadResponse {
 
 export const uploadFile = async (
   file: { uri: string; name: string; mimeType?: string },
-  purpose: 'cvs' | 'avatars' | 'company-logos' | 'verification-docs' = 'cvs'
+  purpose: 'cvs' | 'avatars' | 'company-logos' | 'verification-docs' | 'channel-avatars' = 'cvs'
 ): Promise<UploadResponse> => {
   const token = await getMobileToken();
   const formData = new FormData();
 
-  formData.append('file', {
-    uri: file.uri,
-    name: file.name,
-    type: file.mimeType || 'application/octet-stream',
-  } as any);
+  // Expo's fetch (SDK 57) no longer accepts React Native's { uri, name, type } parts ("Unsupported FormDataPart implementation");
+  // a File from expo-file-system is read from disk and sent as the file part. Its name and type come from the file's own name.
+  formData.append('file', new File(file.uri) as unknown as Blob);
 
   const response = await fetch(`${API_BASE_URL}/upload?purpose=${encodeURIComponent(purpose)}`, {
     method: 'POST',
@@ -903,6 +1036,20 @@ export const uploadFile = async (
   }
 
   return payload.data;
+};
+
+/**
+ * Sets (or, with null, removes) the signed-in person's profile picture. The picture must already be uploaded with
+ * uploadFile(..., 'avatars'); the server replaces and deletes the previous one. Also updates the profile saved on this phone.
+ */
+export const updateMyAvatar = async (avatarUrl: string | null): Promise<string | null> => {
+  const result = await request<{ avatarUrl: string | null }>('/users/me/avatar', {
+    method: 'PATCH',
+    body: JSON.stringify({ avatarUrl }),
+  });
+  const saved = await getMobileUser();
+  if (saved) await saveMobileUser({ ...saved, avatarUrl: result.avatarUrl ?? undefined });
+  return result.avatarUrl;
 };
 
 export const requestEmailVerification = async (

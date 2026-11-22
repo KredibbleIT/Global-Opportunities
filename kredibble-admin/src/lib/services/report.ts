@@ -1,12 +1,12 @@
 /**
  * Monthly report data service (/monthly-report): what the two report templates show, and the one write they make (recording that a report was generated).
  *
- * - getPartnerReport(month) and getTeamReport(month) work the figures out from the shared in-memory store with the same functions as the other screens
- *   (see lib/report.ts). The first load takes a moment (a skeleton shows); later ones are instant. In real-API mode the page shows the sample-data notice and
- *   the report is built from the same sample store (printing still works).
+ * - getPartnerReport(month) and getTeamReport(month): mock mode works the figures out from the shared in-memory store with the same functions as the other
+ *   screens (see lib/report.ts; the first load takes a moment, later ones are instant). Real-API mode reads them from the server (./report-live.ts): a month
+ *   with no records is zeros and "No data", never sample figures, and a failed request is an issue the page shows with "Try again".
  * - Dev only: ?state=loading|error|empty on the page URL forces that state (mock mode, never in production). "empty" is a month with no figures at all.
- * - recordReport(month, view) is what "Download PDF" does BEFORE it prints: it adds ONE record {reportMonth, view, generatedAt: now} to the store, at most
- *   once per reportMonth and view in each calendar month, so the Monthly reports KPI counts it. TODO(backend): persist this change.
+ * - recordReport(month, view) is what "Download PDF" does BEFORE it prints: it adds ONE record {reportMonth, view, generatedAt: now}, at most once per
+ *   reportMonth and view in each calendar month, so the Monthly reports KPI counts it. Mock mode adds it to the store; real mode saves it on the server.
  */
 import { shouldRecordReport } from "@/lib/kpi";
 import type { MonthKey, MonthlyReport } from "@/lib/mock-entities";
@@ -15,7 +15,9 @@ import { partnerMetrics, storeReportData, teamReport, type PartnerMetric, type R
 import { platformRows, type PlatformRow } from "@/lib/services/social";
 import { buildTrend } from "@/lib/services/dashboard";
 import { earliestMonth, isMonthToDate } from "@/lib/report";
+import { getMonthlyReportsApi, recordMonthlyReportApi } from "@/lib/api";
 import { isMockMode } from "./mock-mode";
+import { livePartnerReport, liveTeamReport } from "./report-live";
 
 /** One month of the "Monthly views by platform" chart: the website views, and the app views when they are tracked (null = "No data"). */
 export interface AudiencePoint {
@@ -53,13 +55,15 @@ export interface TeamReportResult {
 export type ReportSource = "sample" | "live";
 
 /**
- * The source of the report's figures. Always "sample" today: no API serves the monthly figures yet, so BOTH modes build the report from the sample store
- * (the Overview says so in real-API mode with "Monthly figures aren't connected to live data yet"). The paper then shows a "Sample report" badge and a
- * sample footer, on screen and in the PDF. TODO(backend): return "live" once the report reads the API, and only then.
+ * The source of the report's figures: "sample" in mock mode (the paper then shows a "Sample report" badge and a sample footer, on screen and in the PDF),
+ * "live" otherwise (the figures come from the server).
  */
 export function reportSource(): ReportSource {
-  return "sample";
+  return isMockMode() ? "sample" : "live";
 }
+
+/** The records the sample report is worked out from (mock mode only: the real report is read from the server). */
+const reportRecords = () => storeReportData();
 
 const FORCED = ["loading", "error", "empty"] as const;
 type Forced = (typeof FORCED)[number];
@@ -83,15 +87,25 @@ function afterDelay<T>(make: () => T): Promise<T> {
   );
 }
 
+/** A real-API read: the report, or the issue the page shows with "Try again". */
+async function liveResult<T>(load: () => Promise<T>, fallback: string): Promise<{ data: T | null; issue: ReportIssue | null }> {
+  try {
+    return { data: await load(), issue: null };
+  } catch (error) {
+    return { data: null, issue: { kind: "failed", message: error instanceof Error && error.message ? error.message : fallback } };
+  }
+}
+
 const failed = (): ReportIssue => ({ kind: "failed", message: "Could not load the report. (forced: ?state=error)" });
 
 /** The partner report of a month: aggregate figures only. Nothing about a person is read here. */
 export function getPartnerReport(month: MonthKey): Promise<PartnerReportResult> {
+  if (!isMockMode()) return liveResult(() => livePartnerReport(month), "Could not load the partner report.");
   const forced = readForcedState();
   if (forced === "loading") return new Promise<PartnerReportResult>(() => {});
   if (forced === "error") return afterDelay(() => ({ data: null, issue: failed() }));
   return afterDelay(() => {
-    const data = storeReportData();
+    const data = reportRecords();
     const metrics = partnerMetrics(month, new Date(), data);
     const empty = forced === "empty";
     const websiteByMonth = new Map(data.websiteMonths.map((row) => [row.month, row]));
@@ -118,11 +132,12 @@ export function getPartnerReport(month: MonthKey): Promise<PartnerReportResult> 
 
 /** The team report of a month (internal). */
 export function getTeamReport(month: MonthKey): Promise<TeamReportResult> {
+  if (!isMockMode()) return liveResult(() => liveTeamReport(month), "Could not load the team report.");
   const forced = readForcedState();
   if (forced === "loading") return new Promise<TeamReportResult>(() => {});
   if (forced === "error") return afterDelay(() => ({ data: null, issue: failed() }));
   return afterDelay(() => {
-    const report = teamReport(month);
+    const report = teamReport(month, new Date(), reportRecords());
     // "empty": the month recorded nothing: every KPI is 0 (the paper stays, with its neutral note)
     return { data: forced === "empty" ? { ...report, kpis: report.kpis.map((card) => ({ ...card, value: 0, status: card.target ? ("red" as const) : null, attainment: card.target ? 0 : null })) } : report, issue: null };
   });
@@ -139,4 +154,23 @@ export function recordReport(month: MonthKey, view: ReportView, now: Date = new 
   const record: MonthlyReport = { id: `rpt-${view}-${month}-${now.getTime()}`, reportMonth: month, view, generatedAt: now.toISOString().slice(0, 10) };
   setMockCollection("monthlyReports", [...reports, record], { always: true });
   return true;
+}
+
+/** What "Download PDF" calls: the sample store in mock mode, the server in real mode. Resolves with whether a record was added (the page then shows its toast). */
+export async function recordGeneratedReport(month: MonthKey, view: ReportView, now: Date = new Date()): Promise<boolean> {
+  return isMockMode() ? recordReport(month, view, now) : recordReportOnServer(month, view, now);
+}
+
+/** Real mode: asks the server which reports were generated this calendar month and saves this one only when it is the first of its month and view. */
+async function recordReportOnServer(month: MonthKey, view: ReportView, now: Date): Promise<boolean> {
+  try {
+    const existing = await getMonthlyReportsApi({ reportMonth: month, view, limit: 50 });
+    const known: MonthlyReport[] = existing.map((row) => ({ id: row.id, reportMonth: row.reportMonth as MonthKey, view: row.view, generatedAt: String(row.generatedAt).slice(0, 10) }));
+    if (!shouldRecordReport(known, month, now, view)) return false;
+    await recordMonthlyReportApi({ reportMonth: month, view });
+    return true;
+  } catch {
+    // Printing never waits on this: the report still prints, it is just not counted.
+    return false;
+  }
 }

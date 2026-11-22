@@ -1,4 +1,5 @@
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import { previewText } from '../../lib/rich-text';
 import { Colors } from '../../constants/design';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft, SlidersHorizontal, Search, Bookmark, Sparkles } from 'lucide-react-native';
@@ -114,7 +115,7 @@ export const JobCard = ({ job, onPress }: { job: Job; onPress: () => void }) => 
       numberOfLines={2}
       className="font-sans"
     >
-      {job.description}
+      {previewText(job.description)}
     </Text>
 
     {/* Divider */}

@@ -4,8 +4,8 @@ import { Bookmark, Clock } from 'lucide-react-native';
 import { Header } from '../../components/ui/Header';
 import { useRouter } from 'expo-router';
 import { Colors, Radius } from '../../constants/design';
-import { useSavedArticles, useNewsSaved } from '../../constants/mockNews';
-import type { NewsArticle } from '../../constants/mockNews';
+import { useSavedArticles, useNewsSaved } from '../../lib/news';
+import type { NewsArticle } from '../../lib/news';
 
 const SavedRow = ({ item, onPress }: { item: NewsArticle; onPress: () => void }) => {
   const [, toggle] = useNewsSaved(item.id);
@@ -16,13 +16,13 @@ const SavedRow = ({ item, onPress }: { item: NewsArticle; onPress: () => void })
       style={{ backgroundColor: Colors.bgCard, borderRadius: Radius.card, padding: 16, marginBottom: 12, flexDirection: 'row', gap: 12 }}
     >
       <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.accent700, marginBottom: 4 }}>{item.category.toUpperCase()}</Text>
+        <Text style={{ fontSize: 11, fontWeight: '700', color: Colors.accent700, marginBottom: 4 }}>{item.sourceName.toUpperCase()}</Text>
         <Text numberOfLines={3} style={{ fontSize: 15, lineHeight: 21, color: Colors.textBody }} className="font-heading font-semibold">
           {item.title}
         </Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10 }}>
           <Clock size={12} color={Colors.textMuted} />
-          <Text style={{ fontSize: 12, color: Colors.textMuted }}>{item.author} · {item.readMinutes} min</Text>
+          <Text style={{ fontSize: 12, color: Colors.textMuted }}>{item.date ? `${item.date} · ` : ''}{item.readMinutes} min</Text>
         </View>
       </View>
       <TouchableOpacity onPress={toggle} hitSlop={10} accessibilityRole="button" accessibilityLabel="Remove from saved">
@@ -34,7 +34,7 @@ const SavedRow = ({ item, onPress }: { item: NewsArticle; onPress: () => void })
 
 export default function SavedArticlesScreen() {
   const router = useRouter();
-  const articles = useSavedArticles();
+  const { articles } = useSavedArticles();
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: Colors.bgScreen }} edges={['top', 'left', 'right', 'bottom']}>

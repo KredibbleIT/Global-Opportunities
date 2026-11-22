@@ -9,6 +9,9 @@ import { notificationStore } from '../../constants/mockNotifications';
 import { subscribeToLiveNotifications, syncNotifications } from '../../lib/notificationSync';
 import { Colors } from '../../constants/design';
 import { getOpportunities, getApplicants } from '../../lib/api';
+import { ProfileCompletionCard } from '../../components/profile/ProfileCompletionCard';
+import { WelcomeProfileSheet } from '../../components/profile/WelcomeProfileSheet';
+import { FloatingAiButton } from '../../components/ui/FloatingAiButton';
 
 // ─── Logo ─────────────────────────────────────────────────────────────────────
 
@@ -27,7 +30,6 @@ const CARDS = [
   { title: 'Expert listing',               emoji: '⭐' },
   { title: 'Community &\nnetworking',      emoji: '🌐' },
   { title: 'Career\nresources\ncenter',    emoji: '📚' },
-  { title: 'AI Smart\nassistant',          emoji: '🤖' },
 ];
 
 const BlurEllipse = ({ position }: { position: 'topLeft' | 'bottomRight' }) => (
@@ -200,6 +202,7 @@ export default function HomeScreen() {
 
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: '#F7F7F9' }} edges={['top', 'left', 'right']}>
+        <WelcomeProfileSheet />
         {/* Header */}
         <View
           style={{
@@ -244,7 +247,10 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 32 }} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+          <View style={{ marginTop: 4 }}>
+            <ProfileCompletionCard dismissible />
+          </View>
           {isLoading && (
             <ActivityIndicator size="small" color={Colors.primary} style={{ marginTop: 20 }} />
           )}
@@ -326,41 +332,32 @@ export default function HomeScreen() {
             />
           </View>
 
-          {/* Feature grid — row 3 (half width) */}
-          <View style={{ flexDirection: 'row', gap: 20 }}>
-            <View style={{ width: cardWidth, height: 121.7 }}>
-              <FeatureCard
-                title={CARDS[4].title}
-                backgroundImage={require('../../../assets/images/ai_assistant.png')}
-                onPress={() => router.push('/assistant' as any)}
-              />
-            </View>
-            <View style={{ width: cardWidth, height: 121.7 }}>
-              <FeatureCard
-                title="News"
-                backgroundImage={require('../../../assets/images/home_news_bg.png')}
-                onPress={() => router.push('/news' as any)}
-              />
-            </View>
+        {/* Feature grid, row 3 (half width). The AI assistant is the floating button at the bottom right. */}
+        <View style={{ flexDirection: 'row', gap: 20 }}>
+          <View style={{ width: cardWidth, height: 121.7 }}>
+            <FeatureCard
+              title="News"
+              backgroundImage={require('../../../assets/images/home_news_bg.png')}
+              onPress={() => router.push('/news' as any)}
+            />
           </View>
-
-            {/* Feature grid, row 4: Our People sits under the AI assistant card */}
-            <View style={{ flexDirection: 'row', gap: 20, marginTop: 20 }}>
-              <View style={{ width: cardWidth, height: 121.7 }}>
-                <FeatureCard
-                  title={'Meet our\npeople'}
-                  backgroundImage={require('../../../assets/images/our_people.png')}
-                  onPress={() => router.push('/profile/people' as any)}
-                />
-              </View>
-            </View>
+          <View style={{ width: cardWidth, height: 121.7 }}>
+            <FeatureCard
+              title={'Meet our\npeople'}
+              backgroundImage={require('../../../assets/images/our_people.png')}
+              onPress={() => router.push('/profile/people' as any)}
+            />
+          </View>
+        </View>
         </ScrollView>
+        <FloatingAiButton />
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F7F7F9' }} edges={['top', 'left', 'right']}>
+        <WelcomeProfileSheet />
 
       {/* Header */}
       <View
@@ -404,7 +401,7 @@ export default function HomeScreen() {
       </View>
 
       <ScrollView
-        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 24 }}
+        contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 100 }}
         showsVerticalScrollIndicator={false}
       >
         {/* Search bar */}
@@ -424,6 +421,8 @@ export default function HomeScreen() {
             className="font-sans"
           />
         </View>
+
+        <ProfileCompletionCard dismissible />
 
         {/* Ads banner: the "101 Training Sessions" banner (1280x306, so its box keeps that shape and it is never stretched). */}
         <Image
@@ -461,35 +460,25 @@ export default function HomeScreen() {
           />
         </View>
 
-        {/* Feature grid — row 3 (half width) */}
+        {/* Feature grid, row 3 (half width). The AI assistant is the floating button at the bottom right. */}
         <View style={{ flexDirection: 'row', gap: 20 }}>
           <View style={{ width: cardWidth, height: 121.7 }}>
             <FeatureCard
-              title={CARDS[4].title}
-              backgroundImage={require('../../../assets/images/ai_assistant.png')}
-              onPress={() => router.push('/assistant' as any)}
+              title="News"
+              backgroundImage={require('../../../assets/images/home_news_bg.png')}
+              onPress={() => router.push('/news' as any)}
             />
           </View>
           <View style={{ width: cardWidth, height: 121.7 }}>
-              <FeatureCard
-                title="News"
-                backgroundImage={require('../../../assets/images/home_news_bg.png')}
-                onPress={() => router.push('/news' as any)}
-              />
-            </View>
+            <FeatureCard
+              title={'Meet our\npeople'}
+              backgroundImage={require('../../../assets/images/our_people.png')}
+              onPress={() => router.push('/profile/people' as any)}
+            />
+          </View>
         </View>
-
-            {/* Feature grid, row 4: Our People sits under the AI assistant card */}
-            <View style={{ flexDirection: 'row', gap: 20, marginTop: 20 }}>
-              <View style={{ width: cardWidth, height: 121.7 }}>
-                <FeatureCard
-                  title={'Meet our\npeople'}
-                  backgroundImage={require('../../../assets/images/our_people.png')}
-                  onPress={() => router.push('/profile/people' as any)}
-                />
-              </View>
-            </View>
       </ScrollView>
+      <FloatingAiButton />
     </SafeAreaView>
   );
 }

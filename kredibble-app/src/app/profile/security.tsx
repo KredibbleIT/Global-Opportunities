@@ -1,17 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Colors } from '../../constants/design';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Modal, Switch } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ChevronLeft, ExternalLink } from 'lucide-react-native';
-import { profileStore, SecuritySettings } from '../../constants/mockProfile';
 import { changePassword, deleteMyAccount } from '../../lib/api';
 import { authStore } from '../../constants/authStore';
 import { openPrivacyPolicy, openTermsOfService } from '../../lib/legal';
 
 export default function ManageSecurityScreen() {
   const router = useRouter();
-  const [security, setSecurity] = useState<SecuritySettings>(profileStore.security);
   const [deleteVisible, setDeleteVisible] = useState(false);
 
   // Form password state
@@ -26,17 +24,6 @@ export default function ManageSecurityScreen() {
   const [deletePassword, setDeletePassword] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
-
-  useEffect(() => {
-    const unsubscribe = profileStore.subscribe(() => {
-      setSecurity({ ...profileStore.security });
-    });
-    return unsubscribe;
-  }, []);
-
-  const handleToggle = (key: keyof SecuritySettings) => {
-    profileStore.updateSecurity({ [key]: !security[key] });
-  };
 
   const handleUpdatePassword = async () => {
     if (!isPasswordValid || isUpdatingPassword) return;
@@ -158,17 +145,14 @@ export default function ManageSecurityScreen() {
         {/* Privacy Controls Header */}
         <Text style={styles.sectionHeader} className="font-sans">Privacy Controls</Text>
         
-        {/* Toggle Option */}
-        <View style={styles.toggleRow}>
-          <Text style={styles.toggleLabel} className="font-sans">Show profile to recruiters</Text>
-          <Switch
-            value={security.showProfileToRecruiters}
-            onValueChange={() => handleToggle('showProfileToRecruiters')}
-            trackColor={{ false: '#E5E6F2', true: Colors.primary }}
-            thumbColor="#FFFFFF"
-            ios_backgroundColor="#E5E6F2"
-          />
-        </View>
+        {/* Who can find the profile: the Expert listing is the one place other people see a seeker's profile, and only if they apply to be listed. */}
+        <TouchableOpacity testID="privacy-expert-listing" onPress={() => router.push('/experts/apply' as never)} style={styles.policyRow} activeOpacity={0.7}>
+          <View style={{ flex: 1, paddingRight: 12 }}>
+            <Text style={styles.policyLabel} className="font-sans">Expert listing</Text>
+            <Text style={{ fontSize: 12, color: '#8A8D9F', marginTop: 2 }} className="font-sans">Choose whether other people can find your profile, and which contact details they see.</Text>
+          </View>
+          <ChevronLeft size={16} color="#8A8D9F" style={{ transform: [{ rotate: '180deg' }] }} />
+        </TouchableOpacity>
 
         {/* Legal & Policies */}
         <Text style={styles.sectionHeader} className="font-sans">Legal & Policies</Text>

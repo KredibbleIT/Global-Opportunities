@@ -11,7 +11,9 @@ import { ApiError, asyncHandler, itemResponse, listResponse, notFound } from '..
 import { Opportunity, CompanyVerification } from '../models/Platform.js';
 import { StaffMember, User } from '../models/User.js';
 import { Channel, CommunityMembership, Report, ChannelPost } from '../models/Community.js';
-import { Notification } from '../models/Content.js';
+import { Notification, NotificationRead } from '../models/Content.js';
+import { announceBroadcast } from '../lib/user-notify.js';
+import { ADMIN_CHANNEL_IMAGE_FOLDER, assertChannelImage } from '../lib/channel-image.js';
 import { NewsItem } from '../models/Content.js';
 import { SeekerProfile, HirerAccount } from '../models/Profiles.js';
 import {
@@ -137,10 +139,12 @@ import { syncWebsiteAudienceFromGa4 } from '../lib/ga4-sync.js';
 import { validate } from '../middleware/validate.js';
 import { postChannelMessage, listChannelMessages, getThread, findPost, setAllowReplies } from '../lib/chat.js';
 import { notifyUser } from '../lib/user-notify.js';
+import { expertApproveSchema, expertRejectSchema } from '../schemas/experts.js';
+import { expertMissing, publicExpert } from '../lib/experts.js';
 import { pushInBackground, pushNotification } from '../lib/push.js';
 import { rejectionNotice, rejectionReasonLabel } from '../lib/opportunity-rejection.js';
 import logger from '../lib/logger.js';
-import { evictFromChannelRoom } from '../socket.js';
+import { emitToAll, evictFromChannelRoom } from '../socket.js';
 import { toRequestResponse } from './ambassador.js';
 import { moveUserSegment, normalizeSegments, GENERAL_SEGMENT } from '../lib/segments.js';
 import { retrySyncEvent } from '../lib/website-sync.js';
@@ -1898,6 +1902,106 @@ adminApiRouter.post('/social-posts/:id/retry-wordpress-sync', requireAdminOrStaf
   itemResponse(res, { ...toSocialPostClientObject(post), sync: await syncManagedRecord('social-posts', post) });
 }));
 
+// --- Expert listing ------------------------------------------------------------
+// Seekers apply to be shown on the Expert listing (routes/experts.js); an admin with the Seekers screen reviews them here.
+
+const EXPERT_REVIEW_STATUSES = ['pending', 'approved', 'rejected', 'hidden'];
+
+const toExpertRow = (profile, user) => ({
+  id: String(profile._id),
+  userId: String(profile.userId),
+  name: user?.name,
+  email: user?.email,
+  avatarUrl: user?.avatarUrl,
+  profession: profile.profession,
+  country: profile.country,
+  city: profile.city,
+  experienceLevel: profile.experienceLevel,
+  verified: Boolean(profile.verified),
+  status: profile.expertStatus,
+  appliedAt: profile.expertAppliedAt,
+  reviewedAt: profile.expertReviewedAt,
+  reviewNote: profile.expertReviewNote,
+  rating: Math.round((profile.expertRatingAverage || 0) * 10) / 10,
+  ratingCount: profile.expertRatingCount || 0,
+});
+
+adminApiRouter.get('/experts', requireAdminScreen('seekers'), asyncHandler(async (req, res) => {
+  const filter = { expertStatus: { $in: EXPERT_REVIEW_STATUSES } };
+  if (EXPERT_REVIEW_STATUSES.includes(req.query.status)) filter.expertStatus = req.query.status;
+  if (req.query.q) {
+    const pattern = new RegExp(escapedRegex(String(req.query.q).slice(0, 80)), 'i');
+    const owners = await User.find({ $or: [{ name: pattern }, { email: pattern }] }).select('_id').limit(500).lean();
+    filter.$or = [{ profession: pattern }, { country: pattern }, { userId: { $in: owners.map((owner) => owner._id) } }];
+  }
+  const { page, skip, limit } = pageOptions(req.query);
+  const [rows, total] = await Promise.all([
+    SeekerProfile.find(filter).sort({ expertAppliedAt: -1, createdAt: -1 }).skip(skip).limit(limit).lean(),
+    SeekerProfile.countDocuments(filter),
+  ]);
+  const users = await User.find({ _id: { $in: rows.map((row) => row.userId) } }).select('name email avatarUrl').lean();
+  const byId = new Map(users.map((user) => [String(user._id), user]));
+  listResponse(res, rows.map((row) => toExpertRow(row, byId.get(String(row.userId)))), total, page, limit);
+}));
+
+adminApiRouter.get('/experts/:id', requireAdminScreen('seekers'), asyncHandler(async (req, res) => {
+  const profile = await SeekerProfile.findById(validId(req.params.id, 'Expert')).lean();
+  if (!profile || !EXPERT_REVIEW_STATUSES.includes(profile.expertStatus)) throw notFound('Expert');
+  const user = await User.findById(profile.userId).select('name email avatarUrl emailVerified createdAt').lean();
+  itemResponse(res, {
+    ...toExpertRow(profile, user),
+    emailVerified: Boolean(user?.emailVerified),
+    joinedAt: user?.createdAt,
+    missing: expertMissing(profile),
+    // What the public profile will show once approved, exactly as the app builds it.
+    preview: publicExpert(profile, user, { includeDetail: true }),
+    contactShown: { email: Boolean(profile.expertShowEmail), phone: Boolean(profile.expertShowPhone), website: Boolean(profile.expertShowWebsite) },
+  });
+}));
+
+/** Moves an expert from one of the `from` statuses to `to`, records who decided, tells the seeker and audits it. */
+const decideExpert = async (req, res, { from, to, decision, notice }) => {
+  const profile = await SeekerProfile.findById(validId(req.params.id, 'Expert'));
+  if (!profile) throw notFound('Expert');
+  if (!from.includes(profile.expertStatus)) throw new ApiError(409, `This expert is ${profile.expertStatus}, so it cannot be ${decision}`);
+  profile.expertStatus = to;
+  profile.expertReviewNote = req.body.note || undefined;
+  profile.expertReviewedBy = req.auth.sub;
+  profile.expertReviewedAt = new Date();
+  await profile.save();
+  if (notice) {
+    await notifyUser(profile.userId, { title: notice.title, message: notice.message(req.body.note), type: 'system', priority: 'normal' });
+  }
+  await auditReq(req, {
+    action: AUDIT_ACTIONS.ADMIN_EXPERT_DECISION,
+    resourceType: AUDIT_RESOURCE_TYPES.EXPERT,
+    resourceId: profile._id,
+    outcome: 'success',
+    metadata: { decision },
+  });
+  const user = await User.findById(profile.userId).select('name email avatarUrl').lean();
+  itemResponse(res, toExpertRow(profile, user));
+};
+
+adminApiRouter.post('/experts/:id/approve', requireAdminScreen('seekers'), validate(expertApproveSchema), asyncHandler((req, res) => decideExpert(req, res, {
+  from: ['pending'], to: 'approved', decision: 'approved',
+  notice: { title: 'You are now on the Expert listing', message: () => 'Your expert profile has been approved. Other people on Global Opportunity Desk can now find you on the Expert listing page.' },
+})));
+
+adminApiRouter.post('/experts/:id/reject', requireAdminScreen('seekers'), validate(expertRejectSchema), asyncHandler((req, res) => decideExpert(req, res, {
+  from: ['pending'], to: 'rejected', decision: 'rejected',
+  notice: { title: 'Expert listing update', message: (note) => `We could not approve your expert profile yet. ${note} You can update your profile and apply again.` },
+})));
+
+adminApiRouter.post('/experts/:id/hide', requireAdminScreen('seekers'), validate(expertRejectSchema), asyncHandler((req, res) => decideExpert(req, res, {
+  from: ['approved'], to: 'hidden', decision: 'hidden',
+  notice: { title: 'Expert listing update', message: (note) => `Your expert profile has been taken off the Expert listing. ${note}` },
+})));
+
+adminApiRouter.post('/experts/:id/unhide', requireAdminScreen('seekers'), validate(expertApproveSchema), asyncHandler((req, res) => decideExpert(req, res, {
+  from: ['hidden'], to: 'approved', decision: 'restored',
+})));
+
 // --- Ambassador applications -------------------------------------------------
 // Reviewed by an admin. Approving links the user to the ambassador registry and, optionally, a channel.
 
@@ -2017,8 +2121,8 @@ adminApiRouter.post('/ambassador-requests/:id/approve', requireAdminScreen('netw
   await notifyUser(user._id, {
     title: 'Ambassador request approved',
     message: channel
-      ? `Congratulations! Your request to become a Global Opportunity Desk ambassador has been approved. Welcome to the team! You have been added to "${channel.name}" in Community, where our team will share next steps.`
-      : 'Congratulations! Your request to become a Global Opportunity Desk ambassador has been approved. Welcome to the team! Our team will be in touch shortly with next steps.',
+      ? `Congratulations! Your request to become a Global Opportunity Desk’s ambassador has been approved. Welcome to the team! You have been added to "${channel.name}" in Community, where our team will share next steps.`
+      : 'Congratulations! Your request to become a Global Opportunity Desk’s ambassador has been approved. Welcome to the team! Our team will be in touch shortly with next steps.',
     type: 'ambassador',
     priority: 'high',
   });
@@ -2045,7 +2149,7 @@ adminApiRouter.post('/ambassador-requests/:id/reject', requireAdminScreen('netwo
 
   await notifyUser(request.userId, {
     title: 'Ambassador request update',
-    message: 'Thank you for your interest in becoming a Global Opportunity Desk ambassador. We have carefully reviewed your request and are unable to approve it at this time. You are welcome to apply again in a few days, and we encourage you to keep contributing to the Kredibble community.',
+    message: 'Thank you for your interest in becoming a Global Opportunity Desk’s ambassador. We have carefully reviewed your request and are unable to approve it at this time. You are welcome to apply again in a few days, and we encourage you to keep contributing to the Global Opportunity Desk community.',
     type: 'ambassador',
   });
   await auditReq(req, {
@@ -2096,7 +2200,7 @@ adminApiRouter.post('/ambassador-requests/:id/revoke', requireAdminScreen('netwo
 
   await notifyUser(request.userId, {
     title: 'Ambassador status update',
-    message: 'Thank you for your time as a Global Opportunity Desk ambassador. Your ambassador status has now ended, and your access to the ambassador group has been removed. We appreciate your contribution and you are welcome to apply again in future.',
+    message: 'Thank you for your time as a Global Opportunity Desk’s ambassador. Your ambassador status has now ended, and your access to the ambassador group has been removed. We appreciate your contribution and you are welcome to apply again in future.',
     type: 'ambassador',
   });
   await auditReq(req, {
@@ -2117,6 +2221,7 @@ adminApiRouter.post('/channels', requireAdminScreen('channels'), validate(create
     name: req.body.name,
     category: req.body.category,
     bio: req.body.bio,
+    avatar: await assertChannelImage(req.body.avatar, ADMIN_CHANNEL_IMAGE_FOLDER),
     visibility: req.body.visibility,
     segments: req.body.segments === undefined ? [GENERAL_SEGMENT] : normalizeSegments(req.body.segments),
     requiresApproval: req.body.visibility === 'private',
@@ -4841,7 +4946,10 @@ adminApiRouter.post('/notifications', requireAdminOrStaffAuth, requireScreen('no
 
   // SEC-138: push to the audience's phones without holding up the response.
   // A scheduled broadcast is pushed by lib/notification-scheduler.js when it is due.
-  if (!isScheduled) pushInBackground(() => pushNotification(notification));
+  if (!isScheduled) {
+    announceBroadcast(notification);
+    pushInBackground(() => pushNotification(notification));
+  }
 
   res.status(201).json({ data: toClientObject(notification) });
 }));
@@ -4852,6 +4960,7 @@ adminApiRouter.delete('/notifications/:id', requireAdminOrStaffAuth, requireScre
   if (!notification) throw notFound('Notification');
 
   await Notification.findByIdAndDelete(notification._id);
+  await NotificationRead.deleteMany({ notificationId: notification._id });
 
   await auditReq(req, {
     action: 'notification.delete',
@@ -5041,6 +5150,7 @@ adminApiRouter.post('/community/channels', requireAdminOrStaffAuth, requireScree
     name: req.body.name,
     category: req.body.category || 'General',
     bio: req.body.bio,
+    avatar: await assertChannelImage(req.body.avatar, ADMIN_CHANNEL_IMAGE_FOLDER),
     visibility: req.body.visibility,
     segments: req.body.segments === undefined ? [GENERAL_SEGMENT] : normalizeSegments(req.body.segments),
     requiresApproval: req.body.visibility === 'private',
@@ -5086,12 +5196,20 @@ adminApiRouter.delete('/community/channels/:id', requireAdminOrStaffAuth, requir
   channel.status = 'removed';
   await channel.save();
 
+  // The channel is gone for everyone in the app (lists and direct links answer "not found"). People who have its live chat open are taken out
+  // of it now, so nothing more is delivered to them.
+  const members = await CommunityMembership.find({ channelId: channel._id, status: 'active' }).select('userId').lean();
+  // Tell every connected app now, so the channel leaves their lists and anyone inside it is taken out at once (only the id is sent). This goes
+  // first: the eviction below takes the members out of the channel's room.
+  emitToAll('channel_removed', { channelId: String(channel._id) });
+  for (const member of members) evictFromChannelRoom(channel._id, member.userId);
+
   await auditReq(req, {
     action: 'channel.remove',
     resourceType: 'Channel',
     resourceId: channel._id,
     outcome: 'success',
-    metadata: { name: channel.name },
+    metadata: { name: channel.name, createdBy: channel.createdBy ? String(channel.createdBy) : undefined, members: members.length },
   });
 
   res.json({ data: { id: String(channel._id), status: 'removed' } });

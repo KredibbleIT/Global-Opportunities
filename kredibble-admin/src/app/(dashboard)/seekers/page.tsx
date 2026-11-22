@@ -19,13 +19,19 @@ import type { Column } from "@/components/list/types";
 // Mock mode: the mock records with this session's changes laid over them; real mode: the admin API (services/directory.ts).
 const loadSeekers = loadSeekerRows;
 
+// What the Expert listing column says: nothing for a seeker who never applied.
+const EXPERT_LABELS: Record<string, string> = { pending: "Pending", approved: "Listed", rejected: "Rejected", hidden: "Hidden" };
+
 const COLUMNS: Column<SeekerAccount>[] = [
-  { key: "name", header: "Name", type: "primary", width: "26%", title: (r) => r.name, subtitle: (r) => r.email },
-  { key: "university", header: "University", type: "text", width: "24%", value: (r) => r.university },
-  { key: "country", header: "Country", type: "text", width: "14%", value: (r) => r.country },
-  { key: "applied", header: "Applied", type: "number", width: "10%", value: (r) => r.applicationsCount },
-  { key: "saved", header: "Saved", type: "number", width: "10%", value: (r) => r.savedCount },
-  { key: "status", header: "Status", type: "status", width: "16%", status: (r) => r.status },
+  { key: "name", header: "Name", type: "primary", width: "22%", title: (r) => r.name, subtitle: (r) => r.email },
+  { key: "university", header: "University", type: "text", width: "16%", value: (r) => r.university },
+  { key: "country", header: "Country", type: "text", width: "11%", value: (r) => r.country },
+  { key: "applied", header: "Applied", type: "number", width: "8%", value: (r) => r.applicationsCount },
+  { key: "saved", header: "Saved", type: "number", width: "8%", value: (r) => r.savedCount },
+  { key: "expert", header: "Expert listing", type: "text", width: "12%", value: (r) => EXPERT_LABELS[r.expertStatus ?? "none"] ?? "—" },
+  // Shown only once someone has rated the seeker as an expert.
+  { key: "rating", header: "Rating", type: "text", width: "11%", value: (r) => ((r.expertRatingCount ?? 0) > 0 ? `${(r.expertRating ?? 0).toFixed(1)} (${r.expertRatingCount})` : "—") },
+  { key: "status", header: "Status", type: "status", width: "12%", status: (r) => r.status },
 ];
 
 export default function SeekersDirectoryPage() {

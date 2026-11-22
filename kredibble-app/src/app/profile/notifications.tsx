@@ -1,29 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Colors } from '../../constants/design';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
-import { profileStore, NotificationSettings } from '../../constants/mockProfile';
+import { SEEKER_ALERT_DEFAULTS, NotificationSettings, useAlertPreferences } from '../../lib/alertPreferences';
 import { useToast } from '../../components/ui/ToastProvider';
 import { usePushPreference } from '../../lib/pushPreference';
 
 export default function ManageNotificationsScreen() {
   const router = useRouter();
   const { showToast } = useToast();
-  // SEC-138: the push switch is saved on the server; the other switches are still local.
+  // Every switch is saved on the account (the push switch and the alert switches), so they are the same on every phone.
   const push = usePushPreference(message => showToast(message, 'error'));
-  const [settings, setSettings] = useState<NotificationSettings>(profileStore.notifications);
-
-  useEffect(() => {
-    const unsubscribe = profileStore.subscribe(() => {
-      setSettings({ ...profileStore.notifications });
-    });
-    return unsubscribe;
-  }, []);
+  const { settings, toggle } = useAlertPreferences<NotificationSettings>(SEEKER_ALERT_DEFAULTS, message => showToast(message, 'error'));
 
   const handleToggle = (key: keyof NotificationSettings) => {
-    profileStore.updateNotifications({ [key]: !settings[key] });
+    void toggle(key);
   };
 
   const renderToggle = (label: string, value: boolean, key: keyof NotificationSettings) => (
