@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useLeaveRemovedChannel } from '../../lib/useChannelRemoved';
 import {
   View, Text, TextInput, TouchableOpacity, FlatList, KeyboardAvoidingView, Platform, ActivityIndicator, Switch,
 } from 'react-native';
@@ -22,6 +23,7 @@ export default function ChannelChatScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id?: string; name?: string }>();
   const channelId = String(params.id || '');
+  useLeaveRemovedChannel(channelId);
   const { showToast } = useToast();
 
   const [posts, setPosts] = useState<ChatMessage[] | null>(null);

@@ -6,7 +6,7 @@ import { useRouter } from 'expo-router';
 import { ChevronLeft, Plus, X, Trash2 } from 'lucide-react-native';
 import { profileStore } from '../../constants/mockProfile';
 import { authStore } from '../../constants/authStore';
-import { updateSeekerProfile } from '../../lib/api';
+import { updateMyProfile } from '../../lib/api';
 
 const ALL_AVAILABLE_SKILLS = [
   'HTML5', 'CSS3', 'JavaScript', 'React', 'Bootstrap', 'Figma', 'TypeScript', 
@@ -31,16 +31,27 @@ export default function EditProfileScreen() {
 
   const handleSave = async () => {
     try {
-      const seekerId = (authStore as any).user?.seeker?.id;
-      if (seekerId) {
-        await updateSeekerProfile(seekerId, user);
-      }
-      
-      profileStore.updateProfile(user);
+      // The email belongs to the account and is not changed here.
+      const [firstName, ...rest] = user.name.trim().split(/\s+/);
+      const updated = await updateMyProfile({
+        ...(firstName ? { firstName } : {}),
+        ...(rest.length ? { lastName: rest.join(' ') } : {}),
+        phone: user.phone.trim(),
+        ...(user.profession.trim() ? { profession: user.profession.trim() } : {}),
+        professionalSummary: user.professionalSummary.trim(),
+        technicalSkills: user.technicalSkills,
+        softSkills: user.softSkills,
+        tools: user.tools,
+        certifications: user.certifications,
+        workExperience: user.workExperience,
+        education: user.education,
+        projects: user.projects,
+      });
+      // Signing the refreshed account in again updates every screen that shows the profile.
+      if (authStore.token) authStore.setSession(authStore.token, updated);
       router.replace('/profile/manage');
     } catch (err) {
-      Alert.alert('Error', 'Failed to save profile');
-      console.error(err);
+      Alert.alert('Could not save', err instanceof Error ? err.message.replace(/^Validation failed:\s*/i, '') : 'Failed to save profile');
     }
   };
 
@@ -262,7 +273,7 @@ export default function EditProfileScreen() {
           <TextInput 
             style={styles.input} 
             value={user.email} 
-            onChangeText={(txt) => updateField('email', txt)}
+            editable={false}
             keyboardType="email-address"
             className="font-sans"
           />

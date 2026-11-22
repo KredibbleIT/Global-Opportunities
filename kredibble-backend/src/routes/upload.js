@@ -42,6 +42,8 @@ const UPLOAD_PURPOSE = {
   AVATAR: 'avatars',
   COMPANY_LOGO: 'company-logos',
   VERIFICATION_DOC: 'verification-docs',
+  // The picture of a channel a hirer or seeker creates in the app.
+  CHANNEL_AVATAR: 'channel-avatars',
 };
 
 const UPLOAD_PURPOSE_VALUES = Object.values(UPLOAD_PURPOSE);
@@ -57,6 +59,8 @@ export const ADMIN_UPLOAD_SCREENS = Object.freeze({
   // BE-031: Showcase pictures, for the editors of any category (the Showcase
   // routes then check the category itself).
   'showcase-photo': ['showcase', 'showcase.ambassadors', 'showcase.partners'],
+  // The picture of a channel an admin creates.
+  'channel-avatar': 'channels',
 });
 
 export const requireAdminUploadScreen = requireAdminScreen(

@@ -3,14 +3,16 @@
 /**
  * CreateChannelDialog: a small modal form that creates a channel through POST /admin/channels.
  *
- * Fields: name, category, short description and visibility. Private channels are invite-only: nobody joins
+ * Fields: name, picture (optional), short description and visibility. Private channels are invite-only: nobody joins
  * unless an admin adds them (this is what the Ambassadors channel should be). Esc and the backdrop close it.
  * Props: open, onClose, onCreated(channel).
  */
 import { useEffect, useState } from "react";
-import { createAdminChannel, type ChannelRecord } from "@/lib/api";
+import { createAdminChannel, uploadChannelAvatar, type ChannelRecord } from "@/lib/api";
+import { dataUrlToFile } from "@/lib/services/api-helpers";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/form/Field";
+import { FileDrop } from "@/components/ui/form/FileDrop";
 import { Input } from "@/components/ui/form/Input";
 import { Select } from "@/components/ui/form/Select";
 import { Textarea } from "@/components/ui/form/Textarea";
@@ -26,6 +28,8 @@ export function CreateChannelDialog({ open, onClose, onCreated }: Props) {
   const toast = useToast();
   const [name, setName] = useState("");
   const [bio, setBio] = useState("");
+  // A picked picture is a data: URL until the channel is created; it is uploaded then.
+  const [image, setImage] = useState<string | undefined>(undefined);
   const [visibility, setVisibility] = useState<"public" | "private">("private");
   const [saving, setSaving] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
@@ -47,10 +51,12 @@ export function CreateChannelDialog({ open, onClose, onCreated }: Props) {
     setNameError(null);
     setSaving(true);
     try {
-      const channel = await createAdminChannel({ name: name.trim(), bio: bio.trim() || undefined, visibility });
+      const avatar = image ? (await uploadChannelAvatar(dataUrlToFile(image, "channel-picture"))).url : undefined;
+      const channel = await createAdminChannel({ name: name.trim(), bio: bio.trim() || undefined, avatar, visibility });
       toast.success(`${channel.name} was created.`);
       setName("");
       setBio("");
+      setImage(undefined);
       onCreated(channel);
       onClose();
     } catch (err) {
@@ -70,6 +76,9 @@ export function CreateChannelDialog({ open, onClose, onCreated }: Props) {
         </div>
         <Field label="Name" error={nameError ?? undefined}>
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Global Opportunity Desk Ambassadors" maxLength={80} autoFocus />
+        </Field>
+        <Field label="Picture" optional>
+          <FileDrop value={image} onChange={setImage} alt="Channel picture" emptyLabel="Click to upload or drag a picture here" />
         </Field>
         <Field label="Description" optional>
           <Textarea value={bio} onChange={(e) => setBio(e.target.value)} rows={3} maxLength={500} />

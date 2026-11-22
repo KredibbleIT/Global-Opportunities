@@ -1,4 +1,5 @@
 import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import { previewText } from '../../lib/rich-text';
 import { Colors } from '../../constants/design';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft, SlidersHorizontal, Search, Bookmark } from 'lucide-react-native';
@@ -139,7 +140,7 @@ export const GrantCard = ({ grant, onPress }: { grant: GrantCardData; onPress: (
       numberOfLines={2}
       className="font-sans"
     >
-      {grant.description}
+      {previewText(grant.description)}
     </Text>
 
     <View style={{ height: 1, backgroundColor: '#E5E6F2', marginTop: 10 }} />

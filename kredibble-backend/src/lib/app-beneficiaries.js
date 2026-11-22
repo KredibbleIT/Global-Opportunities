@@ -51,3 +51,20 @@ export async function ensureAppBeneficiary(user, profile) {
   });
   return { action: 'created', id: String(record._id) };
 }
+
+/**
+ * Keeps the admin Database record of an app user in step with what they have since changed about themselves (name, phone, country,
+ * university). Does nothing when they have no record. A failure is the caller's to log: it must never undo the person's own change.
+ * @param {{ _id: unknown, name?: string }} user
+ * @param {{ phone?: string, country?: string, university?: string } | null | undefined} profile their SeekerProfile
+ */
+export async function syncAppBeneficiary(user, profile) {
+  const record = await Beneficiary.findOne({ userId: user._id });
+  if (!record) return false;
+  if (user.name) record.fullName = user.name;
+  if (profile?.phone) record.phone = String(profile.phone).trim();
+  if (profile?.country) record.country = profile.country;
+  if (profile?.university) record.institution = profile.university;
+  await record.save();
+  return true;
+}

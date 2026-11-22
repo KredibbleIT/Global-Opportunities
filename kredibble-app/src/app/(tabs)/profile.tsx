@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, Image, Modal, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { Settings, Bookmark, Target, Bell, Shield, LogOut, ChevronRight, Check, Users } from 'lucide-react-native';
+import { Settings, Bookmark, Target, Bell, Shield, LogOut, ChevronRight, Check, Users, BadgeCheck } from 'lucide-react-native';
 import { profileStore } from '../../constants/mockProfile';
 import { authStore } from '../../constants/authStore';
 import { getMe } from '../../lib/api';
 import { AmbassadorCta } from '../../components/ui/AmbassadorCta';
+import { ProfileCompletionCard } from '../../components/profile/ProfileCompletionCard';
+import { ProfilePicture } from '../../components/ui/ProfilePicture';
 
 // Reuse LogoSVG from index
 const LogoSVG = () => (
@@ -75,10 +77,20 @@ export default function ProfileScreen() {
           {/* Banner & Logo */}
           {company ? (
             <View style={{ borderRadius: 16, overflow: 'hidden', backgroundColor: '#FFFFFF', marginBottom: 24, borderWidth: 1, borderColor: '#E5E6F2' }}>
-              <Image source={{ uri: company.bannerImage || 'https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=800' }} style={{ height: 100, width: '100%' }} />
+              {company.bannerImage ? (
+                <Image source={{ uri: company.bannerImage }} style={{ height: 100, width: '100%' }} />
+              ) : (
+                <View style={{ height: 100, width: '100%', backgroundColor: '#EDE7F6' }} />
+              )}
               
               <View style={{ padding: 16, alignItems: 'center', marginTop: -40 }}>
-                <Image source={{ uri: company.logo || 'https://via.placeholder.com/150' }} style={{ width: 80, height: 80, borderRadius: 20, borderWidth: 3, borderColor: '#FFFFFF', backgroundColor: '#FFFFFF' }} />
+                {company.logo ? (
+                  <Image source={{ uri: company.logo }} style={{ width: 80, height: 80, borderRadius: 20, borderWidth: 3, borderColor: '#FFFFFF', backgroundColor: '#FFFFFF' }} />
+                ) : (
+                  <View style={{ width: 80, height: 80, borderRadius: 20, borderWidth: 3, borderColor: '#FFFFFF', backgroundColor: '#EDE7F6', alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 30, fontWeight: '700', color: '#7B2FA3' }}>{(company.name || '?').trim().charAt(0).toUpperCase()}</Text>
+                  </View>
+                )}
 
                 {company.verified && (
                   <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#DCFCE7', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 4, marginTop: 8 }}>
@@ -97,7 +109,8 @@ export default function ProfileScreen() {
             </View>
           )}
 
-          <AmbassadorCta />
+          <ProfileCompletionCard />
+        <AmbassadorCta />
 
           {/* Quick Info Menu Card */}
           <View style={styles.menuCard}>
@@ -175,7 +188,7 @@ export default function ProfileScreen() {
               <TouchableOpacity
               style={styles.menuItem}
               activeOpacity={0.7}
-              onPress={() => router.push('./people')}
+              onPress={() => router.push('/profile/people')}
               accessibilityRole="button"
             >
               <View style={styles.menuItemLeft}>
@@ -278,7 +291,7 @@ export default function ProfileScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* User Card */}
         <View style={styles.userContainer}>
-          <Image source={{ uri: (authUser as any)?.avatarUrl || 'https://via.placeholder.com/150' }} style={styles.avatar} />
+          <ProfilePicture name={authUser?.name} avatarUrl={authUser?.avatarUrl} onChanged={(url) => authStore.setAvatar(url)} style={styles.avatar} />
           
           {(authUser?.seeker as any)?.verified && (
             <View style={styles.verifiedBadge}>
@@ -291,6 +304,7 @@ export default function ProfileScreen() {
           <Text style={styles.userProfession} className="font-sans">{(authUser?.seeker as any)?.profession || 'Opportunity Seeker'}</Text>
         </View>
 
+        <ProfileCompletionCard />
         <AmbassadorCta />
 
         {/* Menu Card 1 */}
@@ -338,9 +352,25 @@ export default function ProfileScreen() {
           <View style={styles.divider} />
 
           <TouchableOpacity
+            testID="menu-expert-listing"
             style={styles.menuItem}
             activeOpacity={0.7}
-            onPress={() => router.push('./people')}
+            onPress={() => router.push('/experts/apply' as never)}
+            accessibilityRole="button"
+          >
+            <View style={styles.menuItemLeft}>
+              <BadgeCheck size={20} color="#8A8D9F" style={{ marginRight: 12 }} />
+              <Text style={styles.menuText} className="font-sans">Expert listing</Text>
+            </View>
+            <ChevronRight size={18} color="#8A8D9F" />
+          </TouchableOpacity>
+
+          <View style={styles.divider} />
+
+          <TouchableOpacity
+            style={styles.menuItem}
+            activeOpacity={0.7}
+            onPress={() => router.push('/profile/people')}
             accessibilityRole="button"
           >
             <View style={styles.menuItemLeft}>

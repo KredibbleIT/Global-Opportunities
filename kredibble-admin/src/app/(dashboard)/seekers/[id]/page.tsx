@@ -12,6 +12,7 @@
  */
 import { useCallback } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { RotateCcw, Ban } from "lucide-react";
 import { formatDate } from "@/lib/format";
 import { useBreadcrumbLabel } from "@/lib/breadcrumb-label";
@@ -45,6 +46,7 @@ export default function SeekerDetailPage() {
   if (!seeker) return <DetailNotFound noun="Seeker" listLabel="Seekers directory" listHref="/seekers" />;
 
   const isActive = seeker.status === "active";
+  const expertStatus = seeker.expertStatus ?? "none";
 
   // Saves first (real mode), then changes the page; a failed save leaves the status as it was and says so.
   const changeStatus = async (next: AccountStatus, done: string) => {
@@ -91,12 +93,29 @@ export default function SeekerDetailPage() {
           />
         }
         main={
-          <InfoCard title="Activity">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <MiniStat value={seeker.applicationsCount} label="Applications submitted" />
-              <MiniStat value={seeker.savedCount} label="Saved opportunities" />
-            </div>
-          </InfoCard>
+          <>
+            <InfoCard title="Activity">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <MiniStat value={seeker.applicationsCount} label="Applications submitted" />
+                <MiniStat value={seeker.savedCount} label="Saved opportunities" />
+              </div>
+            </InfoCard>
+            {expertStatus !== "none" && (
+              <InfoCard title="Expert listing" subtitle="Whether this seeker is shown on the Expert listing in the app, and how people rated them.">
+                <div className="space-y-4">
+                  <KeyValueList
+                    items={[
+                      { label: "Status", value: <StatusBadge status={expertStatus} /> },
+                      { label: "Rating", value: (seeker.expertRatingCount ?? 0) > 0 ? `${(seeker.expertRating ?? 0).toFixed(1)} from ${seeker.expertRatingCount} ${seeker.expertRatingCount === 1 ? "person" : "people"}` : "No ratings yet" },
+                    ]}
+                  />
+                  <Link href={`/experts/${seeker.id}`} className="body-sm font-semibold text-purple-700 underline">
+                    Open the expert review
+                  </Link>
+                </div>
+              </InfoCard>
+            )}
+          </>
         }
         side={
           <InfoCard title="Details">

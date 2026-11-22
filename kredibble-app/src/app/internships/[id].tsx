@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { CollapsibleRichText } from '../../components/ui/RichText';
 import { ScrollView, View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft, Bookmark, Sparkles, Users, MapPin, ChevronDown, ChevronUp } from 'lucide-react-native';
@@ -7,6 +8,8 @@ import { useSaved } from '../../lib/useSaved';
 import { Colors, FontWeight, FontSize, Radius } from '../../constants/design';
 import { useToast } from '../../components/ui/ToastProvider';
 import { getOpportunityById, applyForOpportunity } from '../../lib/api';
+import { askForCv, lacksCv } from '../../lib/apply-prompt';
+import { stepRoute } from '../../lib/profile-prompts';
 import { BottomSafeBar } from '../../components/ui/BottomSafeBar';
 
 const DEFAULT_RESPONSIBILITIES = [
@@ -52,6 +55,14 @@ export default function InternshipDetailScreen() {
 
   const handleApply = async () => {
     if (applied || applying || !id) return;
+        if (lacksCv()) {
+      const choice = await askForCv();
+      if (choice === 'cancel') return;
+      if (choice === 'add') {
+        router.push(stepRoute('cv') as never);
+        return;
+      }
+    }
     setApplying(true);
     try {
       await applyForOpportunity(id, { coverLetter: 'Applied via Kredibble Mobile' });
@@ -160,13 +171,7 @@ export default function InternshipDetailScreen() {
           <Text style={styles.sectionTitle} className="font-sans">
             About the internship
           </Text>
-          <Text
-            style={styles.bodyText}
-            numberOfLines={expanded ? undefined : 4}
-            className="font-sans"
-          >
-            {internship.description || 'No description provided.'}
-          </Text>
+          <CollapsibleRichText text={internship.description || 'No description provided.'} expanded={expanded} collapsedLines={4} textStyle={styles.bodyText} />
           {internship.description && internship.description.length > 150 && (
             <TouchableOpacity
               style={styles.readMoreButton}

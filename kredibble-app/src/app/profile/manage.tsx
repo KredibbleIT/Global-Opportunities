@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Colors } from '../../constants/design';
-import { View, Text, TouchableOpacity, Image, ScrollView, StyleSheet, Clipboard } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, Clipboard } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ChevronLeft, Check, Copy, Star } from 'lucide-react-native';
 import { profileStore } from '../../constants/mockProfile';
+import { authStore } from '../../constants/authStore';
+import { ProfilePicture } from '../../components/ui/ProfilePicture';
 
 export default function ManageProfileScreen() {
   const router = useRouter();
@@ -67,7 +69,7 @@ export default function ManageProfileScreen() {
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* User Card */}
         <View style={styles.userContainer}>
-          <Image source={{ uri: user.image }} style={styles.avatar} />
+          <ProfilePicture name={user.name} avatarUrl={user.image} onChanged={(url) => authStore.setAvatar(url)} style={styles.avatar} />
           
           {user.verified && (
             <View style={styles.verifiedBadge}>
@@ -77,13 +79,13 @@ export default function ManageProfileScreen() {
           )}
 
           <Text style={styles.userName} className="font-sans">{user.name}</Text>
-          <Text style={styles.userProfession} className="font-sans">{user.profession}</Text>
+          {user.profession ? <Text style={styles.userProfession} className="font-sans">{user.profession}</Text> : null}
           {user.website && (
             <TouchableOpacity onPress={() => {}} activeOpacity={0.7}>
               <Text style={styles.websiteLink} className="font-sans">{user.website}</Text>
             </TouchableOpacity>
           )}
-          <Text style={styles.locationText} className="font-sans">{user.location}</Text>
+          {user.location ? <Text style={styles.locationText} className="font-sans">{user.location}</Text> : null}
         </View>
 
         {/* Copy Feedback Toast */}
@@ -100,7 +102,7 @@ export default function ManageProfileScreen() {
             <TouchableOpacity 
               style={styles.labelRow} 
               activeOpacity={0.7}
-              onPress={() => handleCopy(user.email, 'Email')}
+              onPress={() => user.email && handleCopy(user.email, 'Email')}
             >
               <Text style={styles.contactLabel} className="font-sans">Email</Text>
               <Copy size={11} color="#8A8D9F" style={{ marginLeft: 4 }} />
@@ -113,10 +115,14 @@ export default function ManageProfileScreen() {
           {/* Rating Column */}
           <View style={styles.contactColumn}>
             <Text style={styles.contactLabel} className="font-sans">Rating</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={styles.contactValue} className="font-sans">{user.rating.toFixed(1)} </Text>
-              {renderStars(user.rating)}
-            </View>
+            {user.rating > 0 ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={styles.contactValue} className="font-sans">{user.rating.toFixed(1)} </Text>
+                {renderStars(user.rating)}
+              </View>
+            ) : (
+              <Text style={styles.contactValue} className="font-sans">No ratings yet</Text>
+            )}
           </View>
 
           <View style={styles.verticalDivider} />
@@ -126,12 +132,12 @@ export default function ManageProfileScreen() {
             <TouchableOpacity 
               style={styles.labelRow} 
               activeOpacity={0.7}
-              onPress={() => handleCopy(user.phone, 'Phone Number')}
+              onPress={() => user.phone && handleCopy(user.phone, 'Phone Number')}
             >
               <Text style={styles.contactLabel} className="font-sans">Number</Text>
               <Copy size={11} color="#8A8D9F" style={{ marginLeft: 4 }} />
             </TouchableOpacity>
-            <Text numberOfLines={1} style={styles.contactValue} className="font-sans">{user.phone}</Text>
+            <Text numberOfLines={1} style={styles.contactValue} className="font-sans">{user.phone || 'Not added'}</Text>
           </View>
         </View>
 
@@ -139,7 +145,7 @@ export default function ManageProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionHeader} className="font-sans">Professional Summary</Text>
           <Text style={styles.bodyText} className="font-sans">
-            {user.professionalSummary}
+            {user.professionalSummary || 'Nothing added yet. Tap Edit to add your professional summary.'}
           </Text>
         </View>
 
@@ -149,6 +155,7 @@ export default function ManageProfileScreen() {
           
           <Text style={styles.subSectionHeader} className="font-sans">Technical Skills</Text>
           <View style={styles.tagContainer}>
+            {user.technicalSkills.length === 0 && <Text style={styles.emptyHint} className="font-sans">Nothing added yet.</Text>}
             {user.technicalSkills.map((skill, idx) => (
               <View key={idx} style={styles.tag}>
                 <Text style={styles.tagText} className="font-sans">{skill}</Text>
@@ -158,6 +165,7 @@ export default function ManageProfileScreen() {
 
           <Text style={[styles.subSectionHeader, { marginTop: 12 }]} className="font-sans">Soft Skills</Text>
           <View style={styles.tagContainer}>
+            {user.softSkills.length === 0 && <Text style={styles.emptyHint} className="font-sans">Nothing added yet.</Text>}
             {user.softSkills.map((skill, idx) => (
               <View key={idx} style={styles.tag}>
                 <Text style={styles.tagText} className="font-sans">{skill}</Text>
@@ -169,10 +177,11 @@ export default function ManageProfileScreen() {
         {/* Work Experience */}
         <View style={styles.section}>
           <Text style={styles.sectionHeader} className="font-sans">Work Experience</Text>
+          {user.workExperience.length === 0 && <Text style={styles.emptyHint} className="font-sans">Nothing added yet.</Text>}
           {user.workExperience.map((exp, idx) => (
             <View key={idx} style={styles.experienceItem}>
               <Text style={styles.itemTitle} className="font-sans">{exp.role} — {exp.company}</Text>
-              <Text style={styles.itemSubtitle} className="font-sans">{exp.location} | {exp.duration}</Text>
+              <Text style={styles.itemSubtitle} className="font-sans">{[exp.location, exp.duration].filter(Boolean).join(' | ')}</Text>
               {exp.bullets.map((bullet, bIdx) => (
                 <View key={bIdx} style={styles.bulletRow}>
                   <Text style={styles.bulletPoint}>•</Text>
@@ -186,10 +195,11 @@ export default function ManageProfileScreen() {
         {/* Education */}
         <View style={styles.section}>
           <Text style={styles.sectionHeader} className="font-sans">Education</Text>
+          {user.education.length === 0 && <Text style={styles.emptyHint} className="font-sans">Nothing added yet.</Text>}
           {user.education.map((edu, idx) => (
             <View key={idx} style={styles.educationItem}>
               <Text style={styles.itemTitle} className="font-sans">{edu.degree}</Text>
-              <Text style={styles.itemSubtitle} className="font-sans">{edu.institution} | {edu.duration}</Text>
+              <Text style={styles.itemSubtitle} className="font-sans">{[edu.institution, edu.duration].filter(Boolean).join(' | ')}</Text>
             </View>
           ))}
         </View>
@@ -197,6 +207,7 @@ export default function ManageProfileScreen() {
         {/* Projects */}
         <View style={styles.section}>
           <Text style={styles.sectionHeader} className="font-sans">Projects</Text>
+          {user.projects.length === 0 && <Text style={styles.emptyHint} className="font-sans">Nothing added yet.</Text>}
           {user.projects.map((proj, idx) => (
             <View key={idx} style={styles.projectItem}>
               <Text style={styles.itemTitle} className="font-sans">{proj.name}</Text>
@@ -213,6 +224,7 @@ export default function ManageProfileScreen() {
         {/* Certifications */}
         <View style={styles.section}>
           <Text style={styles.sectionHeader} className="font-sans">Certifications</Text>
+          {user.certifications.length === 0 && <Text style={styles.emptyHint} className="font-sans">Nothing added yet.</Text>}
           {user.certifications.map((cert, idx) => (
             <View key={idx} style={styles.bulletRow}>
               <Text style={styles.bulletPoint}>•</Text>
@@ -225,6 +237,7 @@ export default function ManageProfileScreen() {
         <View style={[styles.section, { borderBottomWidth: 0 }]}>
           <Text style={styles.sectionHeader} className="font-sans">Tools</Text>
           <View style={styles.tagContainer}>
+            {user.tools.length === 0 && <Text style={styles.emptyHint} className="font-sans">Nothing added yet.</Text>}
             {user.tools.map((tool, idx) => (
               <View key={idx} style={styles.tag}>
                 <Text style={styles.tagText} className="font-sans">{tool}</Text>
@@ -288,6 +301,11 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     paddingBottom: 20,
     paddingHorizontal: 20,
+  },
+  emptyHint: {
+    fontSize: 13,
+    color: '#8A8D9F',
+    marginTop: 4,
   },
   avatar: {
     width: 90,

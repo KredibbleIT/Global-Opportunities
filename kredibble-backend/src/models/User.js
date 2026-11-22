@@ -4,8 +4,15 @@ import { ROLE_IDS, normalizeLegacyRole } from '../lib/permissions.js';
 
 const normalizeEmail = (email) => String(email).trim().toLowerCase();
 
+export const GENDERS = ['female', 'male', 'other', 'prefer_not_to_say'];
+
 const userSchema = new mongoose.Schema({
   name: { type: String, required: true },
+  // Collected at sign-up. Private: only the person and admins ever see them, and they are cleared when the account is deleted.
+  firstName: { type: String, trim: true },
+  lastName: { type: String, trim: true },
+  dateOfBirth: { type: Date },
+  gender: { type: String, enum: GENDERS },
   email: { type: String, required: true, unique: true, index: true },
   emailNormalized: { 
     type: String, 
@@ -49,6 +56,23 @@ const userSchema = new mongoose.Schema({
     testimonials: { type: Boolean, default: false },
     // SEC-138: phone pushes. Off stops pushes only; the in-app list still shows everything.
     push: { type: Boolean, default: true },
+    // The alerts a seeker or hirer chooses in the app (Manage notifications). Saved here so they are the same on every phone.
+    alerts: {
+      jobAlerts: { type: Boolean, default: true },
+      aiRecommendations: { type: Boolean, default: true },
+      jobActivity: { type: Boolean, default: false },
+      savedJobs: { type: Boolean, default: true },
+      statusUpdates: { type: Boolean, default: true },
+      interviewInvites: { type: Boolean, default: true },
+      newPosts: { type: Boolean, default: true },
+      recruiterViews: { type: Boolean, default: true },
+      marketingUpdates: { type: Boolean, default: false },
+      // A hirer's own alerts.
+      newApplicants: { type: Boolean, default: true },
+      candidateMessages: { type: Boolean, default: true },
+      channelActivity: { type: Boolean, default: true },
+      verificationUpdates: { type: Boolean, default: true },
+    },
   },
 }, { timestamps: true });
 

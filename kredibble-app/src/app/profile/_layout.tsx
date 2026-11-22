@@ -15,6 +15,8 @@ export default function ProfileLayout() {
       <Stack.Screen name="notifications" />
       <Stack.Screen name="security" />
       <Stack.Screen name="people" />
+      <Stack.Screen name="complete" />
+      <Stack.Screen name="complete-step" />
     </Stack>
   );
 }

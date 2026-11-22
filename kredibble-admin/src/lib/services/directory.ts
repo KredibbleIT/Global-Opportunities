@@ -46,6 +46,9 @@ function toSeeker(profile: SeekerProfile): SeekerAccount {
     applicationsCount: profile.applicationsCount ?? 0,
     savedCount: profile.savedCount ?? 0,
     status: toAccountStatus(profile.status),
+    expertStatus: profile.expertStatus ?? "none",
+    expertRating: profile.expertRatingAverage ?? 0,
+    expertRatingCount: profile.expertRatingCount ?? 0,
   };
 }
 

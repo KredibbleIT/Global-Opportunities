@@ -1,16 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Colors } from '../../constants/design';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Switch, Modal } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { ChevronLeft, ExternalLink } from 'lucide-react-native';
-import { authStore, HirerSecuritySettings } from '../../constants/authStore';
+import { authStore } from '../../constants/authStore';
 import { changePassword, deleteMyAccount } from '../../lib/api';
 import { openPrivacyPolicy, openTermsOfService } from '../../lib/legal';
 
 export default function HirerSecurityScreen() {
   const router = useRouter();
-  const [security, setSecurity] = useState<HirerSecuritySettings>(authStore.hirerSecurity);
 
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -24,15 +23,6 @@ export default function HirerSecurityScreen() {
   const [deletePassword, setDeletePassword] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
-
-  useEffect(() => {
-    const unsubscribe = authStore.subscribe(() => setSecurity({ ...authStore.hirerSecurity }));
-    return unsubscribe;
-  }, []);
-
-  const handleToggle = (key: keyof HirerSecuritySettings) => {
-    authStore.updateHirerSecurity({ [key]: !security[key] });
-  };
 
   const handleUpdatePassword = async () => {
     if (!isPasswordValid || isUpdatingPassword) return;
@@ -127,19 +117,6 @@ export default function HirerSecurityScreen() {
             {isUpdatingPassword ? 'Updating...' : 'Update password'}
           </Text>
         </TouchableOpacity>
-
-        <Text style={styles.sectionHeader} className="font-sans">Privacy Controls</Text>
-
-        <View style={styles.toggleRow}>
-          <Text style={styles.toggleLabel} className="font-sans">Show company profile publicly</Text>
-          <Switch
-            value={security.publicCompanyProfile}
-            onValueChange={() => handleToggle('publicCompanyProfile')}
-            trackColor={{ false: '#E5E6F2', true: Colors.primary }}
-            thumbColor="#FFFFFF"
-            ios_backgroundColor="#E5E6F2"
-          />
-        </View>
 
         {/* Legal & Policies */}
         <Text style={styles.sectionHeader} className="font-sans">Legal & Policies</Text>
