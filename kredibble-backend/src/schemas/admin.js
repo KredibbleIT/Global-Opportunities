@@ -7,6 +7,13 @@ import { opportunityFundingTypes } from '../models/Platform.js';
 // YYYY-MM with a real calendar month (rejects '2026-13', which /^\d{4}-\d{2}$/ allows).
 const YEAR_MONTH_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
 
+/**
+ * A listing image: the link to an uploaded picture, never the picture itself as base64 text (a `data:` URL).
+ * The admin form used to save the picture into the listing, so one listing weighed about 1.1 MB (lib/listing-images.js).
+ */
+const listingImageLink = () =>
+  z.string().trim().refine((value) => !/^data:/i.test(value), "Upload the image first: a listing saves the image's link, not the image itself");
+
 // SEC-077, BE-001, BE-017: add an existing or invited person to the admin staff list with 1 or 2 roles.
 export const staffInviteSchema = z.object({
   body: z.object({
@@ -524,11 +531,11 @@ export const opportunityCreateSchema = z.object({
     format: z.enum(OPPORTUNITY_FORMAT_VALUES).optional().default('online'),
     eventAt: z.string().trim().optional(),
     eventDateTime: z.string().trim().optional(),
-    logoUrl: z.string().trim().optional(),
-    organizationLogo: z.string().trim().optional(),
-    imageUrl: z.string().trim().optional(),
-    coverImage: z.string().trim().optional(),
-    images: z.array(z.string().trim()).optional(),
+    logoUrl: listingImageLink().optional(),
+    organizationLogo: listingImageLink().optional(),
+    imageUrl: listingImageLink().optional(),
+    coverImage: listingImageLink().optional(),
+    images: z.array(listingImageLink()).optional(),
     referralOnApply: z.boolean().optional(),
     referralCodeOnApply: z.boolean().optional(),
     workType: z.string().trim().optional(),
@@ -575,11 +582,11 @@ export const opportunityUpdateSchema = z.object({
     format: z.enum(OPPORTUNITY_FORMAT_VALUES).optional(),
     eventAt: z.string().trim().optional(),
     eventDateTime: z.string().trim().optional(),
-    logoUrl: z.string().trim().optional(),
-    organizationLogo: z.string().trim().optional(),
-    imageUrl: z.string().trim().optional(),
-    coverImage: z.string().trim().optional(),
-    images: z.array(z.string().trim()).optional(),
+    logoUrl: listingImageLink().optional(),
+    organizationLogo: listingImageLink().optional(),
+    imageUrl: listingImageLink().optional(),
+    coverImage: listingImageLink().optional(),
+    images: z.array(listingImageLink()).optional(),
     referralOnApply: z.boolean().optional(),
     referralCodeOnApply: z.boolean().optional(),
     workType: z.string().trim().optional(),

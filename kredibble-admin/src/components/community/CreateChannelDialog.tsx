@@ -9,7 +9,7 @@
  */
 import { useEffect, useState } from "react";
 import { createAdminChannel, uploadChannelAvatar, type ChannelRecord } from "@/lib/api";
-import { dataUrlToFile } from "@/lib/services/api-helpers";
+import { uploadableImageFile } from "@/lib/services/api-helpers";
 import { Button } from "@/components/ui/Button";
 import { Field } from "@/components/ui/form/Field";
 import { FileDrop } from "@/components/ui/form/FileDrop";
@@ -51,7 +51,7 @@ export function CreateChannelDialog({ open, onClose, onCreated }: Props) {
     setNameError(null);
     setSaving(true);
     try {
-      const avatar = image ? (await uploadChannelAvatar(dataUrlToFile(image, "channel-picture"))).url : undefined;
+      const avatar = image ? (await uploadChannelAvatar(await uploadableImageFile(image, "channel-picture"))).url : undefined;
       const channel = await createAdminChannel({ name: name.trim(), bio: bio.trim() || undefined, avatar, visibility });
       toast.success(`${channel.name} was created.`);
       setName("");
