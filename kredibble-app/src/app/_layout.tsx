@@ -21,6 +21,7 @@ import { setEmailVerificationHandler, setSessionSavedHandler } from '../lib/api'
 import { OfflineBanner } from '../lib/network';
 import {
   registerForPushNotificationsAsync,
+  setPushRegistrationErrorReporter,
   subscribeToIncomingNotifications,
   subscribeToNotificationTaps,
 } from '../lib/notifications';
@@ -65,6 +66,8 @@ function RootLayout() {
     // the launch screen has restored their session (SEC-160): registering here, before that,
     // could re-attach the push token of a session that launch is about to sign out.
     setSessionSavedHandler(() => registerForPushNotificationsAsync());
+    // GOD-T77: a phone that cannot set up push is reported, so a broken build can't hide behind a console warning again.
+    setPushRegistrationErrorReporter((error) => Sentry.captureException(error, { tags: { area: 'push_registration' } }));
     // Tapping a push opens the list; a push that arrives while the app is open refreshes it.
     const stopTaps = subscribeToNotificationTaps(() => {
       router.push('/notifications' as any);
@@ -75,6 +78,7 @@ function RootLayout() {
     return () => {
       setEmailVerificationHandler(null);
       setSessionSavedHandler(null);
+      setPushRegistrationErrorReporter(null);
       stopTaps();
       stopIncoming();
     };

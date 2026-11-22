@@ -11,7 +11,7 @@
 import { useState, type FormEvent } from "react";
 import { Bell, Send } from "lucide-react";
 import { AUDIENCE_LABEL } from "@/components/notifications/audience";
-import { notificationBroadcastStore, type Audience } from "@/lib/notification-store";
+import { notificationBroadcastStore, pushReachSentence, type Audience } from "@/lib/notification-store";
 import { Button } from "@/components/ui/Button";
 import { Card, CardHeader } from "@/components/ui/Card";
 import { useConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -55,8 +55,8 @@ export function NotificationComposer() {
       onConfirm: async () => {
         // Live mode: POST /admin/notifications (which also pushes it to phones). A failure keeps the text and says so (GOD-T45).
         try {
-          await notificationBroadcastStore.send(sent.title, sent.message, sent.audience);
-          toast.success(`The notification was sent to ${audienceLabel}.`);
+          const saved = await notificationBroadcastStore.send(sent.title, sent.message, sent.audience);
+          toast.success(`The notification was sent to ${audienceLabel}.${pushReachSentence(saved.push)}`);
           setTitle("");
           setMessage("");
         } catch (error) {

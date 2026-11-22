@@ -2365,6 +2365,14 @@ export interface SentNotificationRecord {
   scheduledFor?: string | null;
   sentAt: string;
   createdAt: string;
+  /** Only on the answer to a send (GOD-T77): whether the server pushes to phones, and how many phones the push reaches. */
+  push?: BroadcastPushReach;
+}
+
+/** How far a broadcast's phone push reaches: `enabled` is the server's push switch, `phones` the registered phones in its audience. */
+export interface BroadcastPushReach {
+  enabled: boolean;
+  phones: number;
 }
 
 export const getAdminNotifications = async (params?: {

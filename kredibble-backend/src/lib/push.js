@@ -241,6 +241,26 @@ export async function sendPushToAudience(audience, content) {
 }
 
 /**
+ * How many phones a broadcast to `audience` would push to now: people in its roles with a push token who haven't turned
+ * pushes off. GOD-T77: the Android app was built without Firebase, so no phone could register; every broadcast reached
+ * nobody's phone and the sender was never told. The broadcast route returns this so the admin can say so. Never throws
+ * (an unknown audience, or a failed count, is 0).
+ *
+ * @param {string} audience
+ * @returns {Promise<number>}
+ */
+export async function countPushRecipients(audience) {
+  const roles = AUDIENCE_ROLES[audience];
+  if (!roles) return 0;
+  try {
+    return await User.countDocuments({ role: { $in: roles }, ...PUSHABLE_USER_FILTER });
+  } catch (error) {
+    logger.error({ err: error.message, audience }, 'Counting push recipients failed');
+    return 0;
+  }
+}
+
+/**
  * Pushes a stored Notification to whoever it is for: its one `userId`, or
  * its broadcast audience. Never throws.
  *

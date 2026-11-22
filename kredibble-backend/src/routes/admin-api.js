@@ -141,7 +141,7 @@ import { postChannelMessage, listChannelMessages, getThread, findPost, setAllowR
 import { notifyUser } from '../lib/user-notify.js';
 import { expertApproveSchema, expertRejectSchema } from '../schemas/experts.js';
 import { expertMissing, publicExpert } from '../lib/experts.js';
-import { pushInBackground, pushNotification } from '../lib/push.js';
+import { countPushRecipients, pushInBackground, pushNotification } from '../lib/push.js';
 import { rejectionNotice, rejectionReasonLabel } from '../lib/opportunity-rejection.js';
 import logger from '../lib/logger.js';
 import { emitToAll, evictFromChannelRoom } from '../socket.js';
@@ -4948,7 +4948,10 @@ adminApiRouter.post('/notifications', requireAdminOrStaffAuth, requireScreen('no
     pushInBackground(() => pushNotification(notification));
   }
 
-  res.status(201).json({ data: toClientObject(notification) });
+  // GOD-T77: how many phones the push reaches (now, or when a scheduled one is due, as things stand), so the sender sees
+  // "no phones" instead of assuming the push went out.
+  const push = { enabled: env.pushEnabled, phones: env.pushEnabled ? await countPushRecipients(audience) : 0 };
+  res.status(201).json({ data: { ...toClientObject(notification), push } });
 }));
 
 adminApiRouter.delete('/notifications/:id', requireAdminOrStaffAuth, requireScreen('notifications', 'edit'), asyncHandler(async (req, res) => {

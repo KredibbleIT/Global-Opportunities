@@ -17,6 +17,20 @@ Notifications.setNotificationHandler({
 const toPushPlatform = (platform: string): PushPlatform =>
   platform === 'ios' || platform === 'android' || platform === 'web' ? platform : 'other';
 
+/** Receives the error when this phone could not set up push. Set once by the root layout. */
+export type PushRegistrationErrorReporter = (error: unknown) => void;
+
+let reportRegistrationError: PushRegistrationErrorReporter | null = null;
+
+/**
+ * Where a failed push registration is reported (the root layout passes Sentry). GOD-T77: Android builds without Firebase
+ * config failed to get a push token on every phone and only logged a console warning, so nobody knew pushes never worked.
+ * Pass null to stop reporting.
+ */
+export function setPushRegistrationErrorReporter(reporter: PushRegistrationErrorReporter | null): void {
+  reportRegistrationError = reporter;
+}
+
 /**
  * Requests push notification permissions and registers the Expo push token with the backend.
  * Call it on launch and again right after sign-in or sign-up (SEC-138): it only reaches the
@@ -73,6 +87,7 @@ export async function registerForPushNotificationsAsync(
     return pushToken;
   } catch (error) {
     console.warn('Error configuring push notifications:', error);
+    reportRegistrationError?.(error);
     return null;
   }
 }

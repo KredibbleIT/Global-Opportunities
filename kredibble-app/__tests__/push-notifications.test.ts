@@ -9,6 +9,7 @@ import {
 } from '../src/lib/api';
 import {
   registerForPushNotificationsAsync,
+  setPushRegistrationErrorReporter,
   subscribeToIncomingNotifications,
   subscribeToNotificationTaps,
 } from '../src/lib/notifications';
@@ -151,6 +152,23 @@ describe('registering the push token', () => {
     expect(url).toMatch(/\/auth\/logout$/);
     expect(JSON.parse(init.body)).toEqual({ refreshToken: 'refresh-token', pushToken: PUSH_TOKEN });
     expect(await SecureStore.getItemAsync('kredibble_app_push_token')).toBeNull();
+  });
+
+  // GOD-T77: an Android build without Firebase config fails here on every phone. It used to be a console warning nobody saw.
+  test('a phone that cannot get a push token is reported, registers nothing and the app carries on', async () => {
+    const firebaseMissing = new Error('Default FirebaseApp is not initialized in this process com.kredibble_it.god.');
+    (Notifications.getExpoPushTokenAsync as jest.Mock).mockRejectedValueOnce(firebaseMissing);
+    const report = jest.fn();
+    setPushRegistrationErrorReporter(report);
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await expect(registerForPushNotificationsAsync('android')).resolves.toBeNull();
+      expect(report).toHaveBeenCalledTimes(1);
+      expect(report).toHaveBeenCalledWith(firebaseMissing);
+      expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith('/users/me/push-token'))).toBe(false);
+    } finally {
+      setPushRegistrationErrorReporter(null);
+    }
   });
 });
 
