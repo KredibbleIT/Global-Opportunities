@@ -15,7 +15,8 @@
  * - alt: description of the image for screen readers ("Article cover image")
  * - emptyLabel: text in the empty drop area
  * A new pick is read into a data: URL, NOT a blob: URL: the site's Content-Security-Policy (next.config.ts) allows img-src 'self' data: https:, so a
- * blob: picture would be blocked and never show. TODO(backend): the page uploads the file and stores the returned https URL instead.
+ * blob: picture would be blocked and never show. The data: URL is only the preview: when the form is saved, its service uploads the picture
+ * (uploadableImageFile in services/api-helpers.ts, which turns AVIF, GIF or SVG into WebP) and saves the returned https URL.
  */
 import { useRef, useState, type DragEvent } from "react";
 import { ImagePlus, Trash2 } from "lucide-react";

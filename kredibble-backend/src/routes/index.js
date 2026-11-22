@@ -791,10 +791,11 @@ const mountAdminDataRoutes = (router) => {
     res.status(201).json({ data: toClientObject(staff) });
   }));
 
-  // Article banners: images only, stored outside any user's folder.
+  // Admin pictures (article banners, ambassador, Showcase and channel photos, listing images): images only, stored outside any
+  // user's folder. ADMIN_UPLOAD_SCREENS (routes/upload.js) names the screen each purpose needs.
   router.use('/admin/upload', createUploadRouter({
     authenticate: requireAdminUploadScreen,
-    purposes: ['article-banner', 'ambassador-photo', 'showcase-photo', 'channel-avatar'],
+    purposes: ['article-banner', 'ambassador-photo', 'showcase-photo', 'channel-avatar', 'listing-image'],
     folderFor: (req, purpose) => `kredibble/admin/${purpose}`,
     allowedMimeTypes: IMAGE_MIME_TYPES,
   }));

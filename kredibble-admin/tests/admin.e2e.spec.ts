@@ -5010,6 +5010,62 @@ test.describe('Opportunities queue: memory note', () => {
   });
 });
 
+test.describe('Listing images are uploaded, and the listing saves their links (real API)', () => {
+  // The form used to save the picked picture itself as base64 text: one listing weighed about 1.1 MB (found under GOD-T95).
+  test('a PNG logo goes as it is, a GIF featured image is redrawn as WebP; both are uploaded and the listing saves links, never data: text', async ({ page }) => {
+    test.skip(MOCK_RUN, 'real API only');
+    test.setTimeout(90_000);
+    const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
+    const GIF = Buffer.from('R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==', 'base64'); // not a type the server stores
+    const title = `E2E listing images ${Date.now()}`;
+    await page.goto(`${BASE_URL}/opportunities/new`, { timeout: 30_000 });
+    await page.getByTestId('sidebar-toggle').waitFor();
+    await page.getByLabel('Title', { exact: true }).fill(title);
+    await page.getByLabel('Description', { exact: true }).fill('A listing with pictures, saved by a test.');
+    await page.getByLabel('Offering organisation').fill('Test Organisation');
+    await page.getByRole('combobox', { name: 'Opportunity type' }).click();
+    await page.getByRole('option', { name: 'Fellowship' }).click();
+    await page.getByRole('combobox', { name: 'Country' }).click();
+    await page.getByRole('option', { name: 'Ghana' }).click();
+    await page.getByLabel('Application deadline').fill('2099-12-31');
+    await page.getByLabel('Official application link').fill('https://example.org/apply');
+    // The drop area is named by its field label; its hidden file input sits beside it.
+    const fileInputFor = (label: string) => page.getByRole('button', { name: label }).locator('xpath=..').locator('input[type="file"]');
+    await fileInputFor('Organisation logo').setInputFiles({ name: 'logo.png', mimeType: 'image/png', buffer: PNG });
+    await fileInputFor('Featured image').setInputFiles({ name: 'cover.gif', mimeType: 'image/gif', buffer: GIF });
+    await expect(page.getByRole('img', { name: 'Featured image' })).toBeVisible(); // the preview of the pick
+
+    const uploads: Promise<number>[] = [];
+    page.on('request', (request) => {
+      if (request.url().includes('/admin/upload?purpose=listing-image')) uploads.push(request.response().then((response) => response?.status() ?? 0));
+    });
+    const saved = page.waitForResponse((response) => response.url().endsWith('/admin/opportunities') && response.request().method() === 'POST');
+    await page.getByRole('button', { name: 'Save draft' }).click();
+    const response = await saved;
+    expect(response.status()).toBe(201);
+
+    // Two uploads to the listing folder, both stored.
+    expect(await Promise.all(uploads)).toEqual([200, 200]);
+    // The listing was sent links, not pictures. Storage names a file by its detected type, so the GIF arriving as .webp
+    // shows the browser redrew it (the server stores PNG, JPEG and WebP only).
+    const sent = response.request().postDataJSON() as { logoUrl?: string; imageUrl?: string };
+    expect(JSON.stringify(sent)).not.toContain('data:');
+    expect(sent.logoUrl).toMatch(/\/kredibble\/admin\/listing-image\/[a-f0-9]{32}\.png$/);
+    expect(sent.imageUrl).toMatch(/\/kredibble\/admin\/listing-image\/[a-f0-9]{32}\.webp$/);
+
+    await expect(page).toHaveURL(/\/opportunities\/[0-9a-f]{24}$/, { timeout: 15_000 });
+    const id = /([0-9a-f]{24})$/.exec(page.url())![1];
+    try {
+      // The server kept the links.
+      const stored = await page.evaluate(async ({ api, id }) => (await (await fetch(`${api}/admin/opportunities/${id}`, { credentials: 'include' })).json()).data, { api: API_URL, id });
+      expect(stored.logoUrl).toBe(sent.logoUrl);
+      expect(stored.imageUrl).toBe(sent.imageUrl);
+    } finally {
+      await page.evaluate(async ({ api, id }) => { await fetch(`${api}/admin/opportunities/${id}`, { method: 'DELETE', credentials: 'include' }); }, { api: API_URL, id });
+    }
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Programs: list, form, detail (GOD's own activities; a separate entity from Opportunities)
 // ---------------------------------------------------------------------------
