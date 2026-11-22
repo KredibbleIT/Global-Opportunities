@@ -14,7 +14,8 @@
  *       characters (services/settings.ts); the field itself is removed from the page;
  *     * it is emptied when the tab goes to the background (visibilitychange), and when the field is removed (unmount, a new tab);
  *     * it is never logged, put in a toast, a URL, localStorage or sessionStorage.
- * - "Test connection" is a mock: a spinner for 800 ms, then an announced result. It takes no value and sends nothing anywhere.
+ * - "Test connection" takes no value. In mock mode it is a spinner for 800 ms, then an announced result; in real mode the server runs the
+ *   test (for WordPress: the publishing route with the server's own key, not the value saved here).
  *
  * Props: kind ("wordpress" | "analytics"), title (what it is called: "WordPress application password"), name (for messages: "WordPress")
  */
