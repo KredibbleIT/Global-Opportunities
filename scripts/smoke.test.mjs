@@ -213,3 +213,31 @@ test('runSmokeTest: fails if CORS preflight rejects origin', async () => {
   assert.equal(outcome.results[2].passed, false);
   assert.match(outcome.results[2].message, /CORS allow-origin mismatch/);
 });
+
+// Production ran without UPLOAD_BASE_URL until 25 Nov 2026, so every upload failed while health said "ok". A deploy whose
+// health reports file storage as not configured now fails the smoke test (an older release without the field still passes).
+test('runSmokeTest: fails when the API reports file storage is not configured', async () => {
+  const targetSha = 'ba9c64e495983dc8931eea5aa3b3303a6d7cc241';
+  const health = (storage) => ({ status: 'ok', environment: 'production', release: targetSha, database: 'connected', ...(storage ? { storage } : {}) });
+  const fetchWith = (storage) => async (url, options = {}) => {
+    if (url.includes('/api/v1/health')) return { ok: true, status: 200, statusText: 'OK', json: async () => health(storage) };
+    if (url.includes('/api/v1/opportunities')) return { ok: true, status: 200, statusText: 'OK', json: async () => ({ data: [] }) };
+    if (url.includes('/api/v1/auth/me') && options.method === 'OPTIONS') {
+      return {
+        ok: true,
+        status: 204,
+        statusText: 'No Content',
+        headers: new Headers({ 'access-control-allow-origin': 'https://admin.globalopportunitydesk.com', 'access-control-allow-methods': 'GET,POST,OPTIONS' }),
+      };
+    }
+    throw new Error(`unexpected request ${url}`);
+  };
+  const run = (storage) => runSmokeTest({ baseUrl: 'https://api.example.org', expectedSha: targetSha, expectedEnv: 'production', fetchFn: fetchWith(storage) });
+
+  const missing = await run({ configured: false });
+  assert.equal(missing.success, false);
+  assert.match(missing.results.find((result) => result.step === 'health').message, /UPLOAD_BASE_URL/);
+
+  assert.equal((await run({ configured: true })).success, true);
+  assert.equal((await run(undefined)).success, true);
+});

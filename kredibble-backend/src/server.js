@@ -6,6 +6,7 @@ import logger from './lib/logger.js';
 import { completePendingDeletions } from './lib/account-deletion.js';
 import { deliverDueNotifications } from './lib/notification-scheduler.js';
 import { checkPushReceipts } from './lib/push.js';
+import { isStorageConfigured } from './lib/storage.js';
 
 import http from 'http';
 import { initSocket } from './socket.js';
@@ -56,6 +57,10 @@ async function startServer() {
 
   server.listen(env.port, () => {
     logger.info({ port: env.port }, 'Kredibble API listening');
+    if (!isStorageConfigured()) {
+      // Production ran like this until 25 Nov 2026 without anyone knowing: say it where the server log is read.
+      logger.error('UPLOAD_BASE_URL is not set: every file upload will answer "File storage is not configured". Add it to api.env (for example https://api.globalopportunitydesk.com/uploads).');
+    }
 
     if (!env.isTest) {
       runDeletionRecovery();

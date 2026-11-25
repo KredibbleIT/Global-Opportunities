@@ -17,7 +17,7 @@ import { staffInviteSchema, grantApplicationDecisionSchema } from '../schemas/ad
 import { pushTokenSchema, notificationPreferencesSchema, alertPreferencesSchema, avatarSchema, profileUpdateSchema, SEEKER_PROFILE_FIELDS, HIRER_PROFILE_FIELDS } from '../schemas/auth.js';
 import { checkDateOfBirth } from '../lib/age.js';
 import { syncAppBeneficiary } from '../lib/app-beneficiaries.js';
-import { deleteImage, storedFileExists, storedPathFromUrl } from '../lib/storage.js';
+import { deleteImage, isStorageConfigured, storedFileExists, storedPathFromUrl } from '../lib/storage.js';
 import { assertChannelImage, channelImageFolder } from '../lib/channel-image.js';
 import {
   RESOURCE_POLICIES,
@@ -1015,6 +1015,9 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
         status: statusMap[dbStatus] || 'unknown',
         connected: isHealthy,
       },
+      // Whether uploads can work (UPLOAD_BASE_URL in production). Reported, not a reason to answer 503: the rest of the API
+      // works without it, and the deploy smoke test (scripts/smoke.mjs) is what refuses a release that lacks it.
+      storage: { configured: isStorageConfigured() },
       timestamp: new Date().toISOString(),
     });
   });

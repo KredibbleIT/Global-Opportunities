@@ -36,6 +36,14 @@ export const uploadRoot = () => {
 };
 
 /**
+ * True when uploads can work: production has UPLOAD_BASE_URL; elsewhere the address defaults to this server.
+ * Production ran without it until 25 Nov 2026, so every upload answered "File storage is not configured" while the health
+ * check said "ok". The health check now reports this, the server logs an error at start, and the deploy smoke test fails on it.
+ * @returns {boolean}
+ */
+export const isStorageConfigured = () => process.env.NODE_ENV !== 'production' || Boolean((process.env.UPLOAD_BASE_URL || '').trim());
+
+/**
  * The public address the files are served from, without a trailing slash. Production must set UPLOAD_BASE_URL
  * (for example https://api.globalopportunitydesk.com/uploads); elsewhere it defaults to this server.
  */

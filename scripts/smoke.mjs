@@ -98,6 +98,12 @@ export async function runSmokeTest({
       throw new Error(`Environment mismatch: expected "${expectedEnv}", received "${healthData.environment}"`);
     }
 
+    // Production ran without UPLOAD_BASE_URL until 25 Nov 2026: health said "ok" while every upload failed. A release
+    // that reports storage as not configured fails here; one too old to report it passes.
+    if (healthData.storage?.configured === false) {
+      throw new Error('File storage is not configured: set UPLOAD_BASE_URL in this environment\'s api.env');
+    }
+
     results.push({
       step: 'health',
       passed: true,
