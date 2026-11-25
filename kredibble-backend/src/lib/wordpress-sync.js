@@ -1,5 +1,9 @@
+import mongoose from 'mongoose';
 import { env } from '../config/env.js';
+import { CategoryMap } from '../models/AdminPortal.js';
 import { fetchWithTimeout } from './fetch.js';
+import logger from './logger.js';
+import { toWordpressRecord } from './wordpress-payload.js';
 
 const configured = (value) => value && !value.includes('placeholder');
 
@@ -48,16 +52,42 @@ const syncUrl = (resource, wordpressId) => {
  */
 const wordpressErrorMessage = (url, response, payload) => {
   const message = payload.message || `WordPress returned ${response.status}`;
+  const detail = payload.data?.allowed || payload.data?.choices || payload.data?.field || payload.data?.params;
+  if (detail && typeof detail !== 'number') {
+    return `${message} (${typeof detail === 'string' ? detail : JSON.stringify(detail)})`;
+  }
   if (payload.code === 'rest_no_route') {
     return `${message} (${url}). Check WORDPRESS_SYNC_BASE_URL: it should be the plugin base, such as https://globalopportunitydesk.com/wp-json${PLUGIN_ADMIN_PATH}.`;
   }
   return message;
 };
 
-const recordPayload = (document) => {
+/**
+ * The CategoryMap rows that translate app listing types to website categories. Read only when the database is
+ * connected; without them the payload falls back to the default category names.
+ */
+const loadCategoryMappings = async (resource) => {
+  if (resource !== 'opportunities' || mongoose.connection.readyState !== 1) return [];
+  try {
+    return await CategoryMap.find({ appCategory: { $ne: null } }).select('websiteCategory appCategory').lean();
+  } catch (error) {
+    logger.warn({ err: error }, 'WordPress sync: could not read the category map; using the default categories');
+    return [];
+  }
+};
+
+/**
+ * The body of a push: the API record's id, its WordPress id once known, and the record in the plugin's field contract
+ * (GOD-T95: the whole database record was refused with "Record fields must be scalar values.").
+ */
+const recordPayload = async (resource, document) => {
   const value = document.toJSON ? document.toJSON() : document;
-  const { _id, __v, wordpressSync, ...record } = value;
-  return { id: _id?.toString(), wordpressId: wordpressSync?.wordpressId, record };
+  const categoryMappings = await loadCategoryMappings(resource);
+  return {
+    id: value._id?.toString(),
+    wordpressId: value.wordpressSync?.wordpressId,
+    record: toWordpressRecord(resource, value, { categoryMappings }),
+  };
 };
 
 const saveSyncState = async (document, state) => {
@@ -80,7 +110,7 @@ export const syncToWordpress = async (resource, document) => {
         'Content-Type': 'application/json',
         Accept: 'application/json',
       },
-      body: JSON.stringify(recordPayload(document)),
+      body: JSON.stringify(await recordPayload(resource, document)),
     }, 'WordPress sync');
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(wordpressErrorMessage(url, response, payload));
