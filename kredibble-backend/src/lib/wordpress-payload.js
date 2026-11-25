@@ -6,9 +6,10 @@
  * 25 Nov 2026 the API sent the whole database record, so every push failed once the key was right. These builders send
  * each resource's contract fields only, translated from the API's own field names and value lists.
  *
+ * Images go as WordPress media IDs (`logoId`, `featuredImageId`) once lib/wordpress-media.js has uploaded them; the
+ * plugin refuses image URLs.
+ *
  * Left out on purpose:
- * - images (`logoId`, `featuredImageId`): the plugin takes WordPress media IDs and won't fetch a URL, and the API has
- *   only URLs;
  * - links to people and other records (`assignedWriter`, `vettedBy`, `partnerId`, `ownerId`, `leadId`, `userId`,
  *   `ambassadorId`, `opportunityId`, `addedBy`): the plugin wants WordPress IDs, which the API doesn't keep for users;
  * - values whose lists differ from the plugin's (`format` on listings, the ambassador `memberType`), and the scope
@@ -180,7 +181,7 @@ export const websiteCategoryFor = (type, mappings = []) => {
   return mapped?.websiteCategory || DEFAULT_WEBSITE_CATEGORY[key];
 };
 
-const opportunityRecord = (value, { categoryMappings }) => {
+const opportunityRecord = (value, { categoryMappings, media = {} }) => {
   const published = value.status === 'published' && Boolean(value.vetted);
   const country = String(value.country || '').trim();
   return scalarRecord({
@@ -200,6 +201,9 @@ const opportunityRecord = (value, { categoryMappings }) => {
     vettedDate: dateOnly(firstFilled(value.vettedAt, value.vettedOn)),
     // `published: true` is an alias of this status, and the plugin refuses aliases of one field sent together.
     status: published ? 'published' : 'draft',
+    // WordPress media IDs from lib/wordpress-media.js; image URLs are never sent.
+    logoId: media.logoId,
+    featuredImageId: media.featuredImageId,
   });
 };
 
@@ -278,13 +282,14 @@ const BUILDERS = {
  * The `record` the plugin receives for one resource: only its contract fields, as plain values.
  * @param {string} resource the plugin resource (opportunities, programs, partners, ambassadors, beneficiaries, social-posts)
  * @param {object} document a Mongoose document or plain record
- * @param {{categoryMappings?: Array}} [options] CategoryMap rows, for listing categories
+ * @param {{categoryMappings?: Array, media?: {logoId?: number, featuredImageId?: number}}} [options] CategoryMap rows,
+ *   for listing categories, and a listing's WordPress media IDs
  * @returns {object}
  * @throws {Error} for a resource the plugin has no route for
  */
-export const toWordpressRecord = (resource, document, { categoryMappings = [] } = {}) => {
+export const toWordpressRecord = (resource, document, { categoryMappings = [], media = {} } = {}) => {
   const build = BUILDERS[resource];
   if (!build) throw new Error(`No WordPress field mapping for "${resource}"`);
   const value = document?.toJSON ? document.toJSON() : document;
-  return build(value || {}, { categoryMappings });
+  return build(value || {}, { categoryMappings, media });
 };

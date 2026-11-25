@@ -94,6 +94,14 @@ const opportunitySchema = new mongoose.Schema({
     status: { type: String, enum: ['pending', 'synced', 'failed'], default: 'pending', index: true },
     lastAttemptAt: Date,
     lastError: String,
+    // The listing's images in the WordPress media library, so each is uploaded once and reused until it changes.
+    media: {
+      logoUrl: String,
+      logoId: Number,
+      coverUrl: String,
+      coverId: Number,
+      lastError: String,
+    },
   },
   // Competition specific
   competitionCategory: String,

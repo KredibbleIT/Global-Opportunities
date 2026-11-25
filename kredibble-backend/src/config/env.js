@@ -133,6 +133,10 @@ const env = {
   adminAppUrl: (process.env.ADMIN_APP_URL || '').trim().replace(/\/+$/, ''),
   wordpressSyncBaseUrl: process.env.WORDPRESS_SYNC_BASE_URL,
   wordpressApiKey: process.env.WORDPRESS_API_KEY,
+  // Listing images: a WordPress user and application password for /wp-json/wp/v2/media. Optional; without them the
+  // website gets listings without images (the GOD Track plugin takes media IDs only).
+  wordpressMediaUser: (process.env.WORDPRESS_MEDIA_USER || '').trim(),
+  wordpressMediaAppPassword: (process.env.WORDPRESS_MEDIA_APP_PASSWORD || '').trim(),
   // BE-026: inbound website sync. The webhook receiver is active only when a
   // shared secret is configured (503 otherwise); the pull safety net reuses
   // the outbound sync credentials above.

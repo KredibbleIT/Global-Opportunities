@@ -128,6 +128,21 @@ export const storedPathFromUrl = (url) => {
   return relative;
 };
 
+/**
+ * Reads one stored file (`folder/name.ext`, as storedPathFromUrl returns it) and its detected type.
+ * @param {string} relativePath
+ * @returns {Promise<{ buffer: Buffer, mime: string, name: string }>}
+ */
+export const readStoredFile = async (relativePath) => {
+  const parts = String(relativePath).split('/');
+  const name = parts[parts.length - 1];
+  if (!FILE_NAME.test(name) || !parts.slice(0, -1).every((segment) => SEGMENT.test(segment))) throw new Error('Unsafe storage path');
+  const buffer = await fs.readFile(insideRoot(...parts));
+  const detected = await fileTypeFromBuffer(buffer);
+  if (!detected || !EXTENSIONS[detected.mime]) throw new Error('Stored file has an unexpected type');
+  return { buffer, mime: detected.mime, name };
+};
+
 /** Does a stored file (`folder/name.ext`, as storedPathFromUrl returns it) exist? */
 export const storedFileExists = (relativePath) => fs.access(insideRoot(...String(relativePath).split('/'))).then(() => true, () => false);
 
