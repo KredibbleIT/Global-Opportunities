@@ -65,7 +65,7 @@ export default function InternshipDetailScreen() {
     }
     setApplying(true);
     try {
-      await applyForOpportunity(id, { coverLetter: 'Applied via Kredibble Mobile' });
+      await applyForOpportunity(id, { coverLetter: 'Applied via the Global Opportunity Desk app' });
       setApplied(true);
       showToast(`You have successfully submitted your application for ${internship?.title || 'the internship'}!`);
     } catch (err: any) {
