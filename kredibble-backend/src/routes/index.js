@@ -496,11 +496,12 @@ const eventReadScope = (req) => {
 };
 
 /**
- * Q3: Articles public read scope — non-admins see published articles.
+ * Q3: Articles public read scope — non-admins see published articles, and scheduled ones whose time has come (GOD-T73). The
+ * minute job marks those published too; this keeps them visible in the gap and if the job is late.
  */
 const articleReadScope = (req) => {
   if (req.auth?.role === ADMIN) return {};
-  return { status: 'published' };
+  return { $or: [{ status: 'published' }, { status: 'scheduled', publishAt: { $lte: new Date() } }] };
 };
 
 const findReferringAmbassador = async (rawCode) => {

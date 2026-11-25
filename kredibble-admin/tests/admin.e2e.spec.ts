@@ -2293,6 +2293,18 @@ test.describe('Touch targets and the skip link (desktop)', () => {
     await page.getByRole('switch', { name: 'Visible to seekers' }).click(); // GOD-T41: the label stays; only the status word changes
     await expect(page.getByTestId('switch-status')).toHaveText('Published');
   });
+
+  test('GOD-T73: a visible article can be given a publish time; it appears only while the switch is on', async ({ page }) => {
+    await page.goto(`${BASE_URL}/content/articles/new`, { timeout: 30_000 });
+    const publishOn = page.getByRole('group', { name: 'Publish on' });
+    await expect(publishOn).toHaveCount(0); // a draft has no publish time
+    await page.getByRole('switch', { name: 'Visible to seekers' }).click();
+    await expect(publishOn).toBeVisible();
+    await expect(page.getByText('Leave empty to publish now. Pick a later date and time to schedule it.')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Publish article' })).toBeVisible(); // empty: publishes now
+    await page.getByRole('switch', { name: 'Visible to seekers' }).click();
+    await expect(publishOn).toHaveCount(0);
+  });
 });
 
 test.describe('Dead code guard', () => {

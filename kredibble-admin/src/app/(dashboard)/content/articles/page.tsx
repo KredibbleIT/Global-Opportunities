@@ -34,7 +34,7 @@ const COLUMNS: Column<Article>[] = [
   { key: "status", header: "Status", type: "status", width: "22%", status: (r) => r.status },
 ];
 
-type StatusFilter = "all" | "published" | "draft";
+type StatusFilter = "all" | "published" | "scheduled" | "draft";
 
 export default function ArticlesListPage() {
   const { rows, isLoading, error, retry } = useListData(loadArticleRows);
@@ -46,9 +46,9 @@ export default function ArticlesListPage() {
   const term = search.trim().toLowerCase();
   const searched = all.filter((a) => !term || a.title.toLowerCase().includes(term) || a.category.toLowerCase().includes(term));
   const visible = status === "all" ? searched : searched.filter((a) => a.status === status);
-  const options = (["all", "published", "draft"] as const).map((value) => ({
+  const options = (["all", "published", "scheduled", "draft"] as const).map((value) => ({
     value,
-    label: value === "all" ? "All" : value === "published" ? "Published" : "Draft",
+    label: { all: "All", published: "Published", scheduled: "Scheduled", draft: "Draft" }[value],
     count: rows ? (value === "all" ? searched.length : searched.filter((a) => a.status === value).length) : undefined,
   }));
 

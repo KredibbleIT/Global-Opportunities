@@ -252,8 +252,8 @@ export const RESOURCE_POLICIES = {
     create: ADMIN_ONLY,
     update: ADMIN_ONLY,
     delete: ADMIN_ONLY,
-    createFields: ['category', 'title', 'duration', 'summary', 'content', 'status', 'bannerImage'],
-    updateFields: ['category', 'title', 'duration', 'summary', 'content', 'status', 'bannerImage'],
+    createFields: ['category', 'title', 'duration', 'summary', 'content', 'status', 'publishAt', 'bannerImage'],
+    updateFields: ['category', 'title', 'duration', 'summary', 'content', 'status', 'publishAt', 'bannerImage'],
   },
   // Broadcast notifications, not per-user mailboxes: the mobile app calls
   // GET /notifications?userId=... as any signed-in role, and the route ignores

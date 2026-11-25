@@ -7,7 +7,8 @@
  * of that same content would look like.
  */
 
-export type ArticleStatus = 'published' | 'draft';
+/** GOD-T73: "scheduled" publishes itself at publishAt. */
+export type ArticleStatus = 'published' | 'scheduled' | 'draft';
 
 export interface Article {
   id: string;
@@ -17,6 +18,8 @@ export interface Article {
   summary: string;
   content: string;
   status: ArticleStatus;
+  /** When a scheduled article publishes itself, as a desk wall time ("2026-12-01T09:00", DESK_TIME_ZONE); "" when not scheduled. */
+  publishAt?: string;
   bannerImage?: string;
 }
 

@@ -6,9 +6,20 @@ const articleSchema = new mongoose.Schema({
   duration: String,
   summary: { type: String, required: true },
   content: { type: String, required: true },
-  status: { type: String, default: 'draft', index: true },
+  // GOD-T73: an article is a draft, published, or scheduled to publish itself at publishAt. A scheduled article is shown in the
+  // app once publishAt has passed (articleReadScope), and the minute job (lib/article-scheduler.js) then marks it published.
+  status: { type: String, enum: ['draft', 'scheduled', 'published'], default: 'draft', index: true },
+  publishAt: { type: Date, default: null },
   bannerImage: String,
 }, { timestamps: true });
+
+articleSchema.pre('validate', function requirePublishTime() {
+  if (this.status === 'scheduled' && !this.publishAt) {
+    this.invalidate('publishAt', 'A scheduled article needs a date and time to publish.');
+  }
+});
+
+articleSchema.index({ status: 1, publishAt: 1 });
 
 // SEC-031: Text index for search on title, category
 articleSchema.index({ title: 'text', category: 'text' });
