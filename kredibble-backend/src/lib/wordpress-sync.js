@@ -3,6 +3,7 @@ import { env } from '../config/env.js';
 import { CategoryMap } from '../models/AdminPortal.js';
 import { fetchWithTimeout } from './fetch.js';
 import logger from './logger.js';
+import { ensureListingMedia } from './wordpress-media.js';
 import { toWordpressRecord } from './wordpress-payload.js';
 
 const configured = (value) => value && !value.includes('placeholder');
@@ -81,17 +82,21 @@ const loadCategoryMappings = async (resource) => {
  * (GOD-T95: the whole database record was refused with "Record fields must be scalar values.").
  */
 const recordPayload = async (resource, document) => {
+  // Listing images are uploaded to the WordPress media library first; their IDs go with the listing.
+  const media = resource === 'opportunities' ? await ensureListingMedia(document) : {};
   const value = document.toJSON ? document.toJSON() : document;
   const categoryMappings = await loadCategoryMappings(resource);
   return {
     id: value._id?.toString(),
     wordpressId: value.wordpressSync?.wordpressId,
-    record: toWordpressRecord(resource, value, { categoryMappings }),
+    record: toWordpressRecord(resource, value, { categoryMappings, media }),
   };
 };
 
 const saveSyncState = async (document, state) => {
-  document.wordpressSync = { ...document.wordpressSync?.toObject?.(), ...state, lastAttemptAt: new Date() };
+  // Keep what is already there (the WordPress id, the listing's media IDs), from a Mongoose subdocument or a plain object.
+  const previous = document.wordpressSync?.toObject?.() ?? document.wordpressSync ?? {};
+  document.wordpressSync = { ...previous, ...state, lastAttemptAt: new Date() };
   await document.save();
 };
 
