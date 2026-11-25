@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import request from 'supertest';
 import { app } from '../src/app.js';
-import { deleteImage, deleteUserMedia, storedPathFromUrl, uploadBaseUrl, uploadBuffer, uploadRoot } from '../src/lib/storage.js';
+import { deleteImage, deleteUserMedia, isStorageConfigured, storedPathFromUrl, uploadBaseUrl, uploadBuffer, uploadRoot } from '../src/lib/storage.js';
 
 // Files are stored on this server's own disk and served from /uploads. ALL DATA IS FAKE.
 
@@ -12,6 +12,43 @@ const EXE = Buffer.concat([Buffer.from('MZ'), Buffer.alloc(200, 0)]);
 const USER = '64b7f1c2a1b2c3d4e5f60718';
 
 const exists = (file) => fs.access(file).then(() => true, () => false);
+
+// Production ran without UPLOAD_BASE_URL until 25 Nov 2026: every upload answered "File storage is not configured" and nothing
+// said so until a script hit it. Storage now reports whether it can work, the health check shows it, and the deploy smoke
+// test fails on it.
+describe('storage: is it configured', () => {
+  const saved = { base: process.env.UPLOAD_BASE_URL, nodeEnv: process.env.NODE_ENV };
+  afterEach(() => {
+    if (saved.base === undefined) delete process.env.UPLOAD_BASE_URL;
+    else process.env.UPLOAD_BASE_URL = saved.base;
+    process.env.NODE_ENV = saved.nodeEnv;
+  });
+
+  it('production needs UPLOAD_BASE_URL; elsewhere the address defaults to this server', () => {
+    process.env.NODE_ENV = 'production';
+    delete process.env.UPLOAD_BASE_URL;
+    expect(isStorageConfigured()).toBe(false);
+    process.env.UPLOAD_BASE_URL = '  ';
+    expect(isStorageConfigured()).toBe(false);
+    process.env.UPLOAD_BASE_URL = 'https://api.example.org/uploads';
+    expect(isStorageConfigured()).toBe(true);
+    process.env.NODE_ENV = 'development';
+    delete process.env.UPLOAD_BASE_URL;
+    expect(isStorageConfigured()).toBe(true);
+  });
+
+  it('the health check reports it, and stays healthy either way (a missing setting must not take the API down)', async () => {
+    const configured = await request(app).get('/api/v1/health');
+    expect(configured.status).toBe(200);
+    expect(configured.body.storage).toEqual({ configured: true });
+
+    process.env.NODE_ENV = 'production';
+    delete process.env.UPLOAD_BASE_URL;
+    const missing = await request(app).get('/api/v1/health');
+    expect(missing.status).toBe(200);
+    expect(missing.body.storage).toEqual({ configured: false });
+  });
+});
 
 describe('storage: saving a file', () => {
   it('writes the file under a random name with the extension of its real type, and returns its address', async () => {
