@@ -58,7 +58,7 @@ export default function JobDetailScreen() {
     }
     setApplying(true);
     try {
-      await applyForOpportunity(id, { coverLetter: 'Applied via Kredibble Mobile' });
+      await applyForOpportunity(id, { coverLetter: 'Applied via the Global Opportunity Desk app' });
       setApplied(true);
       showToast(`You have successfully applied for the ${job?.title || 'role'} at ${job?.company || 'Company'}!`);
     } catch (err: any) {
