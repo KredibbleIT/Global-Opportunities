@@ -120,7 +120,7 @@ export default function ThreadScreen() {
             ListHeaderComponent={
               <View style={{ backgroundColor: Colors.bgCard, borderWidth: 1, borderColor: Colors.borderDefault, borderRadius: Radius.card, padding: 14, marginBottom: 16 }}>
                 <Text style={{ fontSize: 12, fontWeight: '700', color: Colors.accent700, marginBottom: 4 }} className="font-sans">
-                  {post.senderName}{post.senderRole === 'admin' ? '  ·  Kredibble team' : ''}
+                  {post.senderName}{post.senderRole === 'admin' ? '  ·  Global Opportunity Desk' : ''}
                 </Text>
                 <Text style={{ fontSize: 15, lineHeight: 22, color: Colors.textBody }} className="font-sans">{post.body}</Text>
                 <Text style={{ fontSize: 10, marginTop: 6, alignSelf: 'flex-end', color: Colors.textMuted }} className="font-sans">{timeOf(post.createdAt)}</Text>
@@ -143,7 +143,7 @@ export default function ThreadScreen() {
                   >
                     {!mine && (
                       <Text style={{ fontSize: 12, fontWeight: '700', color: item.senderRole === 'admin' ? Colors.accent700 : Colors.primary, marginBottom: 2 }} className="font-sans">
-                        {item.senderName}{item.senderRole === 'admin' ? '  ·  Kredibble team' : ''}
+                        {item.senderName}{item.senderRole === 'admin' ? '  ·  Global Opportunity Desk' : ''}
                       </Text>
                     )}
                     <Text style={{ fontSize: 14, lineHeight: 20, color: mine ? Colors.white : Colors.textBody }} className="font-sans">{item.body}</Text>

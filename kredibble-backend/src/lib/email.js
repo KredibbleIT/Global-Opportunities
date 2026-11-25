@@ -118,12 +118,12 @@ export const sendInviteEmail = async (email, name, inviteUrl, expiresAt) => {
     const result = await resend.emails.send({
       from: env.resendFromEmail || 'Global Opportunity Desk <noreply@kredibble.app>',
       to: email,
-      subject: 'You are invited to the Kredibble team',
+      subject: 'You are invited to the Global Opportunity Desk team',
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
           <h2 style="color: #1a1a1a;">Team invitation</h2>
           <p>Hi ${name},</p>
-          <p>You have been invited to join the Kredibble team. Open this link to set your password (single use, expires ${expiresAt}):</p>
+          <p>You have been invited to join the Global Opportunity Desk team. Open this link to set your password (single use, expires ${expiresAt}):</p>
           <p><a href="${inviteUrl}">${inviteUrl}</a></p>
           <p style="color: #666; font-size: 14px;">If you were not expecting this, please ignore this email.</p>
         </div>

@@ -127,7 +127,7 @@ export default function ChannelChatScreen() {
             ListEmptyComponent={
               <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
                 <Text style={{ color: Colors.textMuted, textAlign: 'center' }} className="font-sans">
-                  {canPost ? 'No posts yet. Write the first one below.' : 'No posts yet. Updates from the Kredibble team will appear here.'}
+                  {canPost ? 'No posts yet. Write the first one below.' : 'No posts yet. Updates from the Global Opportunity Desk team will appear here.'}
                 </Text>
               </View>
             }
@@ -140,7 +140,7 @@ export default function ChannelChatScreen() {
                   }}
                 >
                   <Text style={{ fontSize: 12, fontWeight: '700', color: Colors.accent700, marginBottom: 4 }} className="font-sans">
-                    {item.senderName}{item.senderRole === 'admin' ? '  ·  Kredibble team' : ''}
+                    {item.senderName}{item.senderRole === 'admin' ? '  ·  Global Opportunity Desk' : ''}
                   </Text>
                   <Text style={{ fontSize: 15, lineHeight: 22, color: Colors.textBody }} className="font-sans">{item.body}</Text>
                   <Text style={{ fontSize: 10, marginTop: 6, alignSelf: 'flex-end', color: Colors.textMuted }} className="font-sans">{timeOf(item.createdAt)}</Text>

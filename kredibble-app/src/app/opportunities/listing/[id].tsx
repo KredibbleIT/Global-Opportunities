@@ -99,7 +99,7 @@ export default function OpportunityListingScreen() {
     }
     setApplying(true);
     try {
-      await applyForOpportunity(String(id), { coverLetter: 'Applied via Kredibble Mobile' });
+      await applyForOpportunity(String(id), { coverLetter: 'Applied via the Global Opportunity Desk app' });
       setApplied(true);
       showToast(`Your application to ${item.title} was sent.`);
     } catch (err: any) {
