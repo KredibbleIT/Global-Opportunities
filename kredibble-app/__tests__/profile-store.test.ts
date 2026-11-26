@@ -81,4 +81,13 @@ describe('profile store follows the signed-in person', () => {
     expect(profileStore.user.id).toBe('');
     expect(profileStore.user.name).toBe('');
   });
+
+  it('GOD-T80: signing in again (as after a password reset) shows the picture saved on the account', () => {
+    authStore.setSession('token', { ...newSeeker, avatarUrl: 'https://example.com/uploads/me.png' });
+    authStore.clearSession(); // signed out by the reset
+    expect(profileStore.user.image).toBe('');
+    authStore.setSession('new-token', { ...newSeeker, avatarUrl: 'https://example.com/uploads/me.png' });
+    expect(profileStore.user.image).toBe('https://example.com/uploads/me.png');
+    expect(authStore.user?.avatarUrl).toBe('https://example.com/uploads/me.png');
+  });
 });
