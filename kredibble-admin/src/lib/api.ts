@@ -113,13 +113,15 @@ export type ArticleRecord = {
   summary: string;
   content: string;
   status: string;
+  /** GOD-T73: when a scheduled article publishes itself (ISO); null when not scheduled. */
+  publishAt?: string | null;
   bannerImage?: string;
   createdAt: string;
   updatedAt: string;
 };
 
 export type ArticleInput = Pick<ArticleRecord, "title" | "category" | "summary" | "content" | "status"> &
-  Partial<Pick<ArticleRecord, "duration" | "bannerImage">>;
+  Partial<Pick<ArticleRecord, "duration" | "bannerImage" | "publishAt">>;
 
 /**
  * Staff-portal roles: the values `requirePortalRoles` checks in

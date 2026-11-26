@@ -17,6 +17,7 @@
  *   database     verified = success, pending = warning
  *   testimonial  pending = warning, approved = success, unpublished = neutral, rejected = danger
  *   listing      draft = neutral, published = success
+ *   article      draft = neutral, scheduled = info (publishes itself later), published = success
  *   vetting      unvetted = warning, vetted = success
  *   pipeline     healthy = success, thin = warning, critical = danger, unknown ("Not enough data") = neutral
  *   pace         on_pace = success, behind = warning, far_behind = danger (the Database verification pace, from kpiStatus). They read
@@ -66,6 +67,7 @@ const STATUS_MAP: Record<string, StatusMeta> = {
   mou: { tone: "info", label: "MOU" },
   onboarding: { tone: "info", label: "Onboarding" },
   invited: { tone: "info", label: "Invited" },
+  scheduled: { tone: "info", label: "Scheduled" },
   // warning
   dormant: { tone: "warning", label: "Dormant" },
   unvetted: { tone: "warning", label: "Unvetted" },

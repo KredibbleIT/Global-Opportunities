@@ -14,11 +14,20 @@ import { fetchAll, isRecordId, orMissing, uploadableImageFile } from "./api-help
 import { isMockMode } from "./mock-mode";
 
 /** What the editor saves. */
-export type ArticleDraft = Pick<Article, "title" | "summary" | "content" | "status" | "category" | "duration" | "bannerImage">;
+export type ArticleDraft = Pick<Article, "title" | "summary" | "content" | "status" | "category" | "duration" | "bannerImage" | "publishAt">;
 
-/** Maps one API article to the page's shape (anything but "published" is a draft, so nothing goes public by accident). */
+/** An API date-time as a desk wall time ("2026-12-01T09:00"); the desk zone is GMT, so it is the UTC value cut to minutes. */
+const wallTime = (value: string | null | undefined): string => (value ? value.slice(0, 16) : "");
+/** A desk wall time as the ISO value the API stores. */
+const toApiTime = (value: string): string => `${value.slice(0, 16)}:00.000Z`;
+
+/**
+ * Maps one API article to the page's shape. Anything but "published" or a scheduled article with a time is a draft, so nothing goes
+ * public by accident (GOD-T73).
+ */
 export function toArticle(record: ArticleRecord): Article {
-  const status: ArticleStatus = record.status === "published" ? "published" : "draft";
+  const status: ArticleStatus =
+    record.status === "published" ? "published" : record.status === "scheduled" && record.publishAt ? "scheduled" : "draft";
   return {
     id: record.id,
     category: record.category,
@@ -27,6 +36,7 @@ export function toArticle(record: ArticleRecord): Article {
     summary: record.summary,
     content: record.content,
     status,
+    publishAt: status === "scheduled" ? wallTime(record.publishAt) : "",
     bannerImage: record.bannerImage || undefined,
   };
 }
@@ -62,6 +72,8 @@ export async function saveArticle(id: string | null, draft: ArticleDraft): Promi
     summary: draft.summary.trim(),
     content: draft.content,
     status: draft.status,
+    // GOD-T73: only a scheduled article keeps a publish time; publishing now or going back to a draft clears it.
+    publishAt: draft.status === "scheduled" && draft.publishAt ? toApiTime(draft.publishAt) : null,
     category: draft.category.trim(),
     duration: draft.duration?.trim() || undefined,
     bannerImage: (await bannerUrl(draft.bannerImage)) ?? "",

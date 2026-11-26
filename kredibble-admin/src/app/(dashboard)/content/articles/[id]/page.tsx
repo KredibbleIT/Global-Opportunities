@@ -6,7 +6,9 @@
  *
  * Fields (all kept from the old page, with the same required rules):
  * - Title (required), Summary (required), Body (required; the same plain textarea as before)
- * - Publishing: one switch, "Visible to seekers", and one status word beside it (Published or Draft; GOD-T41)
+ * - Publishing: one switch, "Visible to seekers", and one status word beside it (Published, Scheduled or Draft; GOD-T41). With the
+ *   switch on, an optional "Publish on" date and time (GOD-T73): empty publishes now, a future time schedules the article, and the
+ *   API shows it in the app from that time.
  * - Details: Category (required), Read time (optional)
  * - Cover image (optional): was "Banner Image"
  *
@@ -33,6 +35,9 @@ import { Textarea } from "@/components/ui/form/Textarea";
 import { focusFirstInvalid, useTouched } from "@/components/ui/form/use-touched";
 import { useUnsavedGuard } from "@/components/ui/form/use-unsaved-guard";
 import { useToast } from "@/components/ui/Toast";
+import { DateTimeField } from "@/components/ui/form/DateTimeField";
+import { DESK_TIME_ZONE } from "@/config/time";
+import { formatDateTime } from "@/lib/format";
 
 const LIST_HREF = "/content/articles";
 
@@ -40,21 +45,36 @@ interface ArticleForm {
   title: string;
   summary: string;
   content: string;
-  status: ArticleStatus;
+  /** The "Visible to seekers" switch. */
+  visible: boolean;
+  /** GOD-T73: when a visible article publishes, as a desk wall time ("2026-12-01T09:00"); "" means now. */
+  publishAt: string;
   category: string;
   duration: string;
   bannerImage: string | undefined;
 }
 
-const EMPTY_FORM: ArticleForm = { title: "", summary: "", content: "", status: "draft", category: "", duration: "", bannerImage: undefined };
+const EMPTY_FORM: ArticleForm = { title: "", summary: "", content: "", visible: false, publishAt: "", category: "", duration: "", bannerImage: undefined };
 
-/** The required-field rules (same as before: each must have text once trimmed). */
+/** True when a desk wall time (GMT) is still to come. */
+const isFuture = (wallTime: string): boolean => new Date(`${wallTime}:00.000Z`).getTime() > Date.now();
+
+/** What saving does: keep a draft, publish now, or schedule for a future time. */
+function statusOf(form: ArticleForm): ArticleStatus {
+  if (!form.visible) return "draft";
+  return form.publishAt && isFuture(form.publishAt) ? "scheduled" : "published";
+}
+
+/** The required-field rules (each must have text once trimmed), and a publish time must still be to come. */
 function validate(form: ArticleForm) {
-  const errors: Partial<Record<"title" | "summary" | "content" | "category", string>> = {};
+  const errors: Partial<Record<"title" | "summary" | "content" | "category" | "publishAt", string>> = {};
   if (!form.title.trim()) errors.title = "Enter a title.";
   if (!form.summary.trim()) errors.summary = "Enter a summary.";
   if (!form.content.trim()) errors.content = "Enter the article body.";
   if (!form.category.trim()) errors.category = "Enter a category.";
+  if (form.visible && form.publishAt && !isFuture(form.publishAt)) {
+    errors.publishAt = "Choose a time that is still to come, or clear it to publish now.";
+  }
   return errors;
 }
 
@@ -84,7 +104,8 @@ function ArticleEditor({ id, existing }: { id: string | null; existing?: Article
         title: existing.title,
         summary: existing.summary,
         content: existing.content,
-        status: existing.status,
+        visible: existing.status !== "draft",
+        publishAt: existing.status === "scheduled" ? (existing.publishAt ?? "") : "",
         category: existing.category,
         duration: existing.duration,
         bannerImage: existing.bannerImage,
@@ -100,6 +121,7 @@ function ArticleEditor({ id, existing }: { id: string | null; existing?: Article
   const dirty = (Object.keys(form) as (keyof ArticleForm)[]).some((key) => form[key] !== initial[key]);
   const guard = useUnsavedGuard(dirty && !saving);
   const errors = validate(form);
+  const status = statusOf(form);
 
   const set = <K extends keyof ArticleForm>(key: K, value: ArticleForm[K]) => setForm((current) => ({ ...current, [key]: value }));
 
@@ -112,17 +134,35 @@ function ArticleEditor({ id, existing }: { id: string | null; existing?: Article
     }
     setSaving(true);
     try {
-      await saveArticle(id, form);
+      await saveArticle(id, {
+        title: form.title,
+        summary: form.summary,
+        content: form.content,
+        category: form.category,
+        duration: form.duration,
+        bannerImage: form.bannerImage,
+        status,
+        publishAt: status === "scheduled" ? form.publishAt : "",
+      });
     } catch (saveError) {
       setSaving(false);
       toast.error(saveError instanceof Error ? `The article could not be saved: ${saveError.message}` : "The article could not be saved.");
       return;
     }
-    toast.success(isNew ? (form.status === "published" ? "The article was published." : "The draft was saved.") : "Your changes were saved.");
+    const scheduledFor = `${formatDateTime(form.publishAt)} ${DESK_TIME_ZONE}`;
+    toast.success(
+      status === "scheduled"
+        ? `The article will be published on ${scheduledFor}.`
+        : isNew
+          ? status === "published" ? "The article was published." : "The draft was saved."
+          : "Your changes were saved.",
+    );
     guard.leaveNow(LIST_HREF);
   };
 
-  const saveLabel = isNew ? (form.status === "published" ? "Publish article" : "Save draft") : "Save changes";
+  const saveLabel = isNew
+    ? { published: "Publish article", scheduled: "Schedule article", draft: "Save draft" }[status]
+    : "Save changes";
 
   return (
     <form ref={formRef} onSubmit={submit} noValidate className="flex flex-1 flex-col">
@@ -182,12 +222,25 @@ function ArticleEditor({ id, existing }: { id: string | null; existing?: Article
           <Card>
             <CardHeader title="Publishing" />
             <Switch
-              checked={form.status === "published"}
-              onChange={(checked) => set("status", checked ? "published" : "draft")}
+              checked={form.visible}
+              onChange={(checked) => set("visible", checked)}
               label="Visible to seekers"
-              statusText={form.status === "published" ? "Published" : "Draft"}
+              statusText={{ published: "Published", scheduled: "Scheduled", draft: "Draft" }[status]}
               description="On: published in the app. Off: kept as a draft."
             />
+            {form.visible && (
+              <div className="mt-4">
+                <DateTimeField
+                  label="Publish on"
+                  optional
+                  helper="Leave empty to publish now. Pick a later date and time to schedule it."
+                  value={form.publishAt}
+                  onChange={(value) => set("publishAt", value)}
+                  onBlur={() => touch("publishAt")}
+                  error={show("publishAt") ? errors.publishAt : undefined}
+                />
+              </div>
+            )}
           </Card>
 
           <Card>

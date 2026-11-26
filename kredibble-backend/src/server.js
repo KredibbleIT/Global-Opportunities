@@ -4,6 +4,7 @@ import { env } from './config/env.js';
 import { connectToDatabase } from './lib/mongodb.js';
 import logger from './lib/logger.js';
 import { completePendingDeletions } from './lib/account-deletion.js';
+import { publishDueArticles } from './lib/article-scheduler.js';
 import { deliverDueNotifications } from './lib/notification-scheduler.js';
 import { checkPushReceipts } from './lib/push.js';
 import { isStorageConfigured } from './lib/storage.js';
@@ -36,6 +37,13 @@ const runScheduledNotifications = async () => {
     if (delivered > 0) logger.info({ delivered }, 'Scheduled notifications sent');
   } catch (error) {
     logger.error({ err: error.message }, 'Sending scheduled notifications failed');
+  }
+  // GOD-T73: scheduled Career resources articles whose time has come.
+  try {
+    const { published } = await publishDueArticles();
+    if (published > 0) logger.info({ published }, 'Scheduled articles published');
+  } catch (error) {
+    logger.error({ err: error.message }, 'Publishing scheduled articles failed');
   }
 };
 
