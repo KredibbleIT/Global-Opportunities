@@ -1,130 +1,70 @@
-import React, { useState, useEffect } from 'react';
+/**
+ * Profile → Applications status (GOD-T91): every opportunity the person applied to in the app, newest first, with its real
+ * location, type and stage. The list reloads each time the screen is shown, so an application just sent appears. Mapping and
+ * wording live in lib/application-status.ts (tested in __tests__/application-status.test.ts).
+ */
+import React, { useCallback, useState } from 'react';
 import { Colors } from '../../constants/design';
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { ChevronLeft } from 'lucide-react-native';
 import { getMyApplications } from '../../lib/api';
+import {
+  STAGE_FILTERS,
+  appliedLabel,
+  emptyMessage,
+  filterByStage,
+  toApplicationCards,
+  type ApplicationCard,
+  type ApplicationStage,
+  type StageFilter,
+} from '../../lib/application-status';
 
-type ParentTab = 'jobs' | 'internships';
-type SubFilter = 'All' | 'Interview' | 'Rejected' | 'In review';
-
-interface ApplicationItem {
-  id: string;
-  title: string;
-  company: string;
-  description: string;
-  type: 'jobs' | 'internships';
-  status: 'In review' | 'Interview' | 'Rejected';
-  appliedDate?: string;
-}
+/** Badge colours per stage: amber waiting, purple moving, green good news, red no. */
+const STAGE_STYLES: Record<ApplicationStage, { bg: string; text: string }> = {
+  'In review': { bg: '#FEF3C7', text: '#B45309' },
+  Shortlisted: { bg: '#EDE9FE', text: '#6D28D9' },
+  Interview: { bg: '#E0F2FE', text: '#0369A1' },
+  Offered: { bg: '#DCFCE7', text: '#15803D' },
+  Rejected: { bg: '#FFEAEA', text: '#C53030' },
+};
 
 export default function ApplicationsStatusScreen() {
   const router = useRouter();
-  const [parentTab, setParentTab] = useState<ParentTab>('jobs');
-  const [activeFilter, setActiveFilter] = useState<SubFilter>('All');
-  const [applications, setApplications] = useState<ApplicationItem[]>([]);
+  const [activeFilter, setActiveFilter] = useState<StageFilter>('All');
+  const [applications, setApplications] = useState<ApplicationCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const mapRawApplications = (rawList: any[]): ApplicationItem[] => {
-    return rawList.map((item: any) => {
-      const opp = item.opportunity || {};
-      let normalizedStatus: 'In review' | 'Interview' | 'Rejected' = 'In review';
-      const rawStatus = String(item.status || '').toLowerCase();
-      if (rawStatus === 'interviewing' || rawStatus === 'interview' || rawStatus === 'offered') {
-        normalizedStatus = 'Interview';
-      } else if (rawStatus === 'rejected') {
-        normalizedStatus = 'Rejected';
-      }
-
-      const rawType = String(opp.type || '').toLowerCase();
-      const normalizedType: 'jobs' | 'internships' = rawType.includes('intern') ? 'internships' : 'jobs';
-
-      return {
-        id: String(item.id || item._id),
-        title: opp.title || 'Opportunity Application',
-        company: opp.company || 'Company',
-        description: opp.description || opp.location || (item.createdAt ? `Applied on ${new Date(item.createdAt).toLocaleDateString()}` : 'Applied'),
-        type: normalizedType,
-        status: normalizedStatus,
-        appliedDate: item.createdAt,
-      };
-    });
-  };
-
-  const loadData = () => {
-    getMyApplications()
-      .then((res) => {
-        const rawList = Array.isArray(res) ? res : ((res as any)?.data || []);
-        setApplications(mapRawApplications(rawList));
-        setLoading(false);
-      })
-      .catch((err: any) => {
-        setError(err?.message || 'Failed to load applications');
-        setLoading(false);
-      });
-  };
-
-  const handleRetry = () => {
-    setLoading(true);
+  const load = useCallback(() => {
+    let active = true;
     setError(null);
-    loadData();
-  };
-
-  useEffect(() => {
-    let isMounted = true;
     getMyApplications()
-      .then((res) => {
-        if (!isMounted) return;
-        const rawList = Array.isArray(res) ? res : ((res as any)?.data || []);
-        setApplications(mapRawApplications(rawList));
+      .then((response) => {
+        if (!active) return;
+        setApplications(toApplicationCards(response));
         setLoading(false);
       })
       .catch((err: any) => {
-        if (!isMounted) return;
-        setError(err?.message || 'Failed to load applications');
+        if (!active) return;
+        setError(err?.message ? `Your applications could not be loaded: ${err.message}` : 'Your applications could not be loaded.');
         setLoading(false);
       });
-
     return () => {
-      isMounted = false;
+      active = false;
     };
   }, []);
 
-  const getFilteredApps = () => {
-    // 1. Filter by category (jobs vs internships)
-    let filtered = applications.filter(app => app.type === parentTab);
+  // Reload whenever the screen is shown, so an application sent a moment ago is listed.
+  useFocusEffect(load);
 
-    // 2. Filter by status if not 'All'
-    if (activeFilter !== 'All') {
-      filtered = filtered.filter(app => app.status === activeFilter);
-    }
-
-    return filtered;
+  const handleRetry = () => {
+    setLoading(true);
+    load();
   };
 
-  const getStatusStyles = (status: 'In review' | 'Interview' | 'Rejected') => {
-    if (status === 'Interview') {
-      return {
-        bg: '#DCFCE7',
-        text: '#16A34A'
-      };
-    } else if (status === 'Rejected') {
-      return {
-        bg: '#FFEAEA',
-        text: '#ED4C5C'
-      };
-    } else {
-      // In review
-      return {
-        bg: '#FEF3C7',
-        text: '#D97706'
-      };
-    }
-  };
-
-  const currentList = getFilteredApps();
+  const currentList = filterByStage(applications, activeFilter);
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
@@ -141,34 +81,17 @@ export default function ApplicationsStatusScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      {/* Parent Tabs */}
-      <View style={styles.parentTabs}>
-        <TouchableOpacity 
-          style={[styles.parentTab, parentTab === 'jobs' && styles.activeParentTab]}
-          onPress={() => { setParentTab('jobs'); setActiveFilter('All'); }}
-          activeOpacity={0.8}
-        >
-          <Text style={[styles.parentTabText, parentTab === 'jobs' && styles.activeParentTabText]} className="font-sans">Jobs</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.parentTab, parentTab === 'internships' && styles.activeParentTab]}
-          onPress={() => { setParentTab('internships'); setActiveFilter('All'); }}
-          activeOpacity={0.8}
-        >
-          <Text style={[styles.parentTabText, parentTab === 'internships' && styles.activeParentTabText]} className="font-sans">Internships</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Sub Filters Row */}
+      {/* Stage filters: every kind of opportunity is listed together (a fellowship is not a job). */}
       <View style={styles.subFiltersContainer}>
         <ScrollView horizontal={true} showsHorizontalScrollIndicator={false} contentContainerStyle={styles.subFiltersScroll}>
-          {(['All', 'Interview', 'Rejected', 'In review'] as SubFilter[]).map((filter) => (
+          {STAGE_FILTERS.map((filter) => (
             <TouchableOpacity
               key={filter}
               style={[styles.subFilterPill, activeFilter === filter && styles.activeSubFilterPill]}
               onPress={() => setActiveFilter(filter)}
               activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityState={{ selected: activeFilter === filter }}
             >
               <Text style={[styles.subFilterText, activeFilter === filter && styles.activeSubFilterText]} className="font-sans">
                 {filter}
@@ -194,46 +117,60 @@ export default function ApplicationsStatusScreen() {
           </View>
         ) : currentList.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText} className="font-sans">No applications match this filter</Text>
+            <Text style={[styles.emptyText, styles.emptyTextCentered]} className="font-sans">
+              {emptyMessage(applications.length, activeFilter)}
+            </Text>
+            {applications.length === 0 && (
+              <TouchableOpacity
+                onPress={() => router.push('/(tabs)/opportunities')}
+                style={[styles.subFilterPill, styles.activeSubFilterPill, { marginTop: 16 }]}
+                accessibilityRole="button"
+              >
+                <Text style={styles.activeSubFilterText} className="font-sans">Browse opportunities</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : (
           currentList.map((app) => {
-            const statusStyle = getStatusStyles(app.status);
-            // Deduce logo details based on company (mock setup matching other items)
-            let logoColor = Colors.primary;
-            if (app.company.toLowerCase() === 'wave mobile money') logoColor = '#00BCD4';
-            if (app.company.toLowerCase() === 'pinterest') logoColor = '#E60023';
-            if (app.company.toLowerCase() === 'openseea') logoColor = '#2081E2';
-            
+            const stageStyle = STAGE_STYLES[app.stage];
+            const details = [app.typeLabel, app.location].filter(Boolean).join(' · ');
+            const applied = appliedLabel(app.appliedAt);
+            const open = app.opportunityId ? () => router.push(`/opportunities/listing/${app.opportunityId}`) : undefined;
             return (
-              <View key={app.id} style={styles.appCard}>
+              <TouchableOpacity
+                key={app.id}
+                style={styles.appCard}
+                onPress={open}
+                disabled={!open}
+                activeOpacity={0.8}
+                accessibilityRole={open ? 'button' : undefined}
+                accessibilityLabel={`${app.title}${app.company ? `, ${app.company}` : ''}. ${app.stage}.`}
+              >
                 <View style={styles.cardHeader}>
-                  <View style={[styles.logoCircle, { backgroundColor: logoColor }]}>
-                    <Text style={styles.logoText} className="font-sans">{app.company.charAt(0).toUpperCase()}</Text>
+                  <View style={[styles.logoCircle, { backgroundColor: Colors.primary }]}>
+                    <Text style={styles.logoText} className="font-sans">{(app.company || app.title).charAt(0).toUpperCase()}</Text>
                   </View>
                   <View style={styles.headerInfo}>
-                    <Text style={styles.cardTitle} className="font-sans">
-                      {app.title} <Text style={{ color: '#8A8D9F', fontWeight: '400' }}>• Ghana (Remote)</Text>
-                    </Text>
-                    <Text style={styles.companyText} className="font-sans">{app.company}</Text>
+                    <Text style={styles.cardTitle} className="font-sans" numberOfLines={2}>{app.title}</Text>
+                    {app.company ? <Text style={styles.companyText} className="font-sans">{app.company}</Text> : null}
                   </View>
                 </View>
 
-                <Text style={styles.descriptionText} className="font-sans" numberOfLines={2}>
-                  {app.description}
-                </Text>
+                {details ? (
+                  <Text style={styles.descriptionText} className="font-sans" numberOfLines={2}>{details}</Text>
+                ) : null}
 
                 <View style={styles.cardDivider} />
 
                 <View style={styles.cardFooter}>
-                  <View />
-                  <View style={[styles.statusBadge, { backgroundColor: statusStyle.bg }]}>
-                    <Text style={[styles.statusBadgeText, { color: statusStyle.text }]} className="font-sans">
-                      {app.status}
+                  <Text style={styles.appliedCountText} className="font-sans">{applied}</Text>
+                  <View style={[styles.statusBadge, { backgroundColor: stageStyle.bg }]}>
+                    <Text style={[styles.statusBadgeText, { color: stageStyle.text }]} className="font-sans">
+                      {app.stage}
                     </Text>
                   </View>
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })
         )}
@@ -269,31 +206,6 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: '600',
     color: '#1A1A1A',
-  },
-  parentTabs: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: '#EBEBEE',
-    paddingHorizontal: 20,
-  },
-  parentTab: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 14,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-  },
-  activeParentTab: {
-    borderBottomColor: Colors.primary,
-  },
-  parentTabText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#8A8D9F',
-  },
-  activeParentTabText: {
-    color: Colors.primary,
-    fontWeight: '600',
   },
   subFiltersContainer: {
     paddingVertical: 14,
@@ -385,21 +297,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  avatarStack: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  stackedAvatar: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: '#FFFFFF',
-  },
   appliedCountText: {
     fontSize: 11,
     color: '#8A8D9F',
-    marginLeft: 8,
   },
   statusBadge: {
     paddingHorizontal: 12,
@@ -420,5 +320,10 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 13,
     color: '#8A8D9F',
+  },
+  emptyTextCentered: {
+    textAlign: 'center',
+    paddingHorizontal: 24,
+    lineHeight: 20,
   },
 });
