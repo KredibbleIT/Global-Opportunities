@@ -16,7 +16,8 @@
  * The queue loader returns ALL rows once; the page filters and counts on the client.
  */
 import { getOpportunityById, getOpportunityPage, moderateOpportunity, type OpportunityRecord, type PostingRejection } from "@/lib/api";
-import { getMockCollection, overlayRows } from "@/lib/mock-store";
+import { getMockCollection, overlayRows, setMockCollection } from "@/lib/mock-store";
+import { bulkDeleteOpportunitiesApi, type BulkDeleteResult } from "@/lib/api";
 import type { Listing, ListingType } from "@/lib/mock-entities";
 import { cacheListings, isCuratedRecord, toListing } from "./listings";
 import { postedOpportunities, type PostedOpportunity } from "@/lib/mock-opportunities";
@@ -145,8 +146,39 @@ function curatedRows(listings: readonly Listing[] = getMockCollection("listings"
  * (isCuratedRecord) becomes a curated row and is cached in the shared store (replacing the sample listings), so its detail page and form
  * open at once; the rest are hirer postings. Curated listings are therefore saved on the server and survive a reload.
  */
+/** Mock mode: the opportunities deleted this session (mock mode keeps nothing between sessions). */
+const mockDeleted = new Set<string>();
+
+/** The most the API deletes in one request. */
+const BULK_DELETE_LIMIT = 100;
+
+/**
+ * GOD-T103: deletes the given opportunities (hirer postings or curated listings) and resolves with what was deleted and what was not,
+ * with the reason. Real mode sends them in groups of 100 to POST /admin/opportunities/bulk-delete, which removes each from the website
+ * first; mock mode drops them from this session's lists.
+ */
+export async function deleteOpportunities(ids: readonly string[]): Promise<BulkDeleteResult> {
+  const unique = [...new Set(ids)];
+  if (isMockMode()) {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    unique.forEach((id) => mockDeleted.add(id));
+    setMockCollection("listings", getMockCollection("listings").filter((listing) => !mockDeleted.has(listing.id)), { always: true });
+    return { deleted: unique, failed: [] };
+  }
+  const result: BulkDeleteResult = { deleted: [], failed: [] };
+  for (let start = 0; start < unique.length; start += BULK_DELETE_LIMIT) {
+    const part = await bulkDeleteOpportunitiesApi(unique.slice(start, start + BULK_DELETE_LIMIT));
+    result.deleted.push(...part.deleted);
+    result.failed.push(...part.failed);
+  }
+  return result;
+}
+
 export async function loadOpportunityRows(): Promise<OpportunityRow[]> {
-  if (isMockMode()) return afterDelay([...curatedRows(), ...overlayRows("opportunities", postedOpportunities).map(toRow)]);
+  if (isMockMode()) {
+    const rows = [...curatedRows(), ...overlayRows("opportunities", postedOpportunities).map(toRow)];
+    return afterDelay(rows.filter((row) => !mockDeleted.has(row.id)));
+  }
   const records = await fetchAll((page, limit) => getOpportunityPage({ page, limit }));
   const curated = records.filter(isCuratedRecord).map(toListing);
   cacheListings(curated); // only when it changed: a write reloads every subscribed page

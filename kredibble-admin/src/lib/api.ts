@@ -942,6 +942,17 @@ export const updateOpportunityApi = async (id: string, data: Partial<Opportunity
   });
 };
 
+/** GOD-T103: what the bulk delete did: the ids it deleted, and each one it could not delete with the reason. */
+export type BulkDeleteResult = { deleted: string[]; failed: { id: string; title?: string; reason: string }[] };
+
+/** GOD-T103: deletes the opportunities ticked in the queue (at most 100), each from the website first. */
+export const bulkDeleteOpportunitiesApi = async (ids: string[]) => {
+  return request<BulkDeleteResult>("/admin/opportunities/bulk-delete", {
+    method: "POST",
+    body: JSON.stringify({ ids }),
+  });
+};
+
 export const unpublishOpportunityApi = async (id: string) => {
   return request<OpportunityRecord>(`/admin/opportunities/${id}/unpublish`, {
     method: "POST",

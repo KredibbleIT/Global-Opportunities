@@ -846,6 +846,15 @@ export const postModerateSchema = z.object({
 
 
 /** SEC-157: an admin decision on a pending grant application (PATCH /admin/grant-applications/:id). */
+/** GOD-T103: the opportunities ticked in the admin queue, deleted in one request (at most 100 at a time). */
+export const opportunityBulkDeleteSchema = z.object({
+  body: z.object({
+    ids: z.array(z.string().regex(/^[a-f0-9]{24}$/i, 'Each id must be an opportunity id'))
+      .min(1, 'Choose at least one opportunity')
+      .max(100, 'Delete at most 100 opportunities at a time'),
+  }),
+});
+
 export const grantApplicationDecisionSchema = z.object({
   body: z.object({
     status: z.enum(['approved', 'rejected'], { message: 'Status must be approved or rejected' }),
