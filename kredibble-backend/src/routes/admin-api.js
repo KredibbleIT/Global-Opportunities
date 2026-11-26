@@ -110,6 +110,7 @@ import {
   channelModerateSchema,
   postModerateSchema,
   userSegmentMoveSchema,
+  opportunityBulkDeleteSchema,
 } from '../schemas/admin.js';
 import bcrypt from 'bcryptjs';
 import { reauthLimiter } from '../lib/rate-limiters.js';
@@ -828,9 +829,12 @@ adminApiRouter.get('/opportunities/:id/analytics', requireAdminOrStaffAuth, requ
   itemResponse(res, analytics);
 }));
 
-adminApiRouter.delete('/opportunities/:id', requireAdminOrStaffAuth, requireScreen('listings_curate', 'edit'), asyncHandler(async (req, res) => {
-  const record = await Opportunity.findById(validId(req.params.id, 'Opportunity'));
-  if (!record) throw notFound('Opportunity');
+/**
+ * Deletes one opportunity: its website copy first, then the record, then the activity and audit entries. When the website refuses,
+ * the record is kept (marked failed, for a retry) and a 503 is thrown, so a listing never disappears here while it is still public.
+ * Shared by the single delete and the queue's bulk delete (GOD-T103).
+ */
+const deleteOpportunityRecord = async (req, record) => {
   let sync;
   try {
     sync = await deleteFromWordpress('opportunities', record);
@@ -841,7 +845,6 @@ adminApiRouter.delete('/opportunities/:id', requireAdminOrStaffAuth, requireScre
   }
   await record.deleteOne();
   await logActivity(req.auth.sub, 'deleted', 'opportunities', record);
-
   await auditReq(req, {
     action: AUDIT_ACTIONS.OPPORTUNITY_DELETE,
     resourceType: AUDIT_RESOURCE_TYPES.OPPORTUNITY,
@@ -849,8 +852,39 @@ adminApiRouter.delete('/opportunities/:id', requireAdminOrStaffAuth, requireScre
     outcome: 'success',
     metadata: { title: record.title },
   });
+  return sync;
+};
 
+adminApiRouter.delete('/opportunities/:id', requireAdminOrStaffAuth, requireScreen('listings_curate', 'edit'), asyncHandler(async (req, res) => {
+  const record = await Opportunity.findById(validId(req.params.id, 'Opportunity'));
+  if (!record) throw notFound('Opportunity');
+  const sync = await deleteOpportunityRecord(req, record);
   itemResponse(res, { id: req.params.id, sync });
+}));
+
+/**
+ * GOD-T103: deletes the opportunities ticked in the admin queue. Each one goes through the same steps as the single delete, one
+ * after another; one that cannot be deleted (gone already, or the website refused) is reported and the rest carry on.
+ * Answers { deleted: [ids], failed: [{ id, title?, reason }] }.
+ */
+adminApiRouter.post('/opportunities/bulk-delete', requireAdminOrStaffAuth, requireScreen('listings_curate', 'edit'), validate(opportunityBulkDeleteSchema), asyncHandler(async (req, res) => {
+  const ids = [...new Set(req.body.ids.map(String))];
+  const deleted = [];
+  const failed = [];
+  for (const id of ids) {
+    const record = await Opportunity.findById(id);
+    if (!record) {
+      failed.push({ id, reason: 'Not found: it may have been deleted already.' });
+      continue;
+    }
+    try {
+      await deleteOpportunityRecord(req, record);
+      deleted.push(id);
+    } catch (error) {
+      failed.push({ id, title: record.title, reason: error.expose ? error.message : 'It could not be deleted.' });
+    }
+  }
+  itemResponse(res, { deleted, failed });
 }));
 
 adminApiRouter.post('/opportunities/:id/retry-wordpress-sync', requireAdminOrStaffAuth, requireScreen('opportunities_queue', 'edit'), asyncHandler(async (req, res) => {

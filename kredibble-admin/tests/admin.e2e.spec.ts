@@ -4316,6 +4316,30 @@ test.describe('Opportunities queue: one list for both sources', () => {
   const tabCount = async (page: import('@playwright/test').Page, name: string) =>
     (await page.getByRole('radiogroup', { name: 'Filter by type' }).getByRole('radio', { name: new RegExp(`^${name}`) }).innerText()).replace(/\D+/g, '');
 
+  test('GOD-T103: tick opportunities, confirm, and they are deleted; Cancel deletes nothing', async ({ page }) => {
+    await page.goto(`${BASE_URL}/opportunities`, { timeout: 30_000 });
+    await expect(page.getByTestId('table-row').first()).toBeVisible();
+    const boxes = page.getByRole('checkbox', { name: /^Select (?!all)/ });
+    const firstTitle = (await boxes.nth(0).getAttribute('aria-label'))!.replace(/^Select /, '');
+    const secondTitle = (await boxes.nth(1).getAttribute('aria-label'))!.replace(/^Select /, '');
+    await expect(page.getByTestId('bulk-bar')).toHaveCount(0); // nothing ticked, no bar
+    await boxes.nth(0).check();
+    await boxes.nth(1).check();
+    await expect(page.getByRole('status').filter({ hasText: '2 opportunities selected' })).toBeVisible();
+
+    await page.getByRole('button', { name: 'Delete selected' }).click();
+    await expect(page.getByRole('alertdialog')).toContainText('removed from the admin, the app and the website');
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByRole('checkbox', { name: `Select ${firstTitle}` })).toBeVisible(); // Cancel deleted nothing
+
+    await page.getByRole('button', { name: 'Delete selected' }).click();
+    await page.getByRole('button', { name: 'Delete 2 opportunities' }).click();
+    await expect(page.getByText('2 opportunities deleted.')).toBeVisible();
+    await expect(page.getByRole('checkbox', { name: `Select ${firstTitle}` })).toHaveCount(0);
+    await expect(page.getByRole('checkbox', { name: `Select ${secondTitle}` })).toHaveCount(0);
+    await expect(page.getByTestId('bulk-bar')).toHaveCount(0);
+  });
+
   test('columns, and the type tabs with counts: All and the eight opportunity categories', async ({ page }) => {
     await page.goto(`${BASE_URL}/opportunities`, { timeout: 30_000 });
     await expect(page.getByTestId('table-row').first()).toBeVisible();
