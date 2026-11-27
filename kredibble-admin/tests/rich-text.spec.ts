@@ -16,9 +16,11 @@ const BASE_URL = defaultBaseUrl();
 
 test.describe('GOD-T101: Who can apply and What it offers move into the Description (no browser)', () => {
   test('plain lines become a list under each heading, at the end of the description', () => {
-    expect(foldDetailsIntoDescription('A paid summer fellowship.', 'Students\nAuthorised to work in the US', 'A salary\n- A stipend')).toBe(
+    expect(foldDetailsIntoDescription('A paid summer fellowship.', 'Students\nAuthorised to work in the US', 'A salary\nA stipend')).toBe(
       'A paid summer fellowship.\n\n## Who can apply\n- Students\n- Authorised to work in the US\n\n## What it offers\n- A salary\n- A stipend',
     );
+    // text that already has a list mark is formatted text: kept exactly as written, not listed again
+    expect(foldDetailsIntoDescription('About.', undefined, 'A salary\n- A stipend')).toBe('About.\n\n## What it offers\nA salary\n- A stipend');
   });
 
   test('formatted text is kept as written, one line stays a line, and nothing to move leaves the description alone', () => {

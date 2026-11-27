@@ -4536,7 +4536,9 @@ test.describe('Opportunities: the listing form', () => {
   test('has the five sections, the vetting card and the right actions', async ({ page }) => {
     await page.goto(`${BASE_URL}/opportunities/new`, { timeout: 30_000 });
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('New listing');
-    for (const title of ['Basic details', 'Logistics', 'Details', 'Media and attribution']) await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
+    for (const title of ['Basic details', 'Logistics', 'Media and attribution']) await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
+    // GOD-T101: Details holds only the category's facts now, so it appears once a type is chosen (see "the details" test below)
+    await expect(page.getByRole('heading', { name: 'Details', exact: true })).toHaveCount(0);
     const vetting = page.getByTestId('vetting-checkpoint');
     await expect(vetting).toBeVisible();
     await expect(vetting).toContainText('Listings must be vetted before they can be published.');
@@ -4545,7 +4547,7 @@ test.describe('Opportunities: the listing form', () => {
     await expect(publishButton(page)).toBeDisabled();
     await expect(page.getByRole('switch', { name: 'Referral code on apply' })).toBeVisible();
     // required fields carry no "Optional" tag; the optional ones do
-    await expect(page.getByText('Optional', { exact: true })).toHaveCount(8); // logo, cost, location, duration, who can apply, what it offers, image, writer (the event date shows for events only: GOD-T31; the category facts show once a type is chosen)
+    await expect(page.getByText('Optional', { exact: true })).toHaveCount(6); // logo, cost, location, duration, image, writer (who can apply and what it offers are in the Description since GOD-T101; the event date shows for events only: GOD-T31; the category facts show once a type is chosen)
     // the vetting card is visually distinct: a 2px warning-tinted border
     expect(await vetting.evaluate((el) => getComputedStyle(el).borderTopWidth)).toBe('2px');
   });
