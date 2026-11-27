@@ -1,0 +1,41 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "api-e2e",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["-e", "process.chdir(require('path').resolve(process.cwd().replace(/kredibble-(backend|admin)$/, ''), 'kredibble-backend')); if (require('fs').existsSync('../kredibble-admin/.env.test.local')) process.loadEnvFile('../kredibble-admin/.env.test.local'); require('child_process').spawn('npm', ['run', 'e2e:server'], { stdio: 'inherit', shell: true, env: { ...process.env, APP_ENV: 'test', WORDPRESS_SYNC_BASE_URL: '', WORDPRESS_API_KEY: '' } }).on('exit', (code) => process.exit(code ?? 1));"],
+      "port": 4000
+    },
+    {
+      "name": "api-demo",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["-e", "process.chdir(require('path').resolve(process.cwd().replace(/kredibble-(backend|admin)$/, ''), 'kredibble-backend')); require('child_process').spawn('npm', ['run', 'e2e:server:demo'], { stdio: 'inherit', shell: true, env: { ...process.env, APP_ENV: 'test' } }).on('exit', (code) => process.exit(code ?? 1));"],
+      "port": 4000
+    },
+    {
+      "name": "admin-real-api",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["-e", "process.chdir(require('path').resolve(process.cwd().replace(/kredibble-(backend|admin)$/, ''), 'kredibble-admin')); require('child_process').spawn('npm', ['run', 'dev', '--', '-p', '3000'], { stdio: 'inherit', shell: true, env: { ...process.env, NEXT_PUBLIC_API_URL: 'http://localhost:4000/api', NEXT_PUBLIC_USE_MOCKS: 'false' } }).on('exit', (code) => process.exit(code ?? 1));"],
+      "port": 3000
+    },
+    {
+      "name": "admin-real-api-3100",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["-e", "process.chdir(require('path').resolve(process.cwd().replace(/kredibble-(backend|admin)$/, ''), 'kredibble-admin')); require('child_process').spawn('npm', ['run', 'dev', '--', '-p', '3100'], { stdio: 'inherit', shell: true, env: { ...process.env, NEXT_PUBLIC_API_URL: 'http://localhost:4000/api', NEXT_PUBLIC_USE_MOCKS: 'false' } }).on('exit', (code) => process.exit(code ?? 1));"],
+      "port": 3100
+    },
+    {
+      "name": "sec151-api-demo",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["-e", "process.chdir('C:/Users/Jerry/Desktop/PROJECT 2026/GO-sec151/kredibble-backend'); require('child_process').spawn('npm', ['run', 'e2e:server:demo'], { stdio: 'inherit', shell: true, env: { ...process.env, APP_ENV: 'test' } }).on('exit', (code) => process.exit(code ?? 1));"],
+      "port": 4000
+    },
+    {
+      "name": "sec151-admin-3100",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["-e", "process.chdir('C:/Users/Jerry/Desktop/PROJECT 2026/GO-sec151/kredibble-admin'); require('child_process').spawn('npm', ['run', 'dev', '--', '-p', '3100'], { stdio: 'inherit', shell: true, env: { ...process.env, NEXT_PUBLIC_API_URL: 'http://localhost:4000/api', NEXT_PUBLIC_USE_MOCKS: 'false' } }).on('exit', (code) => process.exit(code ?? 1));"],
+      "port": 3100
+    }
+  ]
+}
