@@ -48,13 +48,21 @@ const channelPostSchema = new mongoose.Schema({
   channelId: { type: mongoose.Schema.Types.ObjectId, ref: 'Channel', required: true, index: true },
   authorName: { type: String, required: true, index: true },
   authorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', index: true },
-  body: { type: String, required: true },
+  // GOD-T89: a post with pictures or a video can go without text.
+  body: { type: String, required() { return !(this.images?.length || this.bannerImage || this.videoUrl); }, default: '' },
   title: { type: String, index: true },
   bannerImage: { type: String },
+  // GOD-T89: up to four pictures the author uploaded (POST /upload?purpose=post-images), and a video link (YouTube, Vimeo or a file).
+  images: { type: [String], default: [] },
+  videoUrl: { type: String },
   link: { type: String },
   linkText: { type: String },
   hasRespondButton: { type: Boolean, default: false },
+  // Old field, never written by people any more: reactions live in ChannelPostReaction (one per person per post).
   reactions: { type: mongoose.Schema.Types.Mixed, default: [] },
+  // GOD-T89: kept on the post so the feed shows them without counting. Views count each signed-in person once.
+  viewCount: { type: Number, default: 0 },
+  responseCount: { type: Number, default: 0 },
   date: String,
   flagged: { type: Boolean, default: false },
   pinnedAt: { type: Date, default: null },
@@ -66,6 +74,40 @@ channelPostSchema.index({ title: 'text', body: 'text' });
 channelPostSchema.index({ channelId: 1, createdAt: -1 });
 channelPostSchema.index({ channelId: 1, flagged: 1, createdAt: -1 });
 channelPostSchema.index({ flagged: 1, createdAt: -1 });
+
+// GOD-T89: what people do with a feed post. One reaction and one view per person per post; responses are the post's replies.
+const channelPostReactionSchema = new mongoose.Schema({
+  postId: { type: mongoose.Schema.Types.ObjectId, ref: 'ChannelPost', required: true },
+  channelId: { type: mongoose.Schema.Types.ObjectId, ref: 'Channel', required: true },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+  emoji: { type: String, required: true },
+}, { timestamps: true });
+channelPostReactionSchema.index({ postId: 1, userId: 1 }, { unique: true });
+
+const channelPostViewSchema = new mongoose.Schema({
+  postId: { type: mongoose.Schema.Types.ObjectId, ref: 'ChannelPost', required: true },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, index: true },
+}, { timestamps: true });
+channelPostViewSchema.index({ postId: 1, userId: 1 }, { unique: true });
+
+const channelPostResponseSchema = new mongoose.Schema({
+  postId: { type: mongoose.Schema.Types.ObjectId, ref: 'ChannelPost', required: true },
+  channelId: { type: mongoose.Schema.Types.ObjectId, ref: 'Channel', required: true },
+  authorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null, index: true },
+  authorName: { type: String, required: true },
+  body: { type: String, required: true, maxlength: 1000 },
+}, { timestamps: true });
+channelPostResponseSchema.index({ postId: 1, createdAt: 1 });
+
+// A deleted post takes its reactions, views and responses with it, whichever route deleted it (admin, owner or the generic API).
+channelPostSchema.post('findOneAndDelete', async (post) => {
+  if (!post) return;
+  await Promise.all([
+    mongoose.model('ChannelPostReaction').deleteMany({ postId: post._id }),
+    mongoose.model('ChannelPostView').deleteMany({ postId: post._id }),
+    mongoose.model('ChannelPostResponse').deleteMany({ postId: post._id }),
+  ]);
+});
 
 // A persisted group-chat message (distinct from ChannelPost, which is a feed post).
 const channelMessageSchema = new mongoose.Schema({
@@ -96,6 +138,9 @@ reportSchema.index({ reason: 'text', details: 'text' });
 
 export const Channel = mongoose.model('Channel', channelSchema);
 export const ChannelPost = mongoose.model('ChannelPost', channelPostSchema);
+export const ChannelPostReaction = mongoose.model('ChannelPostReaction', channelPostReactionSchema);
+export const ChannelPostView = mongoose.model('ChannelPostView', channelPostViewSchema);
+export const ChannelPostResponse = mongoose.model('ChannelPostResponse', channelPostResponseSchema);
 export const ChannelMessage = mongoose.model('ChannelMessage', channelMessageSchema);
 export const CommunityMembership = mongoose.model('CommunityMembership', communityMembershipSchema);
 export const Report = mongoose.model('Report', reportSchema);

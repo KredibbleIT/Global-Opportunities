@@ -16,7 +16,7 @@ import { User, StaffMember, RefreshToken, hashRefreshToken as hashRefreshTokenUt
 import { computeGrants, getEffectiveToggles } from '../lib/permissions.js';
 import { SeekerProfile, HirerAccount } from '../models/Profiles.js';
 import { Applicant, EventAttendee, CompanyVerification, VerificationDoc, Opportunity, GrantApplication } from '../models/Platform.js';
-import { Channel, ChannelPost, CommunityMembership } from '../models/Community.js';
+import { Channel, ChannelPost, ChannelPostReaction, ChannelPostResponse, CommunityMembership } from '../models/Community.js';
 import { Testimonial, Beneficiary } from '../models/AdminPortal.js';
 import { AccountInvite } from '../models/AdminPortal.js';
 import { ensureAppBeneficiary } from '../lib/app-beneficiaries.js';
@@ -1182,6 +1182,7 @@ authRouter.get(
     const [
       seekerProfile, hirerAccount, applications, grantApplications, eventBookings, companyVerifications, verificationDocs,
       savedItems, channelMemberships, communityPosts, channels, opportunities, testimonials, sessions, databaseRecords,
+      postResponses, postReactions,
     ] = await Promise.all([
       SeekerProfile.findOne(where.seekerProfile).lean(),
       HirerAccount.findOne(where.hirerAccount).lean(),
@@ -1200,6 +1201,9 @@ authRouter.get(
       RefreshToken.find(where.sessions).select('deviceLabel createdAt expiresAt revokedAt').lean(),
       // GOD-T3: the desk's Database record for this account (sync bookkeeping stays on the server).
       Beneficiary.find(where.beneficiaries).select('-wordpressSync -phoneNormalized').lean(),
+      // GOD-T89: responses written on feed posts, and reactions given.
+      ChannelPostResponse.find(where.postResponses).lean(),
+      ChannelPostReaction.find(where.postReactions).select('postId emoji createdAt').lean(),
     ]);
 
     const exportData = {
@@ -1219,6 +1223,8 @@ authRouter.get(
       testimonials,
       sessions,
       databaseRecords,
+      postResponses,
+      postReactions,
       exportedAt: new Date().toISOString(),
     };
 

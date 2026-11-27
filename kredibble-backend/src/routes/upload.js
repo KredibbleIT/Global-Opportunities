@@ -44,6 +44,8 @@ const UPLOAD_PURPOSE = {
   VERIFICATION_DOC: 'verification-docs',
   // The picture of a channel a hirer or seeker creates in the app.
   CHANNEL_AVATAR: 'channel-avatars',
+  // GOD-T89: pictures in a community feed post.
+  POST_IMAGE: 'post-images',
 };
 
 const UPLOAD_PURPOSE_VALUES = Object.values(UPLOAD_PURPOSE);
