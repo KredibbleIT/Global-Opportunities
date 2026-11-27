@@ -111,6 +111,75 @@ ambassadorRouter.post('/', requireAuth, validate(createAmbassadorRequestSchema),
   res.status(201).json({ data: toRequestResponse(request) });
 }));
 
+/** A month as YYYY-MM: the one asked for when it is valid, otherwise this month. */
+const monthOf = (value) => (typeof value === 'string' && /^\d{4}-\d{2}$/.test(value) ? value : new Date().toISOString().slice(0, 7));
+
+/**
+ * The month's leaderboard, from the same calculation as the admin's Leaderboard page (calculateLeaderboard in admin-api.js:
+ * verified sign-ups, then referred clicks, then shares). Loaded when needed because admin-api.js imports this file.
+ */
+const monthLeaderboard = async (month) => {
+  const { calculateLeaderboard } = await import('./admin-api.js');
+  return calculateLeaderboard(month);
+};
+
+/** What an ambassador sees of a leaderboard row: no email, phone or staff notes. */
+const leaderboardRow = (entry, ownId) => ({
+  rank: entry.rank,
+  name: entry.ambassador?.name || entry.name || 'Ambassador',
+  campus: entry.ambassador?.campus || entry.campus || '',
+  country: entry.ambassador?.country || entry.country || '',
+  tier: entry.ambassador?.tier || entry.tier || '',
+  signups: entry.signups,
+  clicks: entry.clicks,
+  shares: entry.shares,
+  isYou: Boolean(ownId) && String(entry.ambassador?.id) === ownId,
+});
+
+/**
+ * GOD-T106: the signed-in ambassador's results for a month (?month=YYYY-MM, default this month): rank among the month's
+ * ambassadors, verified sign-ups, referred clicks and shares, and their referral code. Only for a current ambassador.
+ */
+ambassadorRouter.get('/me/results', requireAuth, asyncHandler(async (req, res) => {
+  const ambassador = await ownAmbassador(req.auth.sub);
+  if (!ambassador) throw new ApiError(403, 'Only Global Opportunity Desk ambassadors have results');
+  const month = monthOf(req.query.month);
+  const entries = await monthLeaderboard(month);
+  const ownId = String(ambassador._id);
+  const mine = entries.find((entry) => String(entry.ambassador?.id) === ownId);
+  itemResponse(res, {
+    month,
+    rank: mine?.rank ?? null,
+    of: entries.length,
+    signups: mine?.signups ?? 0,
+    clicks: mine?.clicks ?? 0,
+    shares: mine?.shares ?? 0,
+    referralCode: ambassador.referralCode || null,
+    tier: ambassador.tier || null,
+  });
+}));
+
+/**
+ * GOD-T106: the month's ambassador leaderboard for ambassadors in the app (?month=YYYY-MM, default this month), top 50, with the
+ * caller's own row marked. Names, campus, country, tier and counts only. Only for a current ambassador.
+ */
+ambassadorRouter.get('/leaderboard', requireAuth, asyncHandler(async (req, res) => {
+  const ambassador = await ownAmbassador(req.auth.sub);
+  if (!ambassador) throw new ApiError(403, 'The leaderboard is for Global Opportunity Desk ambassadors');
+  const month = monthOf(req.query.month);
+  const entries = await monthLeaderboard(month);
+  const ownId = String(ambassador._id);
+  const rows = entries.slice(0, 50).map((entry) => leaderboardRow(entry, ownId));
+  const mine = entries.find((entry) => String(entry.ambassador?.id) === ownId);
+  itemResponse(res, {
+    month,
+    total: entries.length,
+    rows,
+    // Below the top 50, the caller still sees their own place.
+    you: mine && !rows.some((row) => row.isYou) ? leaderboardRow(mine, ownId) : null,
+  });
+}));
+
 ambassadorRouter.get('/me', requireAuth, asyncHandler(async (req, res) => {
   const [latest, ambassador] = await Promise.all([
     AmbassadorRequest.findOne({ userId: req.auth.sub }).sort({ createdAt: -1 }).lean(),
