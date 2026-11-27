@@ -780,6 +780,48 @@ export const deleteChannelPost = async (id: string) => {
   });
 };
 
+// --- GOD-T89: reactions, views and responses on feed posts ---
+
+export interface PostReactionState {
+  reactions: { emoji: string; count: number }[];
+  myReaction: string | null;
+}
+
+export interface PostResponse {
+  id: string;
+  postId: string;
+  authorId: string | null;
+  authorName: string;
+  body: string;
+  createdAt: string;
+}
+
+const feedPost = (channelId: string, postId: string, rest = '') =>
+  `/community/channels/${encodeURIComponent(channelId)}/posts/${encodeURIComponent(postId)}${rest}`;
+
+/** Sets the caller's reaction on a post (one per person), or removes it with `null`. Returns the post's new totals. */
+export const setPostReaction = (channelId: string, postId: string, emoji: string | null) =>
+  request<PostReactionState>(feedPost(channelId, postId, '/reaction'), emoji
+    ? { method: 'PUT', body: JSON.stringify({ emoji }) }
+    : { method: 'DELETE' });
+
+/** Counts the caller as a viewer of these posts (each person once per post). */
+export const recordPostViews = (channelId: string, postIds: string[]) =>
+  request<{ counted: number }>(`/community/channels/${encodeURIComponent(channelId)}/posts/views`, {
+    method: 'POST',
+    body: JSON.stringify({ postIds }),
+  });
+
+/** A post's responses, oldest first, and whether the caller can delete other people's (a group admin). */
+export const getPostResponses = (channelId: string, postId: string) =>
+  request<{ responses: PostResponse[]; total: number; canManage: boolean }>(feedPost(channelId, postId, '/responses?limit=100'));
+
+export const createPostResponse = (channelId: string, postId: string, body: string) =>
+  request<PostResponse>(feedPost(channelId, postId, '/responses'), { method: 'POST', body: JSON.stringify({ body }) });
+
+export const deletePostResponse = (channelId: string, postId: string, responseId: string) =>
+  request<{ deleted: true }>(feedPost(channelId, postId, `/responses/${encodeURIComponent(responseId)}`), { method: 'DELETE' });
+
 // --- Applications ---
 
 export const applyForOpportunity = async (opportunityId: string, data: any) => {
@@ -1012,7 +1054,7 @@ export interface UploadResponse {
 
 export const uploadFile = async (
   file: { uri: string; name: string; mimeType?: string },
-  purpose: 'cvs' | 'avatars' | 'company-logos' | 'verification-docs' | 'channel-avatars' = 'cvs'
+  purpose: 'cvs' | 'avatars' | 'company-logos' | 'verification-docs' | 'channel-avatars' | 'post-images' = 'cvs'
 ): Promise<UploadResponse> => {
   const token = await getMobileToken();
   const formData = new FormData();

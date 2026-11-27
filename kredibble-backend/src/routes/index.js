@@ -35,7 +35,8 @@ import {
   Opportunity, Applicant, Event, Grant,
   GrantApplication, CompanyVerification, VerificationDoc, EventAttendee, opportunityTypes,
 } from '../models/Platform.js';
-import { Channel, ChannelPost, CommunityMembership, Report } from '../models/Community.js';
+import { Channel, ChannelPost, ChannelPostResponse, CommunityMembership, Report } from '../models/Community.js';
+import { addResponse, checkPostMedia, listResponses, recordViews, removeResponse, setReaction, withEngagement } from '../lib/channel-posts.js';
 import { Article, Notification, NotificationRead } from '../models/Content.js';
 import { Ambassador, OpportunityEngagement, Testimonial } from '../models/AdminPortal.js';
 import { auditReq, AUDIT_ACTIONS, AUDIT_RESOURCE_TYPES } from '../lib/audit.js';
@@ -46,6 +47,9 @@ import { normalizeLegacyRole } from '../lib/permissions.js';
 import { postChannelMessage, listChannelMessages, getThread, findPost } from '../lib/chat.js';
 import { evictFromChannelRoom } from '../socket.js';
 import { chatMessageSchema } from '../schemas/ambassador.js';
+import {
+  createChannelPostSchema, createPostResponseSchema, postParamsSchema, postReactionSchema, postResponseParamsSchema, postViewsSchema,
+} from '../schemas/community-posts.js';
 import { getReferenceDataGroups, getReferenceDataList, addReferenceDataItem, addReferenceDataAlias, toPublicReferenceList } from '../lib/reference-data.js';
 import { callerSegments, channelSegments, normalizeSegments, resolveSegments, segmentsClause, sharesSegment, GENERAL_SEGMENT } from '../lib/segments.js';
 
@@ -652,7 +656,6 @@ const submitJoinRequest = async (channel, userId, body = {}) => {
   return { membership, accepted: status === 'active' };
 };
 
-const CHANNEL_POST_FIELDS = ['body', 'title', 'bannerImage', 'link', 'linkText', 'hasRespondButton', 'reactions'];
 const CHANNEL_UPDATE_FIELDS = ['name', 'category', 'bio', 'avatar',
 'visibility', 'status', 'requiresApproval', 'segments'];
 
@@ -1448,17 +1451,20 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
       ChannelPost.find(filter).sort({ pinnedAt: -1, createdAt: -1 }).skip(skip).limit(limit),
       ChannelPost.countDocuments(filter),
     ]);
-    listResponse(res, posts.map(toClientObject), total, page, limit);
+    // GOD-T89: each post carries its reaction totals, the caller's own reaction, and its view and response counts.
+    listResponse(res, await withEngagement(posts.map(toClientObject), req.auth?.sub), total, page, limit);
   }));
 
-  router.post('/community/channels/:channelId/posts', requireAuth, asyncHandler(async (req, res) => {
+  router.post('/community/channels/:channelId/posts', requireAuth, validate(createChannelPostSchema), asyncHandler(async (req, res) => {
     const channel = await getChannelOrThrow(req.params.channelId);
-    assertChannelVisible(channel, req.auth);
-    if (!await canAccessChannel(channel, req.auth)) throw new ApiError(403, 'You do not have access to this private group');
+    await assertCanChat(channel, req.auth);
     const author = await User.findById(req.auth.sub);
+    const { body, title, videoUrl, link, linkText, hasRespondButton } = req.body;
     // SEC-007: author identity comes from the token; only content fields come from the body.
+    // GOD-T89: pictures must be the author's own uploads; links and videos must be web addresses (checked by the schema).
     const post = new ChannelPost({
-      ...Object.fromEntries(Object.entries(req.body).filter(([key]) => CHANNEL_POST_FIELDS.includes(key))),
+      body, title, videoUrl, link, linkText, hasRespondButton,
+      ...await checkPostMedia(req.body, req.auth.sub),
       channelId: channel._id,
       authorId: req.auth.sub,
       authorName: author?.name || 'Community member',
@@ -1474,7 +1480,61 @@ export const createApiRouter = ({ enablePopulate = false } = {}) => {
       metadata: { channelId: String(channel._id) },
     });
 
-    res.status(201).json({ data: toClientObject(post) });
+    res.status(201).json({ data: (await withEngagement([toClientObject(post)], req.auth.sub))[0] });
+  }));
+
+  // GOD-T89: what people do with a feed post. Anyone who can read the group (and is not banned from it) can react, be counted as a
+  // viewer and respond; a response can be deleted by the person who wrote it or by a group admin.
+  const getFeedPost = async (req) => {
+    const channel = await getChannelOrThrow(req.params.channelId);
+    await assertCanChat(channel, req.auth);
+    const post = await ChannelPost.findOne({ _id: req.params.postId, channelId: channel._id });
+    if (!post) throw notFound('Channel post');
+    return { channel, post };
+  };
+
+  router.post('/community/channels/:channelId/posts/views', requireAuth, validate(postViewsSchema), asyncHandler(async (req, res) => {
+    const channel = await getChannelOrThrow(req.params.channelId);
+    await assertCanChat(channel, req.auth);
+    const counted = await recordViews({ channelId: channel._id, postIds: req.body.postIds, userId: req.auth.sub });
+    itemResponse(res, { counted });
+  }));
+
+  router.put('/community/channels/:channelId/posts/:postId/reaction', requireAuth, validate(postReactionSchema), asyncHandler(async (req, res) => {
+    const { post } = await getFeedPost(req);
+    itemResponse(res, await setReaction({ post, userId: req.auth.sub, emoji: req.body.emoji }));
+  }));
+
+  router.delete('/community/channels/:channelId/posts/:postId/reaction', requireAuth, validate(postParamsSchema), asyncHandler(async (req, res) => {
+    const { post } = await getFeedPost(req);
+    itemResponse(res, await setReaction({ post, userId: req.auth.sub, emoji: null }));
+  }));
+
+  router.get('/community/channels/:channelId/posts/:postId/responses', requireAuth, validate(postParamsSchema), asyncHandler(async (req, res) => {
+    const { channel, post } = await getFeedPost(req);
+    const { page, limit, skip } = parsePagination(req.query);
+    const [{ responses, total }, canManage] = await Promise.all([
+      listResponses(post._id, { skip, limit }),
+      canManageChannel(channel, req.auth),
+    ]);
+    itemResponse(res, { responses, total, page, limit, canManage });
+  }));
+
+  router.post('/community/channels/:channelId/posts/:postId/responses', requireAuth, chatLimiter, validate(createPostResponseSchema), asyncHandler(async (req, res) => {
+    const { post } = await getFeedPost(req);
+    const author = await User.findById(req.auth.sub).select('name');
+    if (!author) throw notFound('User');
+    res.status(201).json({ data: await addResponse({ post, author, body: req.body.body }) });
+  }));
+
+  router.delete('/community/channels/:channelId/posts/:postId/responses/:responseId', requireAuth, validate(postResponseParamsSchema), asyncHandler(async (req, res) => {
+    const { channel, post } = await getFeedPost(req);
+    const response = await ChannelPostResponse.findOne({ _id: req.params.responseId, postId: post._id });
+    if (!response) throw notFound('Response');
+    const isAuthor = response.authorId && toId(response.authorId) === String(req.auth.sub);
+    if (!isAuthor && !await canManageChannel(channel, req.auth)) throw new ApiError(403, 'Only the person who wrote it or a group admin can delete this response');
+    await removeResponse(response);
+    itemResponse(res, { deleted: true });
   }));
 
   router.put('/community/channels/:channelId/posts/:postId/pin', requireAuth, asyncHandler(async (req, res) => {

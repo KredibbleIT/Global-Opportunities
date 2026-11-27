@@ -4,7 +4,7 @@ import {
 } from '../models/User.js';
 import { SeekerProfile, HirerAccount } from '../models/Profiles.js';
 import { Applicant, Event, EventAttendee, CompanyVerification, VerificationDoc, Opportunity, GrantApplication } from '../models/Platform.js';
-import { Channel, ChannelPost, CommunityMembership } from '../models/Community.js';
+import { Channel, ChannelPost, ChannelPostReaction, ChannelPostResponse, ChannelPostView, CommunityMembership } from '../models/Community.js';
 import { Testimonial, Beneficiary } from '../models/AdminPortal.js';
 import { deleteUserMedia } from './storage.js';
 import { env } from '../config/env.js';
@@ -47,6 +47,10 @@ export async function userDataFilters(user) {
     savedItems: { userId },
     channelMemberships: { userId },
     communityPosts: { authorId: userId },
+    // GOD-T89: responses to feed posts, reactions and views.
+    postResponses: { authorId: userId },
+    postReactions: { userId },
+    postViews: { userId },
     channels: { createdBy: userId },
     grantApplications: { applicantUserId: userId },
     // Staff postings set createdBy; a hirer's own postings (POST /opportunities)
@@ -106,6 +110,10 @@ export async function purgeUserData(user, { deleteMedia = deleteUserMedia } = {}
     PasswordResetCode.deleteMany({ userId }),
     EmailVerificationCode.deleteMany({ email }),
     ChannelPost.updateMany(where.communityPosts, { $set: { authorName: DELETED_NAME, authorId: null } }),
+    // Responses stay in the conversation without the name; reactions and views go (the post keeps its view count).
+    ChannelPostResponse.updateMany(where.postResponses, { $set: { authorName: DELETED_NAME, authorId: null } }),
+    ChannelPostReaction.deleteMany(where.postReactions),
+    ChannelPostView.deleteMany(where.postViews),
     Channel.updateMany(where.channels, { $set: { createdBy: null } }),
     Opportunity.updateMany(
       { ...where.opportunities, moderationStatus: { $in: LIVE_OPPORTUNITY_STATUSES } },
