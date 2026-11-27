@@ -2,10 +2,11 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { ChevronLeft, Users } from 'lucide-react-native';
+import { ChevronLeft, Quote, Users } from 'lucide-react-native';
 import { Colors } from '../../constants/design';
 import { initialsOf, showcaseView, type ShowcaseData, type ShowcaseEntry, type ShowcaseKind } from '../../constants/mockShowcase';
 import { getShowcase } from '../../lib/showcase';
+import { TESTIMONIALS_ID, getApprovedTestimonials, type TestimonialCard } from '../../lib/testimonials';
 
 /**
  * Meet our people (Profile > "Meet our people"): the ambassadors, team, partners and stakeholders the desk features.
@@ -15,6 +16,9 @@ import { getShowcase } from '../../lib/showcase';
  * - A card shows a photo (initials when there is none; round for people, square for organisations), name, role and country, and the
  *   first lines of the bio. Tap a card to read the whole bio.
  * - States: loading, error with "Try again", and empty ("Nobody to show yet"). Without a backend list the empty state shows in release builds.
+ * - GOD-T110: a "Testimonials" chip, after the categories, shows the stories approved in the admin's Testimonials page as quote cards
+ *   (lib/testimonials.ts). It appears only when there is at least one; under "All" they follow the categories. If testimonials cannot be
+ *   loaded, the rest of the page still shows.
  */
 const ALL = 'all';
 
@@ -59,9 +63,39 @@ function PersonCard({ entry, kind }: { entry: ShowcaseEntry; kind: ShowcaseKind 
   );
 }
 
+function QuoteCard({ card }: { card: TestimonialCard }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <TouchableOpacity
+      style={styles.card}
+      activeOpacity={0.8}
+      onPress={() => setOpen((value) => !value)}
+      accessibilityRole="button"
+      accessibilityLabel={`${card.name}${card.role ? `, ${card.role}` : ''}: ${card.quote}`}
+      accessibilityState={{ expanded: open }}
+      testID="testimonial-card"
+    >
+      {card.photoUrl ? (
+        <Image source={{ uri: card.photoUrl }} style={[styles.avatar, styles.avatarRound]} accessibilityIgnoresInvertColors accessible={false} />
+      ) : (
+        <View style={[styles.avatar, styles.avatarRound, styles.avatarInitials]} accessible={false}>
+          <Text style={styles.avatarText} className="font-sans">{initialsOf(card.name)}</Text>
+        </View>
+      )}
+      <View style={styles.cardBody}>
+        <Quote size={16} color={Colors.primary} accessible={false} />
+        <Text style={styles.quote} className="font-sans" numberOfLines={open ? undefined : 4}>{card.quote}</Text>
+        <Text style={styles.name} className="font-sans">{card.name}</Text>
+        {card.role !== '' && <Text style={styles.meta} className="font-sans">{card.role}</Text>}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 export default function MeetOurPeopleScreen() {
   const router = useRouter();
   const [data, setData] = useState<ShowcaseData | null>(null);
+  const [testimonials, setTestimonials] = useState<TestimonialCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [selected, setSelected] = useState<string>(ALL);
@@ -71,10 +105,12 @@ export default function MeetOurPeopleScreen() {
 
   useEffect(() => {
     let alive = true;
-    getShowcase()
-      .then((result) => {
+    // Testimonials never fail the page: getApprovedTestimonials resolves with [] when they cannot be loaded.
+    Promise.all([getShowcase(), getApprovedTestimonials()])
+      .then(([result, stories]) => {
         if (!alive) return;
         setData(result);
+        setTestimonials(stories);
         setLoading(false);
       })
       .catch(() => {
@@ -95,6 +131,12 @@ export default function MeetOurPeopleScreen() {
 
   const groups = useMemo(() => (data ? showcaseView(data) : []), [data]);
   const shown = selected === ALL ? groups : groups.filter((group) => group.category.id === selected);
+  const showTestimonials = testimonials.length > 0 && (selected === ALL || selected === TESTIMONIALS_ID);
+  const chips = [
+    { id: ALL, name: 'All' },
+    ...groups.map((group) => ({ id: group.category.id, name: group.category.name })),
+    ...(testimonials.length > 0 ? [{ id: TESTIMONIALS_ID, name: 'Testimonials' }] : []),
+  ];
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -119,7 +161,7 @@ export default function MeetOurPeopleScreen() {
             <Text style={styles.retryText} className="font-sans">Try again</Text>
           </TouchableOpacity>
         </View>
-      ) : groups.length === 0 ? (
+      ) : groups.length === 0 && testimonials.length === 0 ? (
         <View style={styles.centered} testID="showcase-empty">
           <Users size={32} color={Colors.textMuted} />
           <Text style={styles.stateTitle} className="font-sans">Nobody to show yet</Text>
@@ -128,7 +170,7 @@ export default function MeetOurPeopleScreen() {
       ) : (
         <>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsScroll} contentContainerStyle={styles.chips}>
-            {[{ id: ALL, name: 'All' }, ...groups.map((group) => ({ id: group.category.id, name: group.category.name }))].map((chip) => {
+            {chips.map((chip) => {
               const active = chip.id === selected;
               return (
                 <TouchableOpacity
@@ -155,6 +197,16 @@ export default function MeetOurPeopleScreen() {
                 ))}
               </View>
             ))}
+            {showTestimonials && (
+              <View style={styles.section} testID="testimonials-group">
+                {selected === ALL && (
+                  <Text style={styles.sectionTitle} className="font-sans" accessibilityRole="header">Testimonials</Text>
+                )}
+                {testimonials.map((card) => (
+                  <QuoteCard key={card.id} card={card} />
+                ))}
+              </View>
+            )}
           </ScrollView>
         </>
       )}
@@ -187,6 +239,7 @@ const styles = StyleSheet.create({
   name: { fontSize: 15, fontWeight: '600', color: Colors.textDefault },
   meta: { fontSize: 13, color: Colors.textMuted, marginTop: 2 },
   bio: { fontSize: 13, lineHeight: 19, color: Colors.textBody, marginTop: 6 },
+  quote: { fontSize: 14, lineHeight: 21, color: Colors.textBody, marginTop: 4, marginBottom: 8 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32, gap: 8 },
   stateTitle: { fontSize: 16, fontWeight: '600', color: Colors.textHeading, textAlign: 'center' },
   stateText: { fontSize: 14, color: Colors.textMuted, textAlign: 'center' },
