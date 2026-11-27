@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
 import { hasRichMarks } from '../../../lib/rich-text';
 import { RichText } from '../../../components/ui/RichText';
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Linking, Image } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Linking, Image } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { ChevronLeft, CalendarClock, MapPin, Wallet, Timer, Laptop, Layers, Tag, BadgeCheck } from 'lucide-react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Colors, Radius } from '../../../constants/design';
 import { getOpportunityCategory } from '../../../constants/opportunityCategories';
 import { applyForOpportunity, getOpportunityById } from '../../../lib/api';
+import { applicationBody, asksForReferralCode } from '../../../lib/referral';
 import { askForCv, lacksCv } from '../../../lib/apply-prompt';
 import { stepRoute } from '../../../lib/profile-prompts';
 import { useToast } from '../../../components/ui/ToastProvider';
@@ -15,7 +16,8 @@ import { applyUrlOf, deadlineBadge, formatDeadline, formatLabel, fundingOf, isCl
 
 // One listing of a category without a screen of its own (volunteering, scholarships, fellowships, training, mentorship): the organisation, the key
 // facts, the description, who can apply and what it offers, and Apply. Apply opens the listing's own application link when it has one; otherwise
-// the application is sent through the app.
+// the application is sent through the app. When the listing asks for an ambassador's referral code (GOD-T105), an optional field
+// above Apply takes it and it goes with the application, so the ambassador who sent the person is credited.
 
 function Fact({ icon: Icon, label, value }: { icon: typeof MapPin; label: string; value: string }) {
   return (
@@ -69,6 +71,7 @@ export default function OpportunityListingScreen() {
   const [error, setError] = useState<string | null>(null);
   const [applying, setApplying] = useState(false);
   const [applied, setApplied] = useState(false);
+  const [referralCode, setReferralCode] = useState('');
 
   useEffect(() => {
     if (!id) return;
@@ -99,13 +102,15 @@ export default function OpportunityListingScreen() {
     }
     setApplying(true);
     try {
-      await applyForOpportunity(String(id), { coverLetter: 'Applied via the Global Opportunity Desk app' });
+      await applyForOpportunity(String(id), applicationBody('Applied via the Global Opportunity Desk app', asksForReferralCode(item) ? referralCode : ''));
       setApplied(true);
       showToast(`Your application to ${item.title} was sent.`);
     } catch (err: any) {
       if (err?.status === 409 || err?.message?.includes('already applied')) {
         setApplied(true);
         showToast('You have already applied for this opportunity.');
+      } else if (err?.message?.includes('Invalid referral code')) {
+        showToast('That referral code was not found. Check it with the ambassador, or clear it to apply without one.');
       } else {
         showToast(err?.message || 'Application failed. Please try again.');
       }
@@ -199,6 +204,25 @@ export default function OpportunityListingScreen() {
       </ScrollView>
 
       <View style={{ paddingHorizontal: 20, paddingTop: 8, paddingBottom: 12 }}>
+        {asksForReferralCode(item) && !external && !closed && !applied && (
+          <View style={{ marginBottom: 10 }}>
+            <Text style={{ fontSize: 13, fontWeight: '600', color: Colors.textBody, marginBottom: 6 }} className="font-sans" nativeID="referral-label">
+              Ambassador referral code (optional)
+            </Text>
+            <TextInput
+              value={referralCode}
+              onChangeText={setReferralCode}
+              placeholder="e.g. GOD-AB12CD"
+              placeholderTextColor={Colors.textMuted}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              accessibilityLabelledBy="referral-label"
+              accessibilityHint="The code of the ambassador who told you about this opportunity"
+              testID="referral-code-input"
+              style={{ height: 48, borderRadius: 12, borderWidth: 1, borderColor: Colors.borderDefault, backgroundColor: Colors.bgCard, paddingHorizontal: 14, fontSize: 15, color: Colors.textDefault }}
+            />
+          </View>
+        )}
         <TouchableOpacity
           onPress={apply}
           disabled={closed || applying || applied}
