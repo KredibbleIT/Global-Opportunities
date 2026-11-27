@@ -7,6 +7,8 @@
  * Data: GET /admin/ambassador-requests (real API; there is no mock version). It loads the first 100 once and the
  * status filter and its counts are computed here. A failed request shows inline with "Try again".
  * Each row opens /ambassador-applications/[id], where the request is approved or rejected.
+ *
+ * GOD-T109: this is the Applications tab of the Network section (NetworkTabs); the sidebar has one Network entry for both.
  */
 import { useMemo, useState } from "react";
 import { Megaphone } from "lucide-react";
@@ -16,6 +18,7 @@ import { useListData } from "@/lib/use-list-data";
 import { DataTable } from "@/components/list/DataTable";
 import { ListPage } from "@/components/list/ListPage";
 import { TableToolbar } from "@/components/list/TableToolbar";
+import { NetworkTabs } from "@/components/network/NetworkTabs";
 import type { Column } from "@/components/list/types";
 
 type Filter = "all" | "pending" | "approved" | "rejected";
@@ -49,10 +52,15 @@ export default function AmbassadorApplicationsPage() {
 
   return (
     <ListPage
-      title="Ambassador applications"
-      // SEC-150: the Network page has its own "Applicant" stage (people staff added to the registry), which these requests from the app are not.
-      subtitle="Requests from the app to become a Global Opportunity Desk ambassador. Approving adds the person to the Network and, if you choose, a channel. People staff add on the Network page start there as Applicant and are not listed here."
-      toolbar={<TableToolbar filters={{ options, value: filter, onChange: setFilter, label: "Filter by status" }} />}
+      title="Network"
+      // SEC-150: the Ambassadors tab has its own "Applicant" stage (people staff added to the registry), which these requests from the app are not.
+      subtitle="Requests from the app to become a Global Opportunity Desk ambassador. Approving adds the person to the Ambassadors tab and, if you choose, a channel. People staff add themselves start there as Applicant and are not listed here."
+      toolbar={
+        <div className="space-y-4">
+          <NetworkTabs value="applications" />
+          <TableToolbar filters={{ options, value: filter, onChange: setFilter, label: "Filter by status" }} />
+        </div>
+      }
     >
       <DataTable
         label="Ambassador applications"
