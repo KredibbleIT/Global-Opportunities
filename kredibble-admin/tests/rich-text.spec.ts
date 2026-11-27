@@ -10,8 +10,27 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { MOCK_RUN, defaultBaseUrl } from './mode';
 import { applyFormat, hasRichMarks, parseInline, parseRichText, previewText, safeHref, stripRichText } from '../src/lib/rich-text';
+import { foldDetailsIntoDescription, hasSeparateDetails } from '../src/lib/listing-description';
 
 const BASE_URL = defaultBaseUrl();
+
+test.describe('GOD-T101: Who can apply and What it offers move into the Description (no browser)', () => {
+  test('plain lines become a list under each heading, at the end of the description', () => {
+    expect(foldDetailsIntoDescription('A paid summer fellowship.', 'Students\nAuthorised to work in the US', 'A salary\nA stipend')).toBe(
+      'A paid summer fellowship.\n\n## Who can apply\n- Students\n- Authorised to work in the US\n\n## What it offers\n- A salary\n- A stipend',
+    );
+    // text that already has a list mark is formatted text: kept exactly as written, not listed again
+    expect(foldDetailsIntoDescription('About.', undefined, 'A salary\n- A stipend')).toBe('About.\n\n## What it offers\nA salary\n- A stipend');
+  });
+
+  test('formatted text is kept as written, one line stays a line, and nothing to move leaves the description alone', () => {
+    expect(foldDetailsIntoDescription('About it.', '', '**Tuition** and an allowance')).toBe('About it.\n\n## What it offers\n**Tuition** and an allowance');
+    expect(foldDetailsIntoDescription('About it.', 'Anyone under 30')).toBe('About it.\n\n## Who can apply\nAnyone under 30');
+    expect(foldDetailsIntoDescription('About it.', '  ', undefined)).toBe('About it.');
+    expect(hasSeparateDetails('', ' ')).toBe(false);
+    expect(hasSeparateDetails('x', undefined)).toBe(true);
+  });
+});
 
 test.describe('Rich text (no browser)', () => {
   test('links only open for http, https and mailto', () => {
@@ -154,12 +173,13 @@ test.describe('Rich text in the listing form (mock mode)', () => {
     expect(await page.evaluate(() => (window as unknown as { __pwned?: number }).__pwned)).toBeUndefined();
   });
 
-  test('a saved listing shows its description, who can apply and what it offers formatted', async ({ page }) => {
+  // GOD-T101: Who can apply and What it offers are headings inside the Description now, not boxes of their own.
+  test('a saved listing shows its description, with its Who can apply and What it offers sections, formatted', async ({ page }) => {
     const box = await open(page);
     await page.getByLabel('Title', { exact: true }).fill('Formatted Listing Test');
-    await write(box, '## About\nA **great** chance.\n\n- First\n- Second');
-    await write(page.getByLabel('Who can apply'), 'Citizens of Ghana\nUnder 30 years old');
-    await write(page.getByLabel('What it offers'), '**Tuition** and a [monthly allowance](https://example.org/allowance)');
+    await write(box, '## About\nA **great** chance.\n\n- First\n- Second\n\n## Who can apply\nCitizens of Ghana\n\n## What it offers\n**Tuition** and a [monthly allowance](https://example.org/allowance)');
+    await expect(page.getByLabel('Who can apply')).toHaveCount(0);
+    await expect(page.getByLabel('What it offers')).toHaveCount(0);
     await page.getByLabel('Offering organisation').fill('Test Organisation');
     await page.getByRole('combobox', { name: 'Opportunity type' }).click();
     await page.getByRole('option', { name: 'Fellowship' }).click();
@@ -172,12 +192,14 @@ test.describe('Rich text in the listing form (mock mode)', () => {
 
     const description = page.getByTestId('listing-description');
     await expect(description.getByRole('heading', { name: 'About' })).toBeVisible();
-    await expect(description.locator('strong')).toHaveText('great');
+    await expect(description.getByRole('heading', { name: 'Who can apply' })).toBeVisible();
+    await expect(description.getByRole('heading', { name: 'What it offers' })).toBeVisible();
+    await expect(description.locator('strong')).toHaveText(['great', 'Tuition']);
     await expect(description.locator('ul li')).toHaveCount(2);
-    // plain lines stay plain lines
-    await expect(page.getByTestId('listing-eligibility')).toContainText('Citizens of Ghana');
-    await expect(page.getByTestId('listing-eligibility')).toContainText('Under 30 years old');
-    await expect(page.getByTestId('listing-benefits').locator('strong')).toHaveText('Tuition');
-    await expect(page.getByTestId('listing-benefits').getByRole('link', { name: 'monthly allowance' })).toHaveAttribute('href', 'https://example.org/allowance');
+    await expect(description).toContainText('Citizens of Ghana');
+    await expect(description.getByRole('link', { name: 'monthly allowance' })).toHaveAttribute('href', 'https://example.org/allowance');
+    // nothing is shown twice: the old separate sections stay empty
+    await expect(page.getByTestId('listing-eligibility')).toHaveCount(0);
+    await expect(page.getByTestId('listing-benefits')).toHaveCount(0);
   });
 });
