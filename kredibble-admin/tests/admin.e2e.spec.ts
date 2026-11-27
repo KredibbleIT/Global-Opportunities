@@ -4613,13 +4613,14 @@ test.describe('Opportunities: the listing form', () => {
     ]);
   });
 
-  test('the details: Who can apply and What it offers for every type; the facts of the category appear for it, are cleared when the type changes, and are saved', async ({ page }) => {
+  // GOD-T101: Who can apply and What it offers are headings in the Description now, so Details holds only the category's facts.
+  test('the details: the facts of the category appear for it, are cleared when the type changes, and are saved; no separate Who can apply or What it offers boxes', async ({ page }) => {
     await page.goto(`${BASE_URL}/opportunities/new`, { timeout: 30_000 });
     await page.getByTestId('sidebar-toggle').waitFor();
-    await expect(page.getByRole('heading', { name: 'Details', exact: true })).toBeVisible();
-    await expect(page.getByLabel('Who can apply')).toBeVisible();
-    await expect(page.getByLabel('What it offers')).toBeVisible();
-    await expect(page.getByRole('combobox', { name: 'Study level' })).toHaveCount(0); // no type chosen yet
+    await expect(page.getByRole('heading', { name: 'Details', exact: true })).toHaveCount(0); // no type chosen yet, so no facts to set
+    await expect(page.getByLabel('Who can apply')).toHaveCount(0);
+    await expect(page.getByLabel('What it offers')).toHaveCount(0);
+    await expect(page.getByRole('combobox', { name: 'Study level' })).toHaveCount(0);
 
     await fillBasics(page, 'Scholarship With Details');
     const chooseType = async (name: RegExp) => {
@@ -4627,10 +4628,9 @@ test.describe('Opportunities: the listing form', () => {
       await page.getByRole('option', { name }).click();
     };
     await chooseType(/^Scholarships$/);
+    await expect(page.getByRole('heading', { name: 'Details', exact: true })).toBeVisible();
     for (const name of ['Field of study', 'Study level', 'Funding']) await expect(page.getByRole('combobox', { name })).toBeVisible();
     await expect(page.getByRole('switch', { name: /Certificate/ })).toHaveCount(0);
-    await page.getByLabel('Who can apply').fill('Citizens of Ghana\nUnder 30');
-    await page.getByLabel('What it offers').fill('Tuition\nA living allowance');
     await page.getByRole('combobox', { name: 'Study level' }).click();
     await page.getByRole('option', { name: "Master's" }).click();
     await page.getByRole('combobox', { name: 'Funding' }).click();
@@ -4654,8 +4654,6 @@ test.describe('Opportunities: the listing form', () => {
     await expect(page).toHaveURL(/\/opportunities\/lst-new-/, { timeout: 15_000 });
     await expect(page.getByText("Master's", { exact: true })).toBeVisible();
     await expect(page.getByText('Partially funded', { exact: true })).toBeVisible();
-    await expect(page.getByText('Citizens of Ghana')).toBeVisible(); // Who can apply
-    await expect(page.getByText('A living allowance')).toBeVisible(); // What it offers: kept when the type changes, because it applies to every type
   });
 
   test('Publish sets status published and the published date, and the list shows Published + Vetted', async ({ page }) => {

@@ -46,6 +46,7 @@ import { focusFirstInvalid, useTouched } from "@/components/ui/form/use-touched"
 import { useUnsavedGuard } from "@/components/ui/form/use-unsaved-guard";
 import { useToast } from "@/components/ui/Toast";
 import { VettingCheckpoint } from "./VettingCheckpoint";
+import { BENEFITS_HEADING, ELIGIBILITY_HEADING, foldDetailsIntoDescription, hasSeparateDetails } from "@/lib/listing-description";
 
 const LIST_HREF = "/opportunities";
 const NONE = "none";
@@ -143,9 +144,11 @@ const EMPTY: FormState = {
   vettedOn: "",
 };
 
+// GOD-T101: "Who can apply" and "What it offers" now live in the Description. A listing that still has them gets their text moved
+// to the end of its Description under the same headings; saving then clears the old fields (sent empty), so the app shows it once.
 const fromListing = (listing: Listing): FormState => ({
   title: listing.title,
-  description: listing.description,
+  description: foldDetailsIntoDescription(listing.description, listing.eligibility, listing.benefits),
   organisation: listing.organisation,
   logoUrl: listing.logoUrl,
   type: listing.type,
@@ -157,8 +160,8 @@ const fromListing = (listing: Listing): FormState => ({
   country: listing.country,
   eventAt: listing.eventAt ?? "",
   durationLabel: listing.durationLabel ?? "",
-  eligibility: listing.eligibility ?? "",
-  benefits: listing.benefits ?? "",
+  eligibility: "",
+  benefits: "",
   fundingType: listing.fundingType ?? "",
   level: listing.level ?? "",
   focusArea: listing.focusArea ?? "",
@@ -335,9 +338,18 @@ export function ListingForm({ listing }: { listing?: Listing }) {
               <Field label="Title" error={show("title") ? errors.title : undefined}>
                 <Input value={form.title} onChange={(e) => set("title", e.target.value)} onBlur={() => touch("title")} placeholder="e.g. Graduate Software Engineer" autoComplete="off" />
               </Field>
-              <Field label="Description" error={show("description") ? errors.description : undefined}>
-                <RichTextEditor value={form.description} onChange={(value) => set("description", value)} onBlur={() => touch("description")} rows={8} placeholder="What the opportunity is, who it is for and what is needed. Use the buttons above to add headings, bold, lists and links." />
+              <Field
+                label="Description"
+                error={show("description") ? errors.description : undefined}
+                helper={`Everything seekers read: what it is, then a "${ELIGIBILITY_HEADING}" and a "${BENEFITS_HEADING}" heading with a list under each.`}
+              >
+                <RichTextEditor value={form.description} onChange={(value) => set("description", value)} onBlur={() => touch("description")} rows={12} placeholder={`What the opportunity is and what is needed.\n\n## ${ELIGIBILITY_HEADING}\n- Citizens of Ghana\n- Under 30 years old\n\n## ${BENEFITS_HEADING}\n- Tuition\n- A monthly allowance`} />
               </Field>
+              {listing && hasSeparateDetails(listing.eligibility, listing.benefits) && (
+                <p data-testid="details-moved-note" className="caption -mt-2 text-ink">
+                  This listing&apos;s &quot;{ELIGIBILITY_HEADING}&quot; and &quot;{BENEFITS_HEADING}&quot; text has been moved to the end of the description. Check it, then save.
+                </p>
+              )}
               <Field label="Offering organisation" error={show("organisation") ? errors.organisation : undefined}>
                 <Input value={form.organisation} onChange={(e) => set("organisation", e.target.value)} onBlur={() => touch("organisation")} placeholder="e.g. MTN Ghana" autoComplete="off" />
               </Field>
@@ -382,15 +394,10 @@ export function ListingForm({ listing }: { listing?: Listing }) {
             </FormSection>
           </Card>
 
+          {/* GOD-T101: Who can apply and What it offers are in the Description now; Details keeps only the facts the app filters on. */}
+          {details && (
           <Card>
-            <FormSection title="Details" description="What seekers read before they apply, and the facts the app uses to filter this listing.">
-              <Field label="Who can apply" optional helper="One point on each line.">
-                <RichTextEditor value={form.eligibility} onChange={(value) => set("eligibility", value)} rows={5} placeholder={"Citizens of Ghana\nUnder 30 years old"} />
-              </Field>
-              <Field label="What it offers" optional helper="One point on each line.">
-                <RichTextEditor value={form.benefits} onChange={(value) => set("benefits", value)} rows={5} placeholder={"Tuition\nA monthly allowance"} />
-              </Field>
-              {details && (
+            <FormSection title="Details" description="The facts the app uses to filter this listing.">
                 <>
                   <Field label={details.focusLabel} optional>
                     <Select options={optionalOptions(details.focusOptions)} value={form.focusArea || NONE} onChange={(value) => set("focusArea", value === NONE ? "" : value)} sheetTitle={details.focusLabel} />
@@ -414,9 +421,9 @@ export function ListingForm({ listing }: { listing?: Listing }) {
                     />
                   )}
                 </>
-              )}
             </FormSection>
           </Card>
+          )}
 
           <Card>
             <FormSection title="Media and attribution" description="The picture, who wrote it up and how referrals work.">
