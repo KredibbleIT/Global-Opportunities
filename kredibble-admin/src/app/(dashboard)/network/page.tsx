@@ -24,6 +24,7 @@ import { EmptyAction } from "@/components/list/EmptyAction";
 import { FilterSelect, TableToolbar } from "@/components/list/TableToolbar";
 import type { Column } from "@/components/list/types";
 import { AmbassadorBulkActions } from "@/components/network/AmbassadorBulkActions";
+import { NetworkTabs } from "@/components/network/NetworkTabs";
 import { NetworkSummary } from "@/components/network/NetworkSummary";
 import { type SelectOption } from "@/components/ui/form/Select";
 import { AMBASSADOR_STATUSES, AMBASSADOR_TIERS, AMBASSADOR_TIER_LABELS, AMBASSADOR_TIER_SHORT_LABELS, type AmbassadorStatus, type AmbassadorTier } from "@/lib/mock-entities";
@@ -94,11 +95,12 @@ export default function NetworkPage() {
   return (
     <ListPage
       title="Network"
-      // SEC-150: "Applicant" here is the registry's first stage, not a request from the app (those are on Ambassador applications).
-      subtitle="Ambassadors who amplify listings with their referral code. Applicant is the first stage here; requests from the app are on Ambassador applications."
+      // SEC-150: "Applicant" here is the registry's first stage, not a request from the app (those are on the Applications tab, GOD-T109).
+      subtitle="Ambassadors who amplify listings with their referral code. Applicant is the first stage here; requests from the app are on the Applications tab."
       action={can("network", "edit") ? { label: "New ambassador", href: "/network/new", icon: Plus } : undefined}
       toolbar={
         <div className="space-y-4">
+          <NetworkTabs value="ambassadors" />
           <NetworkSummary ambassadors={rows} logs={logs} />
           <TableToolbar
             search={{ value: search, onChange: setSearch, placeholder: "Search by name or campus", label: "Search ambassadors" }}

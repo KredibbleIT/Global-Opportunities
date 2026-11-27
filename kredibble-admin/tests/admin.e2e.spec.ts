@@ -2816,7 +2816,8 @@ const NAV_ORDER = [
   'Overview', 'Monthly report', 'Scorecard',
   // Events, Grants and Programs are not in the sidebar, so the Opportunities group is the queue and the insights.
   'Opportunities queue', 'Opportunity insights',
-  'Partners', 'Network', 'Ambassadors', 'Leaderboard',
+  // GOD-T109: Ambassador applications is the Network section's Applications tab, not a sidebar entry of its own.
+  'Partners', 'Network', 'Leaderboard',
   'Seekers', 'Experts', 'Hirers', 'Channels', 'Database',
   'Verification queue', 'Reports queue',
   'Career resources', 'Reference data', 'Social', 'Testimonials', 'Showcase',
@@ -2831,13 +2832,13 @@ const EXPECTED_NAV: Record<string, string[]> = {
   desk_lead: NAV_ORDER,
   moderator: ['Overview', 'Scorecard', 'Seekers', 'Experts', 'Hirers', 'Channels', 'Verification queue', 'Reports queue', 'Opportunities queue', 'Settings'],
   support: ['Overview', 'Scorecard', 'Seekers', 'Experts', 'Hirers', 'Settings'],
-  partnerships_officer: ['Overview', 'Monthly report', 'Scorecard', 'Partners', 'Network', 'Ambassadors', 'Leaderboard', 'Showcase', 'Settings'],
+  partnerships_officer: ['Overview', 'Monthly report', 'Scorecard', 'Partners', 'Network', 'Leaderboard', 'Showcase', 'Settings'],
   opportunities_officer: ['Overview', 'Scorecard', 'Opportunities queue', 'Career resources', 'Settings'],
-  training_officer: ['Overview', 'Scorecard', 'Network', 'Ambassadors', 'Settings'],
-  database_officer: ['Overview', 'Scorecard', 'Network', 'Ambassadors', 'Database', 'Settings'],
+  training_officer: ['Overview', 'Scorecard', 'Network', 'Settings'],
+  database_officer: ['Overview', 'Scorecard', 'Network', 'Database', 'Settings'],
   communications_officer: ['Overview', 'Monthly report', 'Scorecard', 'Career resources', 'Social', 'Testimonials', 'Showcase', 'Notifications', 'Settings'],
   social_media_manager: ['Overview', 'Scorecard', 'Social', 'Testimonials', 'Settings'],
-  country_lead: ['Overview', 'Scorecard', 'Partners', 'Network', 'Ambassadors', 'Leaderboard', 'Database', 'Showcase', 'Settings'],
+  country_lead: ['Overview', 'Scorecard', 'Partners', 'Network', 'Leaderboard', 'Database', 'Showcase', 'Settings'],
   admin_support: ['Overview', 'Scorecard', 'Team', 'Settings'],
   'moderator,communications_officer': ['Overview', 'Monthly report', 'Scorecard', 'Seekers', 'Experts', 'Hirers', 'Channels', 'Verification queue', 'Reports queue', 'Career resources', 'Social', 'Testimonials', 'Showcase', 'Notifications', 'Settings', 'Opportunities queue'],
 };
@@ -4104,7 +4105,7 @@ test.describe('Roles fix pass: sidebar open state, direct rows, tagline, account
     expect(await openGroups(page)).toEqual(['nav-group-dashboard']);
   });
 
-  test('a group with one visible page is a direct row at the end: Partnerships Officer (Settings) and Database Officer (Network, Ambassadors, Database, Settings)', async ({ page, context }) => {
+  test('a group with one visible page is a direct row at the end: Partnerships Officer (Settings) and Database Officer (Network, Database, Settings)', async ({ page, context }) => {
     await asRoles(context, 'partnerships_officer');
     await page.goto(`${BASE_URL}/`, { timeout: 30_000 });
     const nav = page.locator('aside nav');
@@ -4115,15 +4116,23 @@ test.describe('Roles fix pass: sidebar open state, direct rows, tagline, account
     await asRoles(context, 'database_officer');
     await page.goto(`${BASE_URL}/database`);
     await expect(page.getByTestId('page-title')).toBeVisible();
-    // Database Officer sees the Partners & network group (Network and Ambassadors share it) plus direct rows.
-    expect(await nav.locator('[data-testid^="nav-group-"]').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')))).toEqual(['nav-group-dashboard', 'nav-group-partners-network']);
+    // GOD-T109: Network is the Database Officer's only page in Partners & network now (applications are its tab), so it is a direct row too.
+    expect(await nav.locator('[data-testid^="nav-group-"]').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')))).toEqual(['nav-group-dashboard']);
     await expect(nav.getByTestId('nav-item-database')).toHaveAttribute('aria-current', 'page');
-    expect(await nav.locator('a[data-testid^="nav-item-"]').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')))).toEqual(['nav-item-database', 'nav-item-settings']);
+    expect(await nav.locator('a[data-testid^="nav-item-"]').evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')))).toEqual(['nav-item-network', 'nav-item-database', 'nav-item-settings']);
     expect(await openGroups(page)).toEqual([]); // the active page is a direct row, so no group opens
-    // the two network pages sit in their (closed) group: open it to reach them
-    await nav.getByTestId('nav-group-partners-network').click();
-    await expect(nav.getByTestId('nav-item-network')).toBeVisible();
-    await expect(nav.getByTestId('nav-item-ambassadors')).toBeVisible();
+  });
+
+  test('GOD-T109: Network has Ambassadors and Applications tabs; the sidebar keeps Network highlighted on both', async ({ page, context }) => {
+    await asRoles(context, 'super_admin');
+    await page.goto(`${BASE_URL}/network`, { timeout: 30_000 });
+    const tabs = page.getByRole('navigation', { name: 'Network' });
+    await expect(tabs.getByRole('link', { name: 'Ambassadors' })).toHaveAttribute('aria-current', 'page');
+    await tabs.getByRole('link', { name: /^Applications/ }).click();
+    await expect(page).toHaveURL(/\/ambassador-applications$/);
+    await expect(page.getByRole('navigation', { name: 'Network' }).getByRole('link', { name: /^Applications/ })).toHaveAttribute('aria-current', 'page');
+    await expect(page.locator('aside nav').getByTestId('nav-item-network')).toHaveAttribute('aria-current', 'page');
+    await expect(page.locator('aside nav').getByTestId('nav-item-ambassadors')).toHaveCount(0);
   });
 
   test('the full logo sits directly on the expanded desktop sidebar (own shape, max 120px) and the collapse button is visible', async ({ page }) => {
