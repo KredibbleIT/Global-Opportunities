@@ -14,7 +14,7 @@
  */
 import {
   BarChart3, Bell, Briefcase, CalendarDays, CalendarRange, Building2, Database, FileText, Flag, GraduationCap, HandCoins, Handshake,
-  BadgeCheck, Hash, LayoutDashboard, Megaphone, Network, Quote, Settings, Settings2, Share2, ShieldCheck, Star, Target, Trophy, UserCog, Users, type LucideIcon,
+  BadgeCheck, Hash, LayoutDashboard, Network, Quote, Settings, Settings2, Share2, ShieldCheck, Star, Target, Trophy, UserCog, Users, type LucideIcon,
 } from "lucide-react";
 import type { AccessLevel, Screen } from "@/config/permissions";
 
@@ -74,8 +74,8 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: Handshake,
     children: [
       { label: "Partners", href: "/partners", icon: Handshake, screen: "partners", accent: "purple" },
-      { label: "Network", href: "/network", icon: Network, screen: "network", accent: "purple" },
-      { label: "Ambassadors", href: "/ambassador-applications", icon: Megaphone, screen: "network", accent: "purple", countKey: "pendingAmbassadorRequests" },
+      // GOD-T109: one Network section. Its Ambassadors and Applications tabs (NetworkTabs) are two routes; the pill counts applications waiting.
+      { label: "Network", href: "/network", icon: Network, screen: "network", accent: "purple", match: ["/ambassador-applications"], countKey: "pendingAmbassadorRequests" },
       { label: "Leaderboard", href: "/leaderboard", icon: Trophy, screen: "leaderboard" },
     ],
   },
